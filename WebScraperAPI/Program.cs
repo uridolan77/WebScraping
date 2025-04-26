@@ -1,7 +1,15 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
+using MongoDB.Driver;
+using StackExchange.Redis;
+using WebScraperAPI.Data;
+using WebScraperAPI.Data.Repositories;
+using WebScraperAPI.Data.Repositories.MongoDB;
+using WebScraperAPI.Data.Repositories.PostgreSQL;
+using WebScraperAPI.Data.Repositories.Redis;
 using WebScraperApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +31,24 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader());
 });
 
+// Add database connections
+// PostgreSQL
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("PostgreSQL")));
+
+// MongoDB
+builder.Services.AddSingleton<IMongoClient>(sp => 
+    new MongoClient(builder.Configuration.GetConnectionString("MongoDB")));
+
+// Redis
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
+    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis")));
+
+// Register repositories
+builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
+builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>();
+builder.Services.AddSingleton<ICacheRepository, CacheRepository>();
+
 // Add the ScraperManager as a singleton hosted service
 builder.Services.AddSingleton<ScraperManager>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ScraperManager>());
@@ -34,6 +60,16 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// Apply database migrations if enabled
+if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        dbContext.Database.Migrate();
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

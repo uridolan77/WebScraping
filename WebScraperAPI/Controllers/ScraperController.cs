@@ -19,9 +19,9 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpGet]
-        public IActionResult GetAllScrapers()
+        public async Task<IActionResult> GetAllScrapers()
         {
-            var scrapers = _scraperManager.GetAllScraperConfigs();
+            var scrapers = await _scraperManager.GetAllScraperConfigsAsync();
             return Ok(scrapers);
         }
         

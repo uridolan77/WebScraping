@@ -9,32 +9,59 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using WebScraper;
 using WebScraperApi.Models;
+using WebScraperAPI.Data.Entities;
+using WebScraperAPI.Data.Repositories;
 
 namespace WebScraperApi.Services
 {
+    /// <summary>
+    /// Manages scraper configurations, execution, and monitoring
+    /// </summary>
     public class ScraperManager : IHostedService, IDisposable
     {
         private readonly ILogger<ScraperManager> _logger;
+        private readonly IScraperConfigRepository _configRepository;
+        private readonly IScrapedContentRepository _contentRepository;
+        private readonly ICacheRepository _cacheRepository;
         private readonly string _configFilePath = "scraperConfigs.json";
         private readonly Dictionary<string, ScraperInstance> _scrapers = new();
         private Timer _monitoringTimer;
         
-        public ScraperManager(ILogger<ScraperManager> logger)
+        /// <summary>
+        /// Initializes a new instance of the ScraperManager class
+        /// </summary>
+        /// <param name="logger">The logger</param>
+        /// <param name="configRepository">The scraper configuration repository</param>
+        /// <param name="contentRepository">The scraped content repository</param>
+        /// <param name="cacheRepository">The cache repository</param>
+        public ScraperManager(
+            ILogger<ScraperManager> logger,
+            IScraperConfigRepository configRepository,
+            IScrapedContentRepository contentRepository,
+            ICacheRepository cacheRepository)
         {
             _logger = logger;
+            _configRepository = configRepository;
+            _contentRepository = contentRepository;
+            _cacheRepository = cacheRepository;
         }
         
-        public Task StartAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// Starts the scraper manager
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Scraper Manager starting");
             
             // Load saved scraper configurations
-            LoadScraperConfigurations();
+            await LoadScraperConfigurationsAsync();
             
             // Set up monitoring timer for checking changes
             _monitoringTimer = new Timer(CheckAllMonitoredScrapers, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
             
-            return Task.CompletedTask;
+            return;
         }
         
         public Task StopAsync(CancellationToken cancellationToken)
@@ -59,11 +86,26 @@ namespace WebScraperApi.Services
         
         #region Scraper Configuration Management
         
-        public IEnumerable<ScraperConfigModel> GetAllScraperConfigs()
+        /// <summary>
+        /// Gets all scraper configurations
+        /// </summary>
+        /// <returns>A collection of scraper configurations</returns>
+        public async Task<IEnumerable<ScraperConfigModel>> GetAllScraperConfigsAsync()
         {
-            lock (_scrapers)
+            try
             {
-                return _scrapers.Values.Select(s => s.Config).ToList();
+                var configs = await _configRepository.GetAllAsync();
+                return configs.Select(ToModel).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all scraper configurations from database");
+                
+                // Fallback to in-memory cache
+                lock (_scrapers)
+                {
+                    return _scrapers.Values.Select(s => s.Config).ToList();
+                }
             }
         }
         
@@ -154,10 +196,42 @@ namespace WebScraperApi.Services
             }
         }
         
-        private void LoadScraperConfigurations()
+        /// <summary>
+        /// Loads scraper configurations from the database
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation</returns>
+        private async Task LoadScraperConfigurationsAsync()
         {
-            lock (_scrapers)
+            try
             {
+                var configs = await _configRepository.GetAllAsync();
+                var configModels = configs.Select(ToModel).ToList();
+                
+                lock (_scrapers)
+                {
+                    _scrapers.Clear();
+                    
+                    foreach (var config in configModels)
+                    {
+                        _scrapers[config.Id] = new ScraperInstance
+                        {
+                            Config = config,
+                            Status = new ScraperStatus
+                            {
+                                IsRunning = false,
+                                LastMonitorCheck = null
+                            }
+                        };
+                    }
+                }
+                
+                _logger.LogInformation($"Loaded {configModels.Count} scraper configurations from database");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading scraper configurations from database");
+                
+                // Fallback to file-based configuration if database fails
                 if (File.Exists(_configFilePath))
                 {
                     try
@@ -167,25 +241,28 @@ namespace WebScraperApi.Services
                         
                         if (configs != null)
                         {
-                            foreach (var config in configs)
+                            lock (_scrapers)
                             {
-                                _scrapers[config.Id] = new ScraperInstance
+                                foreach (var config in configs)
                                 {
-                                    Config = config,
-                                    Status = new ScraperStatus
+                                    _scrapers[config.Id] = new ScraperInstance
                                     {
-                                        IsRunning = false,
-                                        LastMonitorCheck = null
-                                    }
-                                };
+                                        Config = config,
+                                        Status = new ScraperStatus
+                                        {
+                                            IsRunning = false,
+                                            LastMonitorCheck = null
+                                        }
+                                    };
+                                }
                             }
                             
-                            _logger.LogInformation($"Loaded {configs.Count} scraper configurations");
+                            _logger.LogInformation($"Loaded {configs.Count} scraper configurations from file");
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception fileEx)
                     {
-                        _logger.LogError(ex, "Error loading scraper configurations");
+                        _logger.LogError(fileEx, "Error loading scraper configurations from file");
                     }
                 }
             }
@@ -439,6 +516,92 @@ namespace WebScraperApi.Services
                 _logger.LogError(ex, $"Error during monitoring check of {id}");
                 AddLogMessage(id, $"Error during monitoring check: {ex.Message}");
             }
+        }
+        
+        #endregion
+        
+        #region Mapping Methods
+        
+        /// <summary>
+        /// Converts a ScraperConfig entity to a ScraperConfigModel
+        /// </summary>
+        /// <param name="entity">The entity to convert</param>
+        /// <returns>The converted model</returns>
+        private ScraperConfigModel ToModel(WebScraperAPI.Data.Entities.ScraperConfig entity)
+        {
+            return new ScraperConfigModel
+            {
+                Id = entity.Id.ToString(),
+                Name = entity.Name,
+                CreatedAt = entity.CreatedAt,
+                LastRun = entity.LastRun,
+                StartUrl = entity.StartUrl,
+                BaseUrl = entity.BaseUrl,
+                OutputDirectory = entity.OutputDirectory,
+                DelayBetweenRequests = entity.DelayBetweenRequests,
+                MaxConcurrentRequests = entity.MaxConcurrentRequests,
+                MaxDepth = entity.MaxDepth,
+                FollowExternalLinks = entity.FollowExternalLinks,
+                RespectRobotsTxt = entity.RespectRobotsTxt,
+                AutoLearnHeaderFooter = entity.AutoLearnHeaderFooter,
+                LearningPagesCount = entity.LearningPagesCount,
+                EnableChangeDetection = entity.EnableChangeDetection,
+                TrackContentVersions = entity.TrackContentVersions,
+                MaxVersionsToKeep = entity.MaxVersionsToKeep,
+                EnableAdaptiveCrawling = entity.EnableAdaptiveCrawling,
+                PriorityQueueSize = entity.PriorityQueueSize,
+                AdjustDepthBasedOnQuality = entity.AdjustDepthBasedOnQuality,
+                EnableAdaptiveRateLimiting = entity.EnableAdaptiveRateLimiting,
+                MinDelayBetweenRequests = entity.MinDelayBetweenRequests,
+                MaxDelayBetweenRequests = entity.MaxDelayBetweenRequests,
+                MonitorResponseTimes = entity.MonitorResponseTimes,
+                EnableContinuousMonitoring = entity.EnableContinuousMonitoring,
+                MonitoringIntervalMinutes = entity.MonitoringIntervalMinutes,
+                NotifyOnChanges = entity.NotifyOnChanges,
+                NotificationEmail = entity.NotificationEmail,
+                TrackChangesHistory = entity.TrackChangesHistory
+            };
+        }
+        
+        /// <summary>
+        /// Converts a ScraperConfigModel to a ScraperConfig entity
+        /// </summary>
+        /// <param name="model">The model to convert</param>
+        /// <returns>The converted entity</returns>
+        private WebScraperAPI.Data.Entities.ScraperConfig ToEntity(ScraperConfigModel model)
+        {
+            return new WebScraperAPI.Data.Entities.ScraperConfig
+            {
+                Id = Guid.Parse(model.Id),
+                Name = model.Name,
+                CreatedAt = model.CreatedAt,
+                LastRun = model.LastRun,
+                StartUrl = model.StartUrl,
+                BaseUrl = model.BaseUrl,
+                OutputDirectory = model.OutputDirectory,
+                DelayBetweenRequests = model.DelayBetweenRequests,
+                MaxConcurrentRequests = model.MaxConcurrentRequests,
+                MaxDepth = model.MaxDepth,
+                FollowExternalLinks = model.FollowExternalLinks,
+                RespectRobotsTxt = model.RespectRobotsTxt,
+                AutoLearnHeaderFooter = model.AutoLearnHeaderFooter,
+                LearningPagesCount = model.LearningPagesCount,
+                EnableChangeDetection = model.EnableChangeDetection,
+                TrackContentVersions = model.TrackContentVersions,
+                MaxVersionsToKeep = model.MaxVersionsToKeep,
+                EnableAdaptiveCrawling = model.EnableAdaptiveCrawling,
+                PriorityQueueSize = model.PriorityQueueSize,
+                AdjustDepthBasedOnQuality = model.AdjustDepthBasedOnQuality,
+                EnableAdaptiveRateLimiting = model.EnableAdaptiveRateLimiting,
+                MinDelayBetweenRequests = model.MinDelayBetweenRequests,
+                MaxDelayBetweenRequests = model.MaxDelayBetweenRequests,
+                MonitorResponseTimes = model.MonitorResponseTimes,
+                EnableContinuousMonitoring = model.EnableContinuousMonitoring,
+                MonitoringIntervalMinutes = model.MonitoringIntervalMinutes,
+                NotifyOnChanges = model.NotifyOnChanges,
+                NotificationEmail = model.NotificationEmail,
+                TrackChangesHistory = model.TrackChangesHistory
+            };
         }
         
         #endregion
