@@ -58,7 +58,9 @@ const Configuration = () => {
     customHeaders: '',
     customCss: '',
     proxy: '',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    notificationEmail: '',
+    id: ''
   });
 
   // UI state
@@ -73,19 +75,26 @@ const Configuration = () => {
     const loadScraper = async () => {
       try {
         setLoading(true);
+        console.log('Configuration: Loading scraper data for ID:', id);
+        console.log('isEditMode:', isEditMode);
+
+        // The API now returns normalized data with camelCase properties
         const data = await fetchScraper(id);
+        console.log('Received normalized scraper data:', data);
 
         // Update form with existing data
-        setFormData(prevState => ({
-          ...prevState,
-          ...data,
-          includePatterns: data.includePatterns ? data.includePatterns.join('\\n') : '',
-          excludePatterns: data.excludePatterns ? data.excludePatterns.join('\\n') : '',
-          customHeaders: data.customHeaders ? JSON.stringify(data.customHeaders, null, 2) : ''
-        }));
+        setFormData(prevState => {
+          const newState = {
+            ...prevState,
+            ...data
+          };
+          console.log('Updated form data:', newState);
+          return newState;
+        });
 
         setLoading(false);
       } catch (err) {
+        console.error('Error loading scraper:', err);
         setError(`Failed to load scraper configuration: ${err.message}`);
         setLoading(false);
       }
@@ -258,13 +267,28 @@ const Configuration = () => {
             </Typography>
 
             <Grid container spacing={3}>
+              {isEditMode && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Scraper ID"
+                    name="id"
+                    value={formData.id || ''}
+                    InputProps={{
+                      readOnly: true,
+                    }}
+                    helperText="Unique identifier for this scraper (read-only)"
+                  />
+                </Grid>
+              )}
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
                   required
                   label="Scraper Name"
                   name="name"
-                  value={formData.name}
+                  value={formData.name || ''}
                   onChange={handleChange}
                   error={Boolean(validation.name)}
                   helperText={validation.name}
@@ -275,9 +299,21 @@ const Configuration = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
+                  label="Notification Email"
+                  name="notificationEmail"
+                  value={formData.notificationEmail || ''}
+                  onChange={handleChange}
+                  placeholder="email@example.com"
+                  helperText="Email address for notifications (required for API)"
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
                   label="Description (optional)"
                   name="description"
-                  value={formData.description}
+                  value={formData.description || ''}
                   onChange={handleChange}
                   multiline
                   rows={3}
@@ -302,10 +338,12 @@ const Configuration = () => {
                   required
                   label="Start URL"
                   name="startUrl"
-                  value={formData.startUrl}
+                  value={formData.startUrl || ''}
                   onChange={handleChange}
                   error={Boolean(validation.startUrl)}
                   helperText={validation.startUrl || "The URL where scraping will begin"}
+                  placeholder="https://example.com"
+                  sx={{ width: '100%' }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -321,11 +359,12 @@ const Configuration = () => {
                   fullWidth
                   label="Base URL/Domain (optional)"
                   name="baseUrl"
-                  value={formData.baseUrl}
+                  value={formData.baseUrl || ''}
                   onChange={handleChange}
                   error={Boolean(validation.baseUrl)}
                   helperText={validation.baseUrl || "Limit scraping to this domain. If empty, will use the domain from the Start URL"}
                   placeholder="E.g. example.com"
+                  sx={{ width: '100%' }}
                 />
               </Grid>
 
@@ -333,7 +372,7 @@ const Configuration = () => {
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={formData.includeSubdomains}
+                      checked={formData.includeSubdomains || false}
                       onChange={handleChange}
                       name="includeSubdomains"
                       color="primary"
@@ -350,7 +389,7 @@ const Configuration = () => {
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={formData.followExternalLinks}
+                      checked={formData.followExternalLinks || false}
                       onChange={handleChange}
                       name="followExternalLinks"
                       color="primary"
@@ -380,9 +419,9 @@ const Configuration = () => {
                   type="number"
                   label="Max Depth"
                   name="maxDepth"
-                  value={formData.maxDepth}
+                  value={formData.maxDepth || 5}
                   onChange={handleChange}
-                  InputProps={{ inputProps: { min: 1 } }}
+                  inputProps={{ min: 1 }}
                   error={Boolean(validation.maxDepth)}
                   helperText={validation.maxDepth || "How many links deep to crawl"}
                 />
@@ -394,9 +433,9 @@ const Configuration = () => {
                   type="number"
                   label="Max Concurrent Requests"
                   name="maxConcurrentRequests"
-                  value={formData.maxConcurrentRequests}
+                  value={formData.maxConcurrentRequests || 5}
                   onChange={handleChange}
-                  InputProps={{ inputProps: { min: 1 } }}
+                  inputProps={{ min: 1 }}
                   error={Boolean(validation.maxConcurrentRequests)}
                   helperText={validation.maxConcurrentRequests}
                 />
@@ -408,9 +447,9 @@ const Configuration = () => {
                   type="number"
                   label="Delay Between Requests (ms)"
                   name="delayBetweenRequests"
-                  value={formData.delayBetweenRequests}
+                  value={formData.delayBetweenRequests || 1000}
                   onChange={handleChange}
-                  InputProps={{ inputProps: { min: 0 } }}
+                  inputProps={{ min: 0 }}
                   error={Boolean(validation.delayBetweenRequests)}
                   helperText={validation.delayBetweenRequests}
                 />

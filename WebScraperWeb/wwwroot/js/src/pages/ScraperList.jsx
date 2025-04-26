@@ -73,18 +73,109 @@ const ScraperList = () => {
       try {
         setLoading(true);
         setError(null);
+        console.log('ScraperList: Loading scrapers...');
+
+        // Make direct fetch to API with proper headers
+        try {
+          console.log('ScraperList: Making direct fetch to API...');
+          const directResponse = await fetch('/api/scraper', {
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+          console.log('ScraperList: Direct API response status:', directResponse.status);
+
+          if (directResponse.ok) {
+            const responseText = await directResponse.text();
+            console.log('ScraperList: Direct API response text:', responseText);
+
+            // Check if we got HTML instead of JSON
+            if (responseText.includes('<!DOCTYPE html>')) {
+              console.error('ScraperList: Received HTML instead of JSON');
+              throw new Error('Received HTML instead of JSON. API proxy issue detected.');
+            }
+
+            try {
+              // Try to parse the response as JSON
+              const responseData = JSON.parse(responseText);
+              console.log('ScraperList: Direct API response parsed:', responseData);
+
+              // If we got valid data, use it directly
+              if (Array.isArray(responseData) && responseData.length > 0) {
+                console.log('ScraperList: Using direct API response data');
+
+                // Normalize the data to ensure all properties are in camelCase
+                const normalizedScrapers = responseData.map(scraper => {
+                  // Create a new object with camelCase keys
+                  const normalizedScraper = {};
+                  Object.keys(scraper).forEach(key => {
+                    // Convert first character to lowercase (PascalCase to camelCase)
+                    const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                    normalizedScraper[camelCaseKey] = scraper[key];
+                  });
+
+                  // Ensure required properties exist
+                  normalizedScraper.id = normalizedScraper.id || scraper.Id;
+                  normalizedScraper.name = normalizedScraper.name || scraper.Name || scraper.baseUrl || scraper.BaseUrl;
+                  normalizedScraper.status = normalizedScraper.status || 'idle';
+                  normalizedScraper.baseUrl = normalizedScraper.baseUrl || scraper.BaseUrl || '';
+                  normalizedScraper.lastRun = normalizedScraper.lastRun || scraper.LastRun || null;
+                  normalizedScraper.pagesCrawled = normalizedScraper.pagesCrawled || scraper.PagesCrawled || 0;
+
+                  // Ensure monitoring object exists
+                  normalizedScraper.monitoring = normalizedScraper.monitoring || {
+                    enabled: normalizedScraper.enableContinuousMonitoring || false
+                  };
+
+                  console.log('Normalized scraper:', normalizedScraper);
+                  return normalizedScraper;
+                });
+
+                console.log('All normalized scrapers:', normalizedScrapers);
+                setScrapers(normalizedScrapers);
+                setLoading(false);
+                return;
+              }
+            } catch (parseError) {
+              console.error('ScraperList: Error parsing direct API response:', parseError);
+            }
+          }
+        } catch (directFetchError) {
+          console.error('ScraperList: Error making direct API request:', directFetchError);
+        }
+
+        // Continue with normal flow if direct fetch didn't work
         const data = await fetchAllScrapers();
-        setScrapers(data);
+        console.log('ScraperList: Received scrapers data:', data);
+
+        if (!data || (Array.isArray(data) && data.length === 0)) {
+          console.log('ScraperList: No scrapers found or empty array returned');
+          setScrapers([]);
+        } else {
+          setScrapers(data);
+        }
       } catch (err) {
-        console.error('Error loading scrapers:', err);
-        setError('Failed to load scrapers. Please try again later.');
+        console.error('ScraperList: Error loading scrapers:', err);
+        setError(`Failed to load scrapers: ${err.message}. Please check the API connection and try again.`);
+        setScrapers([]); // Set empty array to avoid undefined errors
       } finally {
         setLoading(false);
       }
     };
 
+    console.log('ScraperList: Triggering loadScrapers, refreshTrigger =', refreshTrigger);
     loadScrapers();
-  }, [refreshTrigger]);
+
+    // Set up a timer to retry loading if it fails
+    const retryTimer = setTimeout(() => {
+      if (error) {
+        console.log('ScraperList: Retrying loadScrapers due to previous error');
+        loadScrapers();
+      }
+    }, 5000); // Retry after 5 seconds if there was an error
+
+    return () => clearTimeout(retryTimer);
+  }, [refreshTrigger, error]);
 
   const handleDeleteClick = (id) => {
     setSelectedScraperId(id);
@@ -169,7 +260,7 @@ const ScraperList = () => {
                   <Typography variant="h6" component="div" noWrap gutterBottom>
                     {scraper.name || scraper.baseUrl}
                   </Typography>
-                  
+
                   <Box sx={{ mb: 2 }}>
                     <Chip
                       size="small"
@@ -188,32 +279,32 @@ const ScraperList = () => {
                       />
                     )}
                   </Box>
-                  
+
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     <strong>URL:</strong> {scraper.baseUrl}
                   </Typography>
-                  
+
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     <strong>Last Run:</strong> {formatLastRun(scraper.lastRun)}
                   </Typography>
-                  
+
                   {scraper.pagesCrawled > 0 && (
                     <Typography variant="body2" color="text.secondary">
                       <strong>Pages Crawled:</strong> {scraper.pagesCrawled.toLocaleString()}
                     </Typography>
                   )}
                 </CardContent>
-                
+
                 <CardActions>
-                  <Button 
-                    size="small" 
+                  <Button
+                    size="small"
                     startIcon={<DashboardIcon />}
                     component={RouterLink}
                     to={`/dashboard/${scraper.id}`}
                   >
                     Dashboard
                   </Button>
-                  
+
                   <Button
                     size="small"
                     startIcon={<MonitorHeartIcon />}
@@ -221,22 +312,22 @@ const ScraperList = () => {
                   >
                     Monitoring
                   </Button>
-                  
+
                   <Box sx={{ flexGrow: 1 }} />
-                  
+
                   <Tooltip title="Edit">
-                    <IconButton 
-                      size="small" 
-                      component={RouterLink} 
+                    <IconButton
+                      size="small"
+                      component={RouterLink}
                       to={`/configure/${scraper.id}`}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  
+
                   <Tooltip title="Delete">
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={() => handleDeleteClick(scraper.id)}
                       color="error"
                     >
