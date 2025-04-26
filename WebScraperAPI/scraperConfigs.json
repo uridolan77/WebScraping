@@ -1,0 +1,33 @@
+[
+  {
+    "Id": "d6d6eb97-7136-4eaf-b7ca-16ed6202c7ad",
+    "Name": "ukgc",
+    "CreatedAt": "2025-04-26T19:21:35.7405362+03:00",
+    "LastRun": null,
+    "StartUrl": "https://www.gamblingcommission.gov.uk/licensees-and-businesses",
+    "BaseUrl": "https://www.gamblingcommission.gov.uk",
+    "OutputDirectory": "ScrapedData",
+    "DelayBetweenRequests": 1000,
+    "MaxConcurrentRequests": 5,
+    "MaxDepth": 5,
+    "FollowExternalLinks": false,
+    "RespectRobotsTxt": true,
+    "AutoLearnHeaderFooter": true,
+    "LearningPagesCount": 5,
+    "EnableChangeDetection": true,
+    "TrackContentVersions": true,
+    "MaxVersionsToKeep": 5,
+    "EnableAdaptiveCrawling": true,
+    "PriorityQueueSize": 100,
+    "AdjustDepthBasedOnQuality": true,
+    "EnableAdaptiveRateLimiting": true,
+    "MinDelayBetweenRequests": 500,
+    "MaxDelayBetweenRequests": 5000,
+    "MonitorResponseTimes": true,
+    "EnableContinuousMonitoring": false,
+    "MonitoringIntervalMinutes": 1440,
+    "NotifyOnChanges": false,
+    "NotificationEmail": "no-reply@example.com",
+    "TrackChangesHistory": true
+  }
+]

@@ -14,7 +14,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp",
         builder => builder
-            .WithOrigins("http://localhost:5192") // React app URL
+            .WithOrigins(
+                "http://localhost:5000",  // WebScraperWeb default port
+                "http://localhost:5192",  // Original React app URL
+                "https://localhost:5001"  // WebScraperWeb default HTTPS port
+            )
             .AllowAnyMethod()
             .AllowAnyHeader());
 });

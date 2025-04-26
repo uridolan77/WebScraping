@@ -9,6 +9,9 @@ builder.Services.AddSpaStaticFiles(configuration =>
     configuration.RootPath = "wwwroot";
 });
 
+// Add HTTP client for API proxy
+builder.Services.AddHttpClient();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

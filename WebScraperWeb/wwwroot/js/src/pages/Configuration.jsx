@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Typography, 
-  Paper, 
-  Grid, 
-  Button, 
-  Box, 
-  TextField, 
+import {
+  Typography,
+  Paper,
+  Grid,
+  Button,
+  Box,
+  TextField,
   MenuItem,
   Switch,
   FormControlLabel,
@@ -24,22 +24,22 @@ import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import HttpIcon from '@mui/icons-material/Http';
-import SpeedIcon from '@mui/icons-material/Speed'; 
+import SpeedIcon from '@mui/icons-material/Speed';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import HomeIcon from '@mui/icons-material/Home';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
-import { fetchScraper, saveScraper } from '../services/api';
+import { fetchScraper, createScraper, updateScraper } from '../services/api';
 
 const Configuration = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditMode = Boolean(id);
-  
+
   // Form steps
   const steps = ['Basic Info', 'URL Settings', 'Advanced Options', 'Filtering Rules'];
   const [activeStep, setActiveStep] = useState(0);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -60,21 +60,21 @@ const Configuration = () => {
     proxy: '',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
   });
-  
+
   // UI state
   const [loading, setLoading] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [validation, setValidation] = useState({});
-  
+
   // Load scraper data if in edit mode
   useEffect(() => {
     const loadScraper = async () => {
       try {
         setLoading(true);
         const data = await fetchScraper(id);
-        
+
         // Update form with existing data
         setFormData(prevState => ({
           ...prevState,
@@ -83,29 +83,29 @@ const Configuration = () => {
           excludePatterns: data.excludePatterns ? data.excludePatterns.join('\\n') : '',
           customHeaders: data.customHeaders ? JSON.stringify(data.customHeaders, null, 2) : ''
         }));
-        
+
         setLoading(false);
       } catch (err) {
         setError(`Failed to load scraper configuration: ${err.message}`);
         setLoading(false);
       }
     };
-    
+
     if (isEditMode) {
       loadScraper();
     }
   }, [id, isEditMode]);
-  
+
   // Handle form changes
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     const newValue = type === 'checkbox' ? checked : value;
-    
+
     setFormData(prevState => ({
       ...prevState,
       [name]: newValue
     }));
-    
+
     // Clear validation error when field is changed
     if (validation[name]) {
       setValidation(prev => ({
@@ -113,17 +113,17 @@ const Configuration = () => {
         [name]: null
       }));
     }
-    
+
     // Clear success message when form is changed
     if (success) {
       setSuccess(false);
     }
   };
-  
+
   // Validate the current step
   const validateStep = () => {
     const errors = {};
-    
+
     if (activeStep === 0) {
       if (!formData.name) {
         errors.name = 'Scraper name is required';
@@ -138,7 +138,7 @@ const Configuration = () => {
           errors.startUrl = 'Please enter a valid URL';
         }
       }
-      
+
       if (formData.baseUrl) {
         try {
           new URL(formData.baseUrl.startsWith('http') ? formData.baseUrl : `https://${formData.baseUrl}`);
@@ -156,7 +156,7 @@ const Configuration = () => {
       if (formData.delayBetweenRequests < 0) {
         errors.delayBetweenRequests = 'Cannot be negative';
       }
-      
+
       // Validate custom headers as JSON if provided
       if (formData.customHeaders) {
         try {
@@ -166,26 +166,26 @@ const Configuration = () => {
         }
       }
     }
-    
+
     setValidation(errors);
     return Object.keys(errors).length === 0;
   };
-  
+
   // Navigate between steps
   const handleNext = () => {
     if (validateStep()) {
       setActiveStep(prevStep => prevStep + 1);
     }
   };
-  
+
   const handleBack = () => {
     setActiveStep(prevStep => prevStep - 1);
   };
-  
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Final validation check across all steps
     for (let i = 0; i <= 3; i++) {
       setActiveStep(i);
@@ -193,10 +193,10 @@ const Configuration = () => {
         return;
       }
     }
-    
+
     setSaving(true);
     setError(null);
-    
+
     try {
       // Format form data for API
       const formattedData = {
@@ -205,7 +205,7 @@ const Configuration = () => {
         excludePatterns: formData.excludePatterns ? formData.excludePatterns.split('\\n').filter(p => p.trim()) : [],
         customHeaders: formData.customHeaders ? JSON.parse(formData.customHeaders) : null
       };
-      
+
       // If baseUrl is empty, try to extract domain from startUrl
       if (!formattedData.baseUrl) {
         try {
@@ -215,23 +215,38 @@ const Configuration = () => {
           // Ignore and leave baseUrl empty
         }
       }
-      
+
       // Save scraper
-      const result = await saveScraper(formattedData, id);
-      
-      setSaving(false);
-      setSuccess(true);
-      
-      // Navigate to dashboard after successful save
-      setTimeout(() => {
-        navigate(isEditMode ? `/dashboard/${id}` : `/dashboard/${result.id}`);
-      }, 1500);
+      let result;
+
+      try {
+        console.log('Submitting scraper data:', formattedData);
+
+        if (isEditMode) {
+          // Update existing scraper
+          result = await updateScraper(id, formattedData);
+        } else {
+          // Create new scraper
+          result = await createScraper(formattedData);
+        }
+
+        setSaving(false);
+        setSuccess(true);
+
+        // Navigate to dashboard after successful save
+        setTimeout(() => {
+          navigate(isEditMode ? `/dashboard/${id}` : `/dashboard/${result.id}`);
+        }, 1500);
+      } catch (error) {
+        console.error('Error saving scraper:', error);
+        throw error; // Re-throw to be caught by the outer catch block
+      }
     } catch (err) {
       setError(`Failed to save scraper: ${err.message}`);
       setSaving(false);
     }
   };
-  
+
   // Render step content
   const renderStepContent = (step) => {
     switch (step) {
@@ -241,7 +256,7 @@ const Configuration = () => {
             <Typography variant="h6" gutterBottom>
               Basic Information
             </Typography>
-            
+
             <Grid container spacing={3}>
               <Grid item xs={12}>
                 <TextField
@@ -256,7 +271,7 @@ const Configuration = () => {
                   placeholder="E.g. Company Blog Scraper"
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -272,14 +287,14 @@ const Configuration = () => {
             </Grid>
           </Box>
         );
-        
+
       case 1:
         return (
           <Box>
             <Typography variant="h6" gutterBottom>
               URL Settings
             </Typography>
-            
+
             <Grid container spacing={3}>
               <Grid item xs={12}>
                 <TextField
@@ -300,7 +315,7 @@ const Configuration = () => {
                   }}
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -313,7 +328,7 @@ const Configuration = () => {
                   placeholder="E.g. example.com"
                 />
               </Grid>
-              
+
               <Grid item xs={12} sm={6}>
                 <FormControlLabel
                   control={
@@ -330,7 +345,7 @@ const Configuration = () => {
                   Allow scraping of subdomains like blog.example.com
                 </FormHelperText>
               </Grid>
-              
+
               <Grid item xs={12} sm={6}>
                 <FormControlLabel
                   control={
@@ -350,14 +365,14 @@ const Configuration = () => {
             </Grid>
           </Box>
         );
-        
+
       case 2:
         return (
           <Box>
             <Typography variant="h6" gutterBottom>
               Advanced Options
             </Typography>
-            
+
             <Grid container spacing={3}>
               <Grid item xs={12} sm={4}>
                 <TextField
@@ -372,7 +387,7 @@ const Configuration = () => {
                   helperText={validation.maxDepth || "How many links deep to crawl"}
                 />
               </Grid>
-              
+
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
@@ -386,7 +401,7 @@ const Configuration = () => {
                   helperText={validation.maxConcurrentRequests}
                 />
               </Grid>
-              
+
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
@@ -400,11 +415,11 @@ const Configuration = () => {
                   helperText={validation.delayBetweenRequests}
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <Divider sx={{ my: 2 }} />
               </Grid>
-              
+
               <Grid item xs={12} sm={6}>
                 <FormControlLabel
                   control={
@@ -421,7 +436,7 @@ const Configuration = () => {
                   Follow rules set by website owners
                 </FormHelperText>
               </Grid>
-              
+
               <Grid item xs={12} sm={6}>
                 <FormControlLabel
                   control={
@@ -438,7 +453,7 @@ const Configuration = () => {
                   Download CSS, images, and other assets
                 </FormHelperText>
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -449,7 +464,7 @@ const Configuration = () => {
                   helperText="Browser identifier string to use for requests"
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -461,7 +476,7 @@ const Configuration = () => {
                   helperText="Route requests through a proxy server"
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -479,14 +494,14 @@ const Configuration = () => {
             </Grid>
           </Box>
         );
-        
+
       case 3:
         return (
           <Box>
             <Typography variant="h6" gutterBottom>
               Filtering Rules
             </Typography>
-            
+
             <Grid container spacing={3}>
               <Grid item xs={12}>
                 <TextField
@@ -501,7 +516,7 @@ const Configuration = () => {
                   helperText="Only follow URLs matching these patterns. Supports * as wildcard."
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -515,7 +530,7 @@ const Configuration = () => {
                   helperText="Skip URLs matching these patterns. Supports * as wildcard."
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -530,12 +545,12 @@ const Configuration = () => {
             </Grid>
           </Box>
         );
-        
+
       default:
         return null;
     }
   };
-  
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
@@ -561,12 +576,12 @@ const Configuration = () => {
           {isEditMode ? 'Edit Scraper' : 'New Scraper'}
         </Typography>
       </Breadcrumbs>
-      
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           {isEditMode ? 'Edit Scraper Configuration' : 'Create New Scraper'}
         </Typography>
-        
+
         <Button
           component={RouterLink}
           to={isEditMode ? `/dashboard/${id}` : '/scrapers'}
@@ -576,19 +591,19 @@ const Configuration = () => {
           {isEditMode ? 'Back to Dashboard' : 'Back to Scrapers'}
         </Button>
       </Box>
-      
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
-      
+
       {success && (
         <Alert severity="success" sx={{ mb: 3 }}>
           Scraper configuration saved successfully! Redirecting...
         </Alert>
       )}
-      
+
       <Paper sx={{ p: 3, mb: 3 }}>
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
           {steps.map((label) => (
@@ -597,10 +612,10 @@ const Configuration = () => {
             </Step>
           ))}
         </Stepper>
-        
+
         <form onSubmit={handleSubmit}>
           {renderStepContent(activeStep)}
-          
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
             <Button
               variant="outlined"
@@ -609,7 +624,7 @@ const Configuration = () => {
             >
               Back
             </Button>
-            
+
             <Box>
               {activeStep === steps.length - 1 ? (
                 <Button
