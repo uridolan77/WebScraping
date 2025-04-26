@@ -210,8 +210,8 @@ namespace WebScraperApi.Services
                 var entity = ToEntity(config);
                 
                 // Save to repository
-                await _configRepository.AddAsync(entity);
-                await _configRepository.SaveChangesAsync();
+                await _configRepository.CreateAsync(entity);
+                // No need to call SaveChangesAsync as it's handled internally by CreateAsync
                 
                 // Get the saved entity with generated ID
                 config.Id = entity.Id.ToString();
@@ -300,7 +300,7 @@ namespace WebScraperApi.Services
                 
                 // Update in repository
                 await _configRepository.UpdateAsync(entity);
-                await _configRepository.SaveChangesAsync();
+                // No need to call SaveChangesAsync as it's handled internally by UpdateAsync
 
                 // Update in-memory cache
                 lock (_scrapers)
@@ -356,8 +356,8 @@ namespace WebScraperApi.Services
                     return false;
                 }
 
-                await _configRepository.DeleteAsync(entity);
-                await _configRepository.SaveChangesAsync();
+                await _configRepository.DeleteAsync(guidId);
+                // No need to call SaveChangesAsync as it's handled internally by DeleteAsync
 
                 // Remove from in-memory cache
                 lock (_scrapers)
