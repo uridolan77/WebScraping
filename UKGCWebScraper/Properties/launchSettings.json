@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "UKGCWebScraper": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
