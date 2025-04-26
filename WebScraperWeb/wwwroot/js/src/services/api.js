@@ -179,20 +179,86 @@ export const fetchAllScrapers = async () => {
 
 // Fetch a specific scraper by ID
 export const fetchScraper = async (id) => {
-  console.log('Fetching scraper with ID:', id);
-
-  // Log the full URL for debugging
-  const url = `${API_URL}/scraper/${id}`;
-  console.log('Fetching from URL:', url);
+  console.log('🔍🔍🔍 FUNCTION CALLED: fetchScraper 🔍🔍🔍');
+  console.log('📌 Fetching scraper with ID:', id);
+  console.trace('Call stack for fetchScraper');
 
   try {
-    console.log('Starting fetch request...');
-    const response = await fetch(url);
+    // First try to get all scrapers to find the one with matching name or ID
+    console.log('Getting all scrapers to find the matching one...');
+    const allScrapersUrl = `${API_URL}/scraper`;
+    console.log('Fetching all scrapers from URL:', allScrapersUrl);
+
+    const allScrapersResponse = await fetch(allScrapersUrl, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!allScrapersResponse.ok) {
+      const errorText = await allScrapersResponse.text();
+      console.error('Server response when getting all scrapers:', allScrapersResponse.status, errorText);
+      throw new Error(`API error when getting all scrapers: ${allScrapersResponse.status} - ${errorText}`);
+    }
+
+    const allScrapersText = await allScrapersResponse.text();
+
+    // Check if we got HTML instead of JSON
+    if (allScrapersText.includes('<!DOCTYPE html>')) {
+      console.error('Received HTML instead of JSON when getting all scrapers. API proxy issue detected.');
+      throw new Error('API proxy error: Received HTML instead of JSON when getting all scrapers');
+    }
+
+    let allScrapers;
+    try {
+      allScrapers = JSON.parse(allScrapersText);
+      console.log('All scrapers:', allScrapers);
+    } catch (e) {
+      console.error('Error parsing all scrapers response as JSON:', e);
+      throw new Error(`Failed to parse all scrapers API response as JSON: ${e.message}`);
+    }
+
+    // Find the scraper with matching name or ID
+    const matchingScraper = allScrapers.find(s =>
+      s.id === id ||
+      s.Id === id ||
+      s.name === id ||
+      s.Name === id
+    );
+
+    if (!matchingScraper) {
+      console.error('No matching scraper found for ID or name:', id);
+      throw new Error(`No scraper found with ID or name: ${id}`);
+    }
+
+    console.log('Found matching scraper:', matchingScraper);
+
+    // Get the actual ID
+    const actualId = matchingScraper.id || matchingScraper.Id;
+    console.log('Actual scraper ID:', actualId);
+
+    // Now fetch the specific scraper with the actual ID
+    const url = `${API_URL}/scraper/${actualId}`;
+    console.log('Fetching specific scraper from URL:', url);
+
+    // Add Accept header to ensure we get JSON back
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
 
     // If response is not ok, log the error details
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Server response:', response.status, errorText);
+
+      // Check if we got HTML instead of JSON
+      if (errorText.includes('<!DOCTYPE html>')) {
+        console.error('Received HTML instead of JSON. API proxy issue detected.');
+        throw new Error('API proxy error: Received HTML instead of JSON');
+      }
+
       try {
         // Try to parse as JSON if possible
         const errorJson = JSON.parse(errorText);
@@ -204,8 +270,32 @@ export const fetchScraper = async (id) => {
       throw new Error(`API error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
+    // Get the response as text first to check for HTML
+    const responseText = await response.text();
+    console.log('Response text:', responseText.substring(0, 200) + '...'); // Log first 200 chars
+
+    // Check if we got HTML instead of JSON
+    if (responseText.includes('<!DOCTYPE html>')) {
+      console.error('Received HTML instead of JSON. API proxy issue detected.');
+      throw new Error('API proxy error: Received HTML instead of JSON');
+    }
+
+    // Parse the response as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Error parsing response as JSON:', e);
+      throw new Error(`Failed to parse API response as JSON: ${e.message}`);
+    }
+
     console.log('Fetched scraper data (raw):', data);
+
+    // Handle case where data is null or undefined
+    if (!data) {
+      console.error('API returned null or undefined data');
+      throw new Error('API returned no data for the requested scraper');
+    }
 
     // Normalize the data - convert all property names to camelCase
     const normalizedData = {};
@@ -228,6 +318,12 @@ export const fetchScraper = async (id) => {
     if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
       normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
     }
+
+    // Ensure required properties exist
+    normalizedData.id = normalizedData.id || actualId;
+    normalizedData.name = normalizedData.name || data.Name || normalizedData.baseUrl || data.BaseUrl || 'Unnamed Scraper';
+    normalizedData.startUrl = normalizedData.startUrl || data.StartUrl || '';
+    normalizedData.baseUrl = normalizedData.baseUrl || data.BaseUrl || '';
 
     console.log('Fetched scraper data (normalized):', normalizedData);
     return normalizedData;

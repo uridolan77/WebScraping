@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { createTheme, ThemeProvider, CssBaseline, Box, Container } from '@mui/material';
 import { blue, purple } from '@mui/material/colors';
@@ -24,6 +24,18 @@ const theme = createTheme({
 });
 
 function App() {
+  // Mark when React is mounted
+  useEffect(() => {
+    console.log('React App component mounted');
+    // Call the global function to mark React as initialized
+    if (window.markReactMounted) {
+      window.markReactMounted();
+    }
+
+    // Log the current route
+    console.log('Current route:', window.location.pathname);
+  }, []);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -33,25 +45,25 @@ function App() {
             <Route path="/" element={<MainLayout />}>
               {/* Redirect root to scrapers list */}
               <Route index element={<Navigate to="/scrapers" replace />} />
-              
+
               {/* Scrapers list (main page) */}
               <Route path="scrapers" element={<ScraperList />} />
-              
+
               {/* Dashboard for a specific scraper */}
               <Route path="dashboard/:id" element={<Dashboard />} />
-              
+
               {/* Configure new scraper */}
               <Route path="configure" element={<Configuration />} />
-              
+
               {/* Edit existing scraper */}
               <Route path="configure/:id" element={<Configuration />} />
-              
+
               {/* Results list */}
               <Route path="results" element={<Results />} />
-              
+
               {/* Result detail */}
               <Route path="results/:url" element={<ResultDetail />} />
-              
+
               {/* 404 page */}
               <Route path="*" element={<NotFound />} />
             </Route>

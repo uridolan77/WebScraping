@@ -3,7 +3,7 @@
     "Id": "d6d6eb97-7136-4eaf-b7ca-16ed6202c7ad",
     "Name": "ukgc",
     "CreatedAt": "2025-04-26T19:21:35.7405362+03:00",
-    "LastRun": null,
+    "LastRun": "2025-04-26T20:12:30.6064109+03:00",
     "StartUrl": "https://www.gamblingcommission.gov.uk/licensees-and-businesses",
     "BaseUrl": "https://www.gamblingcommission.gov.uk",
     "OutputDirectory": "ScrapedData",

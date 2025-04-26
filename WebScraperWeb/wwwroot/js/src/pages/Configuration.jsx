@@ -36,6 +36,146 @@ const Configuration = () => {
   const navigate = useNavigate();
   const isEditMode = Boolean(id);
 
+  // Debug information
+  console.log('🔍 Configuration component loaded');
+  console.log('🔍 URL params:', { id });
+  console.log('🔍 isEditMode:', isEditMode);
+
+  // Add a visual indicator that the component is loaded
+  useEffect(() => {
+    // Create a floating debug indicator
+    const debugIndicator = document.createElement('div');
+    debugIndicator.style.position = 'fixed';
+    debugIndicator.style.top = '10px';
+    debugIndicator.style.left = '10px';
+    debugIndicator.style.backgroundColor = 'green';
+    debugIndicator.style.color = 'white';
+    debugIndicator.style.padding = '5px 10px';
+    debugIndicator.style.borderRadius = '5px';
+    debugIndicator.style.zIndex = '9999';
+    debugIndicator.style.fontSize = '12px';
+    debugIndicator.textContent = `Configuration Component Loaded - ID: ${id || 'new'}`;
+
+    document.body.appendChild(debugIndicator);
+
+    // Remove after 5 seconds
+    setTimeout(() => {
+      try {
+        document.body.removeChild(debugIndicator);
+      } catch (e) {
+        console.error('Error removing debug indicator:', e);
+      }
+    }, 5000);
+
+    return () => {
+      try {
+        document.body.removeChild(debugIndicator);
+      } catch (e) {
+        // Ignore if already removed
+      }
+    };
+  }, [id]);
+
+  // Debug function to save scraper data to localStorage
+  const saveScraperToLocalStorage = (scraperData) => {
+    try {
+      localStorage.setItem('debug_scraper', JSON.stringify(scraperData));
+      console.log('Saved scraper data to localStorage');
+      alert('Scraper data saved to localStorage');
+    } catch (e) {
+      console.error('Error saving to localStorage:', e);
+      alert('Error saving to localStorage: ' + e.message);
+    }
+  };
+
+  // Debug button handler
+  const handleDebugClick = () => {
+    // Get all scrapers first
+    fetch('/api/scraper', {
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+    .then(response => response.text())
+    .then(text => {
+      try {
+        const scrapers = JSON.parse(text);
+        console.log('All scrapers for debug:', scrapers);
+
+        // Find the scraper with matching ID
+        const matchingScraper = scrapers.find(s =>
+          (s.id && s.id.toLowerCase() === id.toLowerCase()) ||
+          (s.Id && s.Id.toLowerCase() === id.toLowerCase()) ||
+          (s.name && s.name.toLowerCase() === id.toLowerCase()) ||
+          (s.Name && s.Name.toLowerCase() === id.toLowerCase())
+        );
+
+        if (matchingScraper) {
+          console.log('Found matching scraper for debug:', matchingScraper);
+          saveScraperToLocalStorage(matchingScraper);
+        } else {
+          alert('No matching scraper found with ID: ' + id);
+        }
+      } catch (e) {
+        console.error('Error parsing scrapers for debug:', e);
+        alert('Error parsing scrapers: ' + e.message);
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching scrapers for debug:', error);
+      alert('Error fetching scrapers: ' + error.message);
+    });
+  };
+
+  // Load scraper data from localStorage
+  const loadScraperFromLocalStorage = () => {
+    try {
+      const savedScraper = localStorage.getItem('debug_scraper');
+      if (savedScraper) {
+        const scraperData = JSON.parse(savedScraper);
+        console.log('Loaded scraper from localStorage:', scraperData);
+
+        // Normalize the data
+        const normalizedData = {};
+        Object.keys(scraperData).forEach(key => {
+          const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+          normalizedData[camelCaseKey] = scraperData[key];
+        });
+
+        // Special handling for array properties
+        if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+          normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+        }
+
+        if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+          normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+        }
+
+        // Special handling for object properties
+        if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+          normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+        }
+
+        // Update form
+        setFormData(prevState => ({
+          ...prevState,
+          ...normalizedData
+        }));
+
+        setError(null);
+        setLoading(false);
+        return true;
+      } else {
+        alert('No saved scraper data found in localStorage');
+        return false;
+      }
+    } catch (e) {
+      console.error('Error loading from localStorage:', e);
+      alert('Error loading saved scraper: ' + e.message);
+      return false;
+    }
+  };
+
   // Form steps
   const steps = ['Basic Info', 'URL Settings', 'Advanced Options', 'Filtering Rules'];
   const [activeStep, setActiveStep] = useState(0);
@@ -75,27 +215,190 @@ const Configuration = () => {
     const loadScraper = async () => {
       try {
         setLoading(true);
-        console.log('Configuration: Loading scraper data for ID:', id);
-        console.log('isEditMode:', isEditMode);
+        setError(null);
+        console.log('🔍 Configuration: Loading scraper data for ID:', id);
+        console.log('🔍 isEditMode:', isEditMode);
 
-        // The API now returns normalized data with camelCase properties
-        const data = await fetchScraper(id);
-        console.log('Received normalized scraper data:', data);
+        if (!id) {
+          console.error('❌ No scraper ID provided');
+          setError('No scraper ID provided. Cannot load scraper configuration.');
+          setLoading(false);
+          return;
+        }
 
-        // Update form with existing data
-        setFormData(prevState => {
-          const newState = {
-            ...prevState,
-            ...data
-          };
-          console.log('Updated form data:', newState);
-          return newState;
-        });
+        // DIRECT APPROACH - Get all scrapers and find the matching one
+        console.log('🔍 Getting all scrapers directly...');
 
-        setLoading(false);
+        try {
+          // Create a visual indicator that we're trying to load
+          const loadingIndicator = document.createElement('div');
+          loadingIndicator.style.position = 'fixed';
+          loadingIndicator.style.top = '50%';
+          loadingIndicator.style.left = '50%';
+          loadingIndicator.style.transform = 'translate(-50%, -50%)';
+          loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+          loadingIndicator.style.color = 'white';
+          loadingIndicator.style.padding = '20px';
+          loadingIndicator.style.borderRadius = '10px';
+          loadingIndicator.style.zIndex = '9999';
+          loadingIndicator.textContent = 'Loading scraper data...';
+          document.body.appendChild(loadingIndicator);
+
+          // Make a direct fetch call to the API
+          const response = await fetch('/api/scraper', {
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+
+          console.log('🔍 API response status:', response.status);
+
+          if (!response.ok) {
+            throw new Error(`API returned error status: ${response.status}`);
+          }
+
+          const responseText = await response.text();
+          console.log('🔍 API response length:', responseText.length);
+
+          // Check if we got HTML instead of JSON
+          if (responseText.includes('<!DOCTYPE html>')) {
+            console.error('❌ API returned HTML instead of JSON');
+            throw new Error('API returned HTML instead of JSON. The API proxy might not be working correctly.');
+          }
+
+          // Try to parse the response as JSON
+          let scrapers;
+          try {
+            scrapers = JSON.parse(responseText);
+            console.log('✅ Successfully parsed scrapers:', scrapers);
+          } catch (parseError) {
+            console.error('❌ Error parsing scrapers:', parseError);
+            console.error('❌ Response text:', responseText.substring(0, 500) + '...');
+            throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
+          }
+
+          // Find the scraper with matching ID
+          const matchingScraper = scrapers.find(s =>
+            (s.id && s.id.toLowerCase() === id.toLowerCase()) ||
+            (s.Id && s.Id.toLowerCase() === id.toLowerCase()) ||
+            (s.name && s.name.toLowerCase() === id.toLowerCase()) ||
+            (s.Name && s.Name.toLowerCase() === id.toLowerCase())
+          );
+
+          if (!matchingScraper) {
+            console.error('❌ No matching scraper found for ID:', id);
+            throw new Error(`No scraper found with ID: ${id}`);
+          }
+
+          console.log('✅ Found matching scraper:', matchingScraper);
+
+          // Normalize the data (convert PascalCase to camelCase)
+          const normalizedData = {};
+          Object.keys(matchingScraper).forEach(key => {
+            // Convert first character to lowercase
+            const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+            normalizedData[camelCaseKey] = matchingScraper[key];
+          });
+
+          // Special handling for array properties
+          if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+            normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+          }
+
+          if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+            normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+          }
+
+          // Special handling for object properties
+          if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+            normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+          }
+
+          // Ensure required properties exist
+          normalizedData.id = normalizedData.id || matchingScraper.Id || id;
+          normalizedData.name = normalizedData.name || matchingScraper.Name || '';
+          normalizedData.startUrl = normalizedData.startUrl || matchingScraper.StartUrl || '';
+          normalizedData.baseUrl = normalizedData.baseUrl || matchingScraper.BaseUrl || '';
+
+          console.log('✅ Normalized data:', normalizedData);
+
+          // Save to localStorage as a backup
+          try {
+            localStorage.setItem('debug_scraper', JSON.stringify(matchingScraper));
+            console.log('✅ Saved scraper data to localStorage as backup');
+          } catch (e) {
+            console.error('❌ Error saving to localStorage:', e);
+          }
+
+          // Update form with existing data
+          setFormData(prevState => {
+            const newState = {
+              ...prevState,
+              ...normalizedData
+            };
+            console.log('✅ Updated form data:', newState);
+            return newState;
+          });
+
+          // Remove the loading indicator
+          try {
+            document.body.removeChild(loadingIndicator);
+          } catch (e) {
+            console.error('Error removing loading indicator:', e);
+          }
+
+          setLoading(false);
+
+        } catch (error) {
+          console.error('❌ Error loading scraper:', error);
+          setError(`Failed to load scraper: ${error.message}`);
+          setLoading(false);
+
+          // Try to load from localStorage as a fallback
+          try {
+            const savedScraper = localStorage.getItem('debug_scraper');
+            if (savedScraper) {
+              console.log('🔍 Trying to load from localStorage as fallback');
+              const scraperData = JSON.parse(savedScraper);
+              console.log('✅ Loaded scraper from localStorage:', scraperData);
+
+              // Normalize the data
+              const normalizedData = {};
+              Object.keys(scraperData).forEach(key => {
+                const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                normalizedData[camelCaseKey] = scraperData[key];
+              });
+
+              // Special handling for array properties
+              if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+              }
+
+              if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+              }
+
+              // Special handling for object properties
+              if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+              }
+
+              // Update form
+              setFormData(prevState => ({
+                ...prevState,
+                ...normalizedData
+              }));
+
+              setError('Loaded from localStorage backup (API call failed)');
+              setLoading(false);
+            }
+          } catch (e) {
+            console.error('❌ Error loading from localStorage:', e);
+          }
+        }
       } catch (err) {
-        console.error('Error loading scraper:', err);
-        setError(`Failed to load scraper configuration: ${err.message}`);
+        console.error('❌ Unexpected error:', err);
+        setError(`Unexpected error: ${err.message}`);
         setLoading(false);
       }
     };
@@ -621,18 +924,141 @@ const Configuration = () => {
           {isEditMode ? 'Edit Scraper Configuration' : 'Create New Scraper'}
         </Typography>
 
-        <Button
-          component={RouterLink}
-          to={isEditMode ? `/dashboard/${id}` : '/scrapers'}
-          variant="outlined"
-          startIcon={<ArrowBackIcon />}
-        >
-          {isEditMode ? 'Back to Dashboard' : 'Back to Scrapers'}
-        </Button>
+        <Box>
+          {/* Emergency Load button - only visible in edit mode */}
+          {isEditMode && (
+            <Button
+              variant="contained"
+              color="error"
+              onClick={() => {
+                // Make direct API call to get all scrapers
+                fetch('/api/scraper', {
+                  headers: {
+                    'Accept': 'application/json'
+                  }
+                })
+                .then(response => response.text())
+                .then(text => {
+                  try {
+                    const scrapers = JSON.parse(text);
+                    console.log('All scrapers:', scrapers);
+
+                    // Find the scraper with matching ID
+                    const matchingScraper = scrapers.find(s =>
+                      (s.id && s.id.toLowerCase() === id.toLowerCase()) ||
+                      (s.Id && s.Id.toLowerCase() === id.toLowerCase()) ||
+                      (s.name && s.name.toLowerCase() === id.toLowerCase()) ||
+                      (s.Name && s.Name.toLowerCase() === id.toLowerCase())
+                    );
+
+                    if (matchingScraper) {
+                      console.log('Found matching scraper:', matchingScraper);
+
+                      // Normalize the data
+                      const normalizedData = {};
+                      Object.keys(matchingScraper).forEach(key => {
+                        const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                        normalizedData[camelCaseKey] = matchingScraper[key];
+                      });
+
+                      // Special handling for array properties
+                      if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                        normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+                      }
+
+                      if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                        normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+                      }
+
+                      // Special handling for object properties
+                      if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                        normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+                      }
+
+                      // Update form data
+                      setFormData(prevState => ({
+                        ...prevState,
+                        ...normalizedData
+                      }));
+
+                      alert('Form populated with scraper data!');
+                    } else {
+                      alert('No matching scraper found with ID: ' + id);
+                    }
+                  } catch (e) {
+                    console.error('Error parsing scrapers:', e);
+                    alert('Error parsing scrapers: ' + e.message);
+                  }
+                })
+                .catch(error => {
+                  console.error('Error fetching scrapers:', error);
+                  alert('Error fetching scrapers: ' + error.message);
+                });
+              }}
+              sx={{ mr: 2 }}
+            >
+              EMERGENCY LOAD
+            </Button>
+          )}
+
+          {/* Debug button - only visible in edit mode */}
+          {isEditMode && (
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={handleDebugClick}
+              sx={{ mr: 2 }}
+            >
+              Debug: Save Scraper Data
+            </Button>
+          )}
+
+          <Button
+            component={RouterLink}
+            to={isEditMode ? `/dashboard/${id}` : '/scrapers'}
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+          >
+            {isEditMode ? 'Back to Dashboard' : 'Back to Scrapers'}
+          </Button>
+        </Box>
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={
+            <Button
+              id="retry-button"
+              color="inherit"
+              size="small"
+              onClick={() => {
+                console.log('Retry button clicked');
+                setError(null);
+                if (isEditMode) {
+                  setLoading(true);
+                  fetchScraper(id)
+                    .then(data => {
+                      console.log('Retry successful, data:', data);
+                      setFormData(prevState => ({
+                        ...prevState,
+                        ...data
+                      }));
+                      setLoading(false);
+                    })
+                    .catch(err => {
+                      console.error('Retry failed:', err);
+                      setError(`Retry failed: ${err.message}`);
+                      setLoading(false);
+                    });
+                }
+              }}
+            >
+              Retry
+            </Button>
+          }
+        >
           {error}
         </Alert>
       )}

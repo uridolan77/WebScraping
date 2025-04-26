@@ -68,7 +68,8 @@ app.Map("/api", appBuilder =>
         httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
         // Forward the request to the actual API
-        var apiUrl = "https://localhost:7143/api" + context.Request.Path + context.Request.QueryString;
+        var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7143";
+        var apiUrl = $"{apiBaseUrl}/api{context.Request.Path}{context.Request.QueryString}";
         Console.WriteLine($"Proxying request to: {apiUrl}");
 
         try
@@ -133,12 +134,32 @@ app.Map("/api", appBuilder =>
             // Copy the response status code
             context.Response.StatusCode = (int)response.StatusCode;
 
-            // Set content type to JSON
-            context.Response.ContentType = "application/json";
+            // Copy the content type from the response
+            var contentType = response.Content.Headers.ContentType?.ToString() ?? "application/json";
+            context.Response.ContentType = contentType;
+
+            // Copy other important headers
+            foreach (var header in response.Headers)
+            {
+                if (!header.Key.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.Headers[header.Key] = header.Value.ToArray();
+                }
+            }
 
             // Read the response content
             var responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Response content: {responseContent}");
+            Console.WriteLine($"Response content length: {responseContent.Length} bytes");
+            Console.WriteLine($"Response content type: {contentType}");
+
+            if (responseContent.Length < 1000)
+            {
+                Console.WriteLine($"Response content: {responseContent}");
+            }
+            else
+            {
+                Console.WriteLine($"Response content (truncated): {responseContent.Substring(0, 500)}...");
+            }
 
             // Write the response content
             await context.Response.WriteAsync(responseContent);
@@ -155,36 +176,49 @@ app.Map("/api", appBuilder =>
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
 
+            // Check if it's an HttpRequestException with a specific status code
+            int statusCode = 500;
+            if (ex is HttpRequestException httpEx && httpEx.StatusCode.HasValue)
+            {
+                statusCode = (int)httpEx.StatusCode.Value;
+                context.Response.StatusCode = statusCode;
+            }
+
             var errorResponse = new
             {
                 error = "API Proxy Error",
                 message = ex.Message,
+                statusCode = statusCode,
                 url = apiUrl,
-                method = context.Request.Method
+                method = context.Request.Method,
+                // Include inner exception details if available
+                innerError = ex.InnerException?.Message
             };
 
             var jsonResponse = System.Text.Json.JsonSerializer.Serialize(errorResponse);
             await context.Response.WriteAsync(jsonResponse);
+
+            Console.WriteLine($"Returned error response: {jsonResponse}");
         }
     });
+});
+
+// Add a fallback route for SPA - this ensures all routes are handled by the SPA
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // No caching for index.html to ensure fresh content
+        ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+        ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+        ctx.Context.Response.Headers.Append("Expires", "0");
+    }
 });
 
 // Configure SPA handling
 app.UseSpa(spa =>
 {
     spa.Options.SourcePath = "wwwroot";
-
-    // Set default page for SPA
-    spa.Options.DefaultPageStaticFileOptions = new StaticFileOptions
-    {
-        OnPrepareResponse = ctx =>
-        {
-            // No caching for index.html to ensure fresh content
-            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-            ctx.Context.Response.Headers.Append("Pragma", "no-cache");
-            ctx.Context.Response.Headers.Append("Expires", "0");
-        }
-    };
 
     // Only if you want to use the development server instead of the static files
     if (app.Environment.IsDevelopment())

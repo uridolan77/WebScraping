@@ -318,12 +318,63 @@ const ScraperList = () => {
                   <Tooltip title="Edit">
                     <IconButton
                       size="small"
-                      component={RouterLink}
-                      to={`/configure/${scraper.id}`}
+                      onClick={() => {
+                        console.log('🖊️ Edit button clicked for scraper:', scraper.id);
+
+                        // Store the scraper in localStorage for debugging
+                        try {
+                          localStorage.setItem('debug_scraper', JSON.stringify(scraper));
+                          console.log('💾 Scraper saved to localStorage');
+                        } catch (e) {
+                          console.error('❌ Error saving to localStorage:', e);
+                        }
+
+                        // Navigate programmatically
+                        window.location.href = `/configure/${scraper.id}`;
+                      }}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+
+                  {/* Debug link with full ID */}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => {
+                      console.log('Full scraper object:', scraper);
+                      console.log('Scraper ID:', scraper.id);
+
+                      // Make a direct API call to test
+                      fetch(`/api/scraper/${scraper.id}`, {
+                        headers: {
+                          'Accept': 'application/json'
+                        }
+                      })
+                        .then(response => {
+                          console.log('Direct API response status:', response.status);
+                          return response.text();
+                        })
+                        .then(text => {
+                          console.log('Direct API response text:', text);
+                          try {
+                            const data = JSON.parse(text);
+                            console.log('Direct API response parsed:', data);
+
+                            // Navigate to the edit page with the correct ID
+                            window.location.href = `/configure/${scraper.id}`;
+                          } catch (e) {
+                            console.error('Error parsing direct API response:', e);
+                          }
+                        })
+                        .catch(error => {
+                          console.error('Error making direct API call:', error);
+                        });
+                    }}
+                  >
+                    Debug Edit
+                  </Button>
 
                   <Tooltip title="Delete">
                     <IconButton
