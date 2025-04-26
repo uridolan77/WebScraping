@@ -203,6 +203,87 @@ app.Map("/api", appBuilder =>
     });
 });
 
+// Add a special debug endpoint to directly fetch scraper data
+app.Map("/debug-scraper/{id}", async (context) =>
+{
+    var id = context.Request.RouteValues["id"]?.ToString();
+    if (string.IsNullOrEmpty(id))
+    {
+        context.Response.StatusCode = 400;
+        await context.Response.WriteAsync("Missing scraper ID");
+        return;
+    }
+
+    Console.WriteLine($"Debug endpoint called for scraper ID: {id}");
+
+    // Create a handler that ignores SSL certificate errors (for development only)
+    var handler = new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+    };
+
+    // Create a new HttpClient with the handler
+    using var httpClient = new HttpClient(handler);
+    httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+
+    // Forward the request to the actual API
+    var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7143";
+    var apiUrl = $"{apiBaseUrl}/api/scraper/{id}";
+    
+    try
+    {
+        Console.WriteLine($"Sending GET request to {apiUrl} for debug endpoint");
+        var response = await httpClient.GetAsync(apiUrl);
+
+        // Set up the response
+        context.Response.StatusCode = (int)response.StatusCode;
+        context.Response.ContentType = "application/json";
+
+        // Read the response content
+        var responseContent = await response.Content.ReadAsStringAsync();
+        Console.WriteLine($"Debug endpoint response: {responseContent}");
+
+        // Add debug information
+        var debugResponse = new
+        {
+            scraperData = System.Text.Json.JsonSerializer.Deserialize<object>(responseContent),
+            debugInfo = new
+            {
+                timestamp = DateTime.UtcNow,
+                endpoint = apiUrl,
+                id = id,
+                responseCode = response.StatusCode
+            }
+        };
+
+        var jsonResponse = System.Text.Json.JsonSerializer.Serialize(debugResponse, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        
+        await context.Response.WriteAsync(jsonResponse);
+        Console.WriteLine("Debug endpoint successfully returned scraper data");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error in debug endpoint: {ex.Message}");
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        
+        var errorResponse = new
+        {
+            error = "Debug API Error",
+            message = ex.Message,
+            scraperId = id,
+            url = apiUrl,
+            stackTrace = ex.StackTrace
+        };
+        
+        var jsonResponse = System.Text.Json.JsonSerializer.Serialize(errorResponse);
+        await context.Response.WriteAsync(jsonResponse);
+    }
+});
+
 // Add a fallback route for SPA - this ensures all routes are handled by the SPA
 app.MapFallbackToFile("index.html", new StaticFileOptions
 {

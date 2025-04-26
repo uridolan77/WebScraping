@@ -184,61 +184,8 @@ export const fetchScraper = async (id) => {
   console.trace('Call stack for fetchScraper');
 
   try {
-    // First try to get all scrapers to find the one with matching name or ID
-    console.log('Getting all scrapers to find the matching one...');
-    const allScrapersUrl = `${API_URL}/scraper`;
-    console.log('Fetching all scrapers from URL:', allScrapersUrl);
-
-    const allScrapersResponse = await fetch(allScrapersUrl, {
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-
-    if (!allScrapersResponse.ok) {
-      const errorText = await allScrapersResponse.text();
-      console.error('Server response when getting all scrapers:', allScrapersResponse.status, errorText);
-      throw new Error(`API error when getting all scrapers: ${allScrapersResponse.status} - ${errorText}`);
-    }
-
-    const allScrapersText = await allScrapersResponse.text();
-
-    // Check if we got HTML instead of JSON
-    if (allScrapersText.includes('<!DOCTYPE html>')) {
-      console.error('Received HTML instead of JSON when getting all scrapers. API proxy issue detected.');
-      throw new Error('API proxy error: Received HTML instead of JSON when getting all scrapers');
-    }
-
-    let allScrapers;
-    try {
-      allScrapers = JSON.parse(allScrapersText);
-      console.log('All scrapers:', allScrapers);
-    } catch (e) {
-      console.error('Error parsing all scrapers response as JSON:', e);
-      throw new Error(`Failed to parse all scrapers API response as JSON: ${e.message}`);
-    }
-
-    // Find the scraper with matching name or ID
-    const matchingScraper = allScrapers.find(s =>
-      s.id === id ||
-      s.Id === id ||
-      s.name === id ||
-      s.Name === id
-    );
-
-    if (!matchingScraper) {
-      console.error('No matching scraper found for ID or name:', id);
-      throw new Error(`No scraper found with ID or name: ${id}`);
-    }
-
-    console.log('Found matching scraper:', matchingScraper);
-
-    // Get the actual ID
-    const actualId = matchingScraper.id || matchingScraper.Id;
-    console.log('Actual scraper ID:', actualId);
-
-    // Now fetch the specific scraper with the actual ID
-    const url = `${API_URL}/scraper/${actualId}`;
+    // Fetch the specific scraper directly by ID
+    const url = `${API_URL}/scraper/${id}`;
     console.log('Fetching specific scraper from URL:', url);
 
     // Add Accept header to ensure we get JSON back
@@ -320,7 +267,7 @@ export const fetchScraper = async (id) => {
     }
 
     // Ensure required properties exist
-    normalizedData.id = normalizedData.id || actualId;
+    normalizedData.id = normalizedData.id || id;
     normalizedData.name = normalizedData.name || data.Name || normalizedData.baseUrl || data.BaseUrl || 'Unnamed Scraper';
     normalizedData.startUrl = normalizedData.startUrl || data.StartUrl || '';
     normalizedData.baseUrl = normalizedData.baseUrl || data.BaseUrl || '';

@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Configuration from './pages/Configuration';
 import Results from './pages/Results';
 import ResultDetail from './pages/ResultDetail';
+import ScraperList from './pages/ScraperList'; // Add this import
 
 // Create a theme instance
 const theme = createTheme({
@@ -56,6 +57,8 @@ function App() {
                                 setIsRunning={setIsRunning}
                                 setScrapingStats={setScrapingStats}
                             />} />
+
+                            <Route path="/scrapers" element={<ScraperList />} /> {/* Add this route */}
 
                             <Route path="/results" element={<Results />} />
 

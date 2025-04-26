@@ -226,8 +226,77 @@ const Configuration = () => {
           return;
         }
 
-        // DIRECT APPROACH - Get all scrapers and find the matching one
-        console.log('🔍 Getting all scrapers directly...');
+        // FIRST APPROACH - Try direct API call to specific endpoint
+        console.log('🔍 Making direct API call to specific endpoint...');
+        try {
+          const response = await fetch(`/api/scraper/${id}`, {
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+          
+          console.log('📊 Specific scraper API response status:', response.status);
+          
+          if (response.ok) {
+            const text = await response.text();
+            console.log('📝 Specific scraper API response text:', text);
+            
+            if (text && !text.includes('<!DOCTYPE html>')) {
+              try {
+                const data = JSON.parse(text);
+                console.log('✅ Successfully parsed specific scraper data:', data);
+                
+                // Normalize the data
+                const normalizedData = {};
+                Object.keys(data).forEach(key => {
+                  const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                  normalizedData[camelCaseKey] = data[key];
+                });
+                
+                // Special handling for array properties
+                if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                  normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+                }
+                
+                if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                  normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+                }
+                
+                // Special handling for object properties
+                if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                  normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+                }
+                
+                // Save to localStorage as a backup
+                try {
+                  localStorage.setItem('debug_scraper', JSON.stringify(data));
+                  console.log('✅ Saved scraper data to localStorage as backup');
+                } catch (e) {
+                  console.error('❌ Error saving to localStorage:', e);
+                }
+                
+                // Update form
+                setFormData(prevState => ({
+                  ...prevState,
+                  ...normalizedData
+                }));
+                
+                setLoading(false);
+                setError(null);
+                return; // Exit if successful
+              } catch (e) {
+                console.error('❌ Error parsing specific scraper response:', e);
+              }
+            } else {
+              console.error('❌ Received HTML instead of JSON for specific scraper');
+            }
+          }
+        } catch (specificError) {
+          console.error('❌ Error making specific API call:', specificError);
+        }
+
+        // SECOND APPROACH - Get all scrapers and find the matching one
+        console.log('🔍 Getting all scrapers...');
 
         try {
           // Create a visual indicator that we're trying to load
@@ -919,6 +988,192 @@ const Configuration = () => {
         </Typography>
       </Breadcrumbs>
 
+      {isEditMode && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+            <Typography>
+              Scraper ID: <strong>{id}</strong>
+            </Typography>
+            <Box>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => {
+                  console.log('Manual load button clicked for ID:', id);
+                  setLoading(true);
+                  
+                  // Make a direct browser fetch request to the API
+                  window.fetch(`/api/scraper/${id}`, {
+                    headers: {
+                      'Accept': 'application/json'
+                    }
+                  })
+                  .then(response => {
+                    console.log('🔍 Direct browser fetch response status:', response.status);
+                    if (!response.ok) {
+                      throw new Error(`API returned error status: ${response.status}`);
+                    }
+                    return response.text();
+                  })
+                  .then(text => {
+                    console.log('🔍 API response text:', text);
+                    
+                    // Check if we got HTML instead of JSON
+                    if (text.includes('<!DOCTYPE html>')) {
+                      console.error('❌ API returned HTML instead of JSON');
+                      throw new Error('API returned HTML instead of JSON. The API proxy might not be working correctly.');
+                    }
+                    
+                    try {
+                      // Try to parse the response as JSON
+                      const data = JSON.parse(text);
+                      console.log('✅ Successfully parsed scraper data:', data);
+                      
+                      // Normalize the data
+                      const normalizedData = {};
+                      Object.keys(data).forEach(key => {
+                        const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                        normalizedData[camelCaseKey] = data[key];
+                      });
+                      
+                      // Special handling for array properties
+                      if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                        normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+                      }
+                      
+                      if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                        normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+                      }
+                      
+                      // Special handling for object properties
+                      if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                        normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+                      }
+                      
+                      // Update form data
+                      setFormData(prevState => ({
+                        ...prevState,
+                        ...normalizedData
+                      }));
+                      
+                      setLoading(false);
+                      setError(null);
+                      alert('Successfully loaded scraper data!');
+                    } catch (e) {
+                      console.error('Error parsing scraper data:', e);
+                      setLoading(false);
+                      setError(`Failed to parse API response as JSON: ${e.message}`);
+                    }
+                  })
+                  .catch(error => {
+                    console.error('❌ Error fetching scraper:', error);
+                    setLoading(false);
+                    setError(`Failed to load scraper: ${error.message}`);
+                    
+                    // Show network request details
+                    alert(`Failed to load scraper data. Check browser console for details.\nError: ${error.message}`);
+                  });
+                }}
+              >
+                Load from API
+              </Button>
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={() => {
+                  console.log('Debug endpoint button clicked for ID:', id);
+                  setLoading(true);
+                  
+                  // Use our special debug endpoint
+                  window.fetch(`/debug-scraper/${id}`, {
+                    headers: {
+                      'Accept': 'application/json'
+                    }
+                  })
+                  .then(response => {
+                    console.log('🔍 Debug endpoint response status:', response.status);
+                    if (!response.ok) {
+                      throw new Error(`Debug endpoint returned error status: ${response.status}`);
+                    }
+                    return response.text();
+                  })
+                  .then(text => {
+                    console.log('🔍 Debug endpoint response text:', text);
+                    
+                    try {
+                      // Try to parse the debug response as JSON
+                      const debugData = JSON.parse(text);
+                      console.log('✅ Successfully parsed debug response:', debugData);
+                      
+                      if (!debugData.scraperData) {
+                        throw new Error('No scraper data in debug response');
+                      }
+                      
+                      // Extract the actual scraper data from the debug wrapper
+                      const data = debugData.scraperData;
+                      
+                      // Normalize the data
+                      const normalizedData = {};
+                      Object.keys(data).forEach(key => {
+                        const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                        normalizedData[camelCaseKey] = data[key];
+                      });
+                      
+                      // Special handling for array properties
+                      if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                        normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+                      }
+                      
+                      if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                        normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+                      }
+                      
+                      // Special handling for object properties
+                      if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                        normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+                      }
+                      
+                      // Save to localStorage for backup
+                      try {
+                        localStorage.setItem('debug_scraper', JSON.stringify(data));
+                        console.log('✅ Saved scraper data to localStorage as backup');
+                      } catch (e) {
+                        console.error('❌ Error saving to localStorage:', e);
+                      }
+                      
+                      // Update form data
+                      setFormData(prevState => ({
+                        ...prevState,
+                        ...normalizedData
+                      }));
+                      
+                      setLoading(false);
+                      setError(null);
+                      alert('Successfully loaded scraper data from debug endpoint!');
+                    } catch (e) {
+                      console.error('Error processing debug endpoint data:', e);
+                      setLoading(false);
+                      setError(`Failed to process debug endpoint data: ${e.message}`);
+                    }
+                  })
+                  .catch(error => {
+                    console.error('❌ Error with debug endpoint:', error);
+                    setLoading(false);
+                    setError(`Debug endpoint error: ${error.message}`);
+                    
+                    // Show network request details
+                    alert(`Failed to load from debug endpoint. Check browser console for details.\nError: ${error.message}`);
+                  });
+                }}
+                sx={{ ml: 1 }}
+              >
+                Use Debug Endpoint
+              </Button>
+            </Box>
+          </Box>
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           {isEditMode ? 'Edit Scraper Configuration' : 'Create New Scraper'}
@@ -1029,34 +1284,116 @@ const Configuration = () => {
           severity="error"
           sx={{ mb: 3 }}
           action={
-            <Button
-              id="retry-button"
-              color="inherit"
-              size="small"
-              onClick={() => {
-                console.log('Retry button clicked');
-                setError(null);
-                if (isEditMode) {
+            <Box>
+              <Button
+                id="retry-button"
+                color="inherit"
+                size="small"
+                onClick={() => {
+                  console.log('Retry button clicked');
+                  setError(null);
+                  if (isEditMode) {
+                    setLoading(true);
+                    fetchScraper(id)
+                      .then(data => {
+                        console.log('Retry successful, data:', data);
+                        setFormData(prevState => ({
+                          ...prevState,
+                          ...data
+                        }));
+                        setLoading(false);
+                      })
+                      .catch(err => {
+                        console.error('Retry failed:', err);
+                        setError(`Retry failed: ${err.message}`);
+                        setLoading(false);
+                      });
+                  }
+                }}
+              >
+                Retry
+              </Button>
+              <Button
+                color="warning"
+                size="small"
+                sx={{ ml: 1 }}
+                onClick={() => {
+                  console.log('Direct fetch button clicked for ID:', id);
                   setLoading(true);
-                  fetchScraper(id)
-                    .then(data => {
-                      console.log('Retry successful, data:', data);
+                  setError(null);
+                  
+                  // Make a direct fetch to the specific API endpoint
+                  fetch(`/api/scraper/${id}`, {
+                    headers: {
+                      'Accept': 'application/json'
+                    }
+                  })
+                  .then(response => {
+                    console.log('Direct API response status:', response.status);
+                    if (!response.ok) {
+                      throw new Error(`API returned error status: ${response.status}`);
+                    }
+                    return response.text();
+                  })
+                  .then(text => {
+                    console.log('API response text length:', text.length);
+                    
+                    // Check if we got HTML instead of JSON
+                    if (text.includes('<!DOCTYPE html>')) {
+                      console.error('API returned HTML instead of JSON');
+                      throw new Error('API returned HTML instead of JSON. The API proxy might not be working correctly.');
+                    }
+                    
+                    try {
+                      const data = JSON.parse(text);
+                      console.log('Successfully parsed scraper data:', data);
+                      
+                      // Normalize the data
+                      const normalizedData = {};
+                      Object.keys(data).forEach(key => {
+                        const camelCaseKey = key.charAt(0).toLowerCase() + key.slice(1);
+                        normalizedData[camelCaseKey] = data[key];
+                      });
+                      
+                      // Special handling for array properties
+                      if (normalizedData.includePatterns && Array.isArray(normalizedData.includePatterns)) {
+                        normalizedData.includePatterns = normalizedData.includePatterns.join('\n');
+                      }
+                      
+                      if (normalizedData.excludePatterns && Array.isArray(normalizedData.excludePatterns)) {
+                        normalizedData.excludePatterns = normalizedData.excludePatterns.join('\n');
+                      }
+                      
+                      // Special handling for object properties
+                      if (normalizedData.customHeaders && typeof normalizedData.customHeaders === 'object') {
+                        normalizedData.customHeaders = JSON.stringify(normalizedData.customHeaders, null, 2);
+                      }
+                      
+                      // Update form data
                       setFormData(prevState => ({
                         ...prevState,
-                        ...data
+                        ...normalizedData
                       }));
+                      
                       setLoading(false);
-                    })
-                    .catch(err => {
-                      console.error('Retry failed:', err);
-                      setError(`Retry failed: ${err.message}`);
+                      setError(null);
+                      alert('Successfully loaded scraper data!');
+                    } catch (e) {
+                      console.error('Error parsing scraper data:', e);
                       setLoading(false);
-                    });
-                }
-              }}
-            >
-              Retry
-            </Button>
+                      setError(`Failed to parse API response as JSON: ${e.message}`);
+                    }
+                  })
+                  .catch(error => {
+                    console.error('Error fetching scraper:', error);
+                    setLoading(false);
+                    setError(`Failed to fetch scraper: ${error.message}`);
+                  });
+                }}
+              >
+                Direct Fetch
+              </Button>
+            </Box>
           }
         >
           {error}

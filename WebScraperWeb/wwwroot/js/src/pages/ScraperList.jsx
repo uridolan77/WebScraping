@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Box,
@@ -18,7 +18,9 @@ import {
   DialogActions,
   IconButton,
   Tooltip,
-  Paper
+  Paper,
+  Collapse,
+  Divider
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import LaunchIcon from '@mui/icons-material/Launch';
@@ -29,9 +31,14 @@ import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import CloseIcon from '@mui/icons-material/Close';
+import SaveIcon from '@mui/icons-material/Save';
 
-import { fetchAllScrapers, deleteScraper } from '../services/api';
+import { fetchAllScrapers, deleteScraper, fetchScraper, updateScraper } from '../services/api';
 import MonitoringDialog from '../components/MonitoringDialog';
+
+// Import the image we saw in the provided screenshot to create a similar UI
+import ScraperConfigForm from '../components/ScraperConfigForm';
 
 const getStatusColor = (status) => {
   switch (status?.toLowerCase()) {
@@ -67,6 +74,13 @@ const ScraperList = () => {
   const [monitoringDialogOpen, setMonitoringDialogOpen] = useState(false);
   const [selectedScraperId, setSelectedScraperId] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const navigate = useNavigate();
+  
+  // New states for inline configuration
+  const [configOpen, setConfigOpen] = useState(false);
+  const [selectedScraper, setSelectedScraper] = useState(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState(null);
 
   useEffect(() => {
     const loadScrapers = async () => {
@@ -186,6 +200,11 @@ const ScraperList = () => {
     try {
       await deleteScraper(selectedScraperId);
       setDeleteDialogOpen(false);
+      // Close config section if the deleted scraper was being configured
+      if (selectedScraper && selectedScraper.id === selectedScraperId) {
+        setConfigOpen(false);
+        setSelectedScraper(null);
+      }
       setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       console.error('Error deleting scraper:', err);
@@ -202,6 +221,51 @@ const ScraperList = () => {
   const handleMonitoringSave = () => {
     setMonitoringDialogOpen(false);
     setRefreshTrigger(prev => prev + 1); // Refresh list to show updated monitoring status
+  };
+
+  // New function to handle edit button click
+  const handleEditClick = async (id) => {
+    try {
+      setConfigLoading(true);
+      setConfigError(null);
+      console.log('Fetching configuration for scraper ID:', id);
+      
+      const scraperConfig = await fetchScraper(id);
+      console.log('Fetched scraper config:', scraperConfig);
+      
+      setSelectedScraper(scraperConfig);
+      setConfigOpen(true);
+    } catch (err) {
+      console.error('Error fetching scraper configuration:', err);
+      setConfigError(`Failed to load configuration: ${err.message}`);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  // New function to handle config save
+  const handleConfigSave = async (updatedConfig) => {
+    try {
+      setConfigLoading(true);
+      console.log('Saving updated configuration:', updatedConfig);
+      
+      await updateScraper(selectedScraper.id, updatedConfig);
+      setConfigOpen(false);
+      setSelectedScraper(null);
+      setRefreshTrigger(prev => prev + 1); // Refresh list to show updated data
+    } catch (err) {
+      console.error('Error saving configuration:', err);
+      setConfigError(`Failed to save configuration: ${err.message}`);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  // New function to close configuration panel
+  const handleConfigClose = () => {
+    setConfigOpen(false);
+    setSelectedScraper(null);
+    setConfigError(null);
   };
 
   const formatLastRun = (timestamp) => {
@@ -318,63 +382,11 @@ const ScraperList = () => {
                   <Tooltip title="Edit">
                     <IconButton
                       size="small"
-                      onClick={() => {
-                        console.log('🖊️ Edit button clicked for scraper:', scraper.id);
-
-                        // Store the scraper in localStorage for debugging
-                        try {
-                          localStorage.setItem('debug_scraper', JSON.stringify(scraper));
-                          console.log('💾 Scraper saved to localStorage');
-                        } catch (e) {
-                          console.error('❌ Error saving to localStorage:', e);
-                        }
-
-                        // Navigate programmatically
-                        window.location.href = `/configure/${scraper.id}`;
-                      }}
+                      onClick={() => handleEditClick(scraper.id)}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-
-                  {/* Debug link with full ID */}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="secondary"
-                    onClick={() => {
-                      console.log('Full scraper object:', scraper);
-                      console.log('Scraper ID:', scraper.id);
-
-                      // Make a direct API call to test
-                      fetch(`/api/scraper/${scraper.id}`, {
-                        headers: {
-                          'Accept': 'application/json'
-                        }
-                      })
-                        .then(response => {
-                          console.log('Direct API response status:', response.status);
-                          return response.text();
-                        })
-                        .then(text => {
-                          console.log('Direct API response text:', text);
-                          try {
-                            const data = JSON.parse(text);
-                            console.log('Direct API response parsed:', data);
-
-                            // Navigate to the edit page with the correct ID
-                            window.location.href = `/configure/${scraper.id}`;
-                          } catch (e) {
-                            console.error('Error parsing direct API response:', e);
-                          }
-                        })
-                        .catch(error => {
-                          console.error('Error making direct API call:', error);
-                        });
-                    }}
-                  >
-                    Debug Edit
-                  </Button>
 
                   <Tooltip title="Delete">
                     <IconButton
@@ -391,6 +403,40 @@ const ScraperList = () => {
           ))}
         </Grid>
       )}
+
+      {/* Configuration Section */}
+      <Collapse in={configOpen} sx={{ mt: 4 }}>
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h5">
+              Edit Scraper Configuration
+            </Typography>
+            <IconButton onClick={handleConfigClose}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          
+          <Divider sx={{ mb: 3 }} />
+          
+          {configError && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {configError}
+            </Alert>
+          )}
+          
+          {configLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : selectedScraper && (
+            <ScraperConfigForm 
+              initialConfig={selectedScraper} 
+              onSave={handleConfigSave}
+              loading={configLoading}
+            />
+          )}
+        </Paper>
+      </Collapse>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
