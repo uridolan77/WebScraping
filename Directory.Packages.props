@@ -37,6 +37,7 @@
     <PackageVersion Include="StackExchange.Redis" Version="2.7.33" />
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+    <PackageVersion Include="PdfPig" Version="0.1.8" />
     
     <!-- gRPC-related packages with enforced consistent versions -->
     <PackageVersion Include="Grpc.Net.Client" Version="2.61.0" />

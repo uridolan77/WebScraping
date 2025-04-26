@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 
 </Project>

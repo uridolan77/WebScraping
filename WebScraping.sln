@@ -1,10 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35931.197 d17.13
+VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraperConsole", "UKGCWebScraper\WebScraperConsole.csproj", "{C9DB2760-5689-4B08-BC41-5264C70598F7}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraper", "WebScraper\WebScraper.csproj", "{03060623-86C2-4313-9983-C0920C022A83}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraperWeb", "WebScraperWeb\WebScraperWeb.csproj", "{AA866CAD-E5C1-4591-8906-A734AFA5233F}"
@@ -17,10 +15,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{C9DB2760-5689-4B08-BC41-5264C70598F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C9DB2760-5689-4B08-BC41-5264C70598F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C9DB2760-5689-4B08-BC41-5264C70598F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C9DB2760-5689-4B08-BC41-5264C70598F7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{03060623-86C2-4313-9983-C0920C022A83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{03060623-86C2-4313-9983-C0920C022A83}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{03060623-86C2-4313-9983-C0920C022A83}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -41,5 +41,19 @@
         public int MinDelayBetweenRequests { get; set; } = 500; // milliseconds
         public int MaxDelayBetweenRequests { get; set; } = 5000; // milliseconds
         public bool MonitorResponseTimes { get; set; } = true;
+        
+        // Regulatory content monitoring options
+        public bool EnableRegulatoryContentAnalysis { get; set; } = false;
+        public bool TrackRegulatoryChanges { get; set; } = false;
+        public bool ClassifyRegulatoryDocuments { get; set; } = false;
+        public bool ExtractStructuredContent { get; set; } = false;
+        public bool ProcessPdfDocuments { get; set; } = false;
+        public bool MonitorHighImpactChanges { get; set; } = false;
+        
+        // UKGC specific options
+        public bool IsUKGCWebsite { get; set; } = false;
+        public bool PrioritizeEnforcementActions { get; set; } = true;
+        public bool PrioritizeLCCP { get; set; } = true;  // License Conditions and Codes of Practice
+        public bool PrioritizeAML { get; set; } = true;   // Anti-Money Laundering
     }
 }
