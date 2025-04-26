@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
 using StackExchange.Redis;
@@ -11,8 +12,45 @@ using WebScraperAPI.Data.Repositories.MongoDB;
 using WebScraperAPI.Data.Repositories.PostgreSQL;
 using WebScraperAPI.Data.Repositories.Redis;
 using WebScraperApi.Services;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Azure Key Vault
+if (!string.IsNullOrEmpty(builder.Configuration["KeyVault:Endpoint"]))
+{
+    var keyVaultEndpoint = builder.Configuration["KeyVault:Endpoint"];
+    
+    // Use DefaultAzureCredential for authentication to Azure Key Vault
+    // This will try multiple authentication methods including:
+    // - Environment variables (client ID, client secret, tenant ID)
+    // - Managed Identity
+    // - Visual Studio credentials
+    // - Azure CLI credentials
+    // - Interactive browser login (in development)
+    var credential = new DefaultAzureCredential(
+        new DefaultAzureCredentialOptions 
+        { 
+            ExcludeInteractiveBrowserCredential = !builder.Environment.IsDevelopment() 
+        });
+    
+    // Create a SecretClient to access Key Vault
+    var secretClient = new SecretClient(
+        new Uri(keyVaultEndpoint),
+        credential);
+    
+    // Add Key Vault to the configuration system
+    builder.Configuration.AddAzureKeyVault(
+        secretClient,
+        new KeyVaultSecretManager());
+    
+    // Register SecretClient for services that need direct Key Vault access
+    builder.Services.AddSingleton(secretClient);
+    
+    Console.WriteLine("Azure Key Vault configuration added");
+}
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -31,18 +69,34 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader());
 });
 
-// Add database connections
+// Helper method to get connection strings from Key Vault or local configuration
+string GetConnectionString(IConfiguration configuration, string name)
+{
+    // Try to get from Key Vault first (keys follow the naming convention)
+    var keyVaultKey = $"ConnectionString-{name}";
+    var connectionString = configuration[keyVaultKey];
+    
+    // Fall back to local configuration if not in Key Vault
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        connectionString = configuration.GetConnectionString(name);
+    }
+    
+    return connectionString;
+}
+
+// Add database connections with secure connection strings
 // PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("PostgreSQL")));
+    options.UseNpgsql(GetConnectionString(builder.Configuration, "PostgreSQL")));
 
 // MongoDB
 builder.Services.AddSingleton<IMongoClient>(sp => 
-    new MongoClient(builder.Configuration.GetConnectionString("MongoDB")));
+    new MongoClient(GetConnectionString(builder.Configuration, "MongoDB")));
 
 // Redis
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
-    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis")));
+    ConnectionMultiplexer.Connect(GetConnectionString(builder.Configuration, "Redis")));
 
 // Register repositories
 builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
