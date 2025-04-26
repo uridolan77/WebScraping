@@ -26,9 +26,9 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpGet("{id}")]
-        public IActionResult GetScraper(string id)
+        public async Task<IActionResult> GetScraper(string id)
         {
-            var config = _scraperManager.GetScraperConfig(id);
+            var config = await _scraperManager.GetScraperConfig(id);
             if (config == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
@@ -38,26 +38,26 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPost]
-        public IActionResult CreateScraper([FromBody] ScraperConfigModel config)
+        public async Task<IActionResult> CreateScraper([FromBody] ScraperConfigModel config)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
             
-            var createdConfig = _scraperManager.CreateScraperConfig(config);
+            var createdConfig = await _scraperManager.CreateScraperConfig(config);
             return CreatedAtAction(nameof(GetScraper), new { id = createdConfig.Id }, createdConfig);
         }
         
         [HttpPut("{id}")]
-        public IActionResult UpdateScraper(string id, [FromBody] ScraperConfigModel config)
+        public async Task<IActionResult> UpdateScraper(string id, [FromBody] ScraperConfigModel config)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
             
-            var success = _scraperManager.UpdateScraperConfig(id, config);
+            var success = await _scraperManager.UpdateScraperConfig(id, config);
             if (!success)
             {
                 return NotFound($"Scraper with ID {id} not found or is currently running");
@@ -67,9 +67,9 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpDelete("{id}")]
-        public IActionResult DeleteScraper(string id)
+        public async Task<IActionResult> DeleteScraper(string id)
         {
-            var success = _scraperManager.DeleteScraperConfig(id);
+            var success = await _scraperManager.DeleteScraperConfig(id);
             if (!success)
             {
                 return NotFound($"Scraper with ID {id} not found or is currently running");
@@ -79,7 +79,7 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpGet("{id}/status")]
-        public IActionResult GetScraperStatus(string id)
+        public async Task<IActionResult> GetScraperStatus(string id)
         {
             var status = _scraperManager.GetScraperStatus(id);
             if (status == null)
@@ -87,7 +87,7 @@ namespace WebScraperApi.Controllers
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var config = _scraperManager.GetScraperConfig(id);
+            var config = await _scraperManager.GetScraperConfig(id);
             
             return Ok(new
             {
@@ -114,7 +114,7 @@ namespace WebScraperApi.Controllers
         [HttpPost("{id}/start")]
         public async Task<IActionResult> StartScraper(string id)
         {
-            var config = _scraperManager.GetScraperConfig(id);
+            var config = await _scraperManager.GetScraperConfig(id);
             if (config == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
@@ -130,9 +130,9 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPost("{id}/stop")]
-        public IActionResult StopScraper(string id)
+        public async Task<IActionResult> StopScraper(string id)
         {
-            var config = _scraperManager.GetScraperConfig(id);
+            var config = await _scraperManager.GetScraperConfig(id);
             if (config == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
@@ -148,9 +148,9 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPost("{id}/monitor")]
-        public IActionResult SetMonitoring(string id, [FromBody] MonitoringSettings settings)
+        public async Task<IActionResult> SetMonitoring(string id, [FromBody] MonitoringSettings settings)
         {
-            var config = _scraperManager.GetScraperConfig(id);
+            var config = await _scraperManager.GetScraperConfig(id);
             if (config == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
@@ -164,7 +164,7 @@ namespace WebScraperApi.Controllers
             config.TrackChangesHistory = settings.TrackChangesHistory;
             
             // Update the config
-            var success = _scraperManager.UpdateScraperConfig(id, config);
+            var success = await _scraperManager.UpdateScraperConfig(id, config);
             if (!success)
             {
                 return BadRequest("Failed to update monitoring settings");

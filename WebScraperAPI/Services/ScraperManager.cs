@@ -95,7 +95,34 @@ namespace WebScraperApi.Services
             try
             {
                 var configs = await _configRepository.GetAllAsync();
-                return configs.Select(ToModel).ToList();
+                var models = configs.Select(ToModel).ToList();
+                
+                // Update in-memory cache
+                lock (_scrapers)
+                {
+                    foreach (var model in models)
+                    {
+                        if (!_scrapers.TryGetValue(model.Id, out var instance))
+                        {
+                            _scrapers[model.Id] = new ScraperInstance
+                            {
+                                Config = model,
+                                Status = new ScraperStatus
+                                {
+                                    IsRunning = false,
+                                    LastMonitorCheck = null
+                                }
+                            };
+                        }
+                        else
+                        {
+                            // Update config but preserve status
+                            instance.Config = model;
+                        }
+                    }
+                }
+                
+                return models;
             }
             catch (Exception ex)
             {
@@ -109,90 +136,242 @@ namespace WebScraperApi.Services
             }
         }
         
-        public ScraperConfigModel GetScraperConfig(string id)
+        public async Task<ScraperConfigModel> GetScraperConfig(string id)
         {
-            lock (_scrapers)
+            try
             {
-                if (_scrapers.TryGetValue(id, out var scraper))
+                if (!Guid.TryParse(id, out var guidId))
                 {
-                    return scraper.Config;
+                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
+                    return null;
                 }
-                return null;
-            }
-        }
-        
-        public ScraperConfigModel CreateScraperConfig(ScraperConfigModel config)
-        {
-            // Generate a new ID if none provided
-            if (string.IsNullOrEmpty(config.Id))
-            {
-                config.Id = Guid.NewGuid().ToString();
-            }
-            
-            lock (_scrapers)
-            {
-                var scraperInstance = new ScraperInstance
+
+                var entity = await _configRepository.GetByIdAsync(guidId);
+                if (entity == null)
                 {
-                    Config = config,
-                    Status = new ScraperStatus 
-                    { 
-                        IsRunning = false,
-                        LastMonitorCheck = null
+                    return null;
+                }
+
+                var model = ToModel(entity);
+
+                // Update in-memory cache if needed
+                lock (_scrapers)
+                {
+                    if (_scrapers.TryGetValue(id, out var instance))
+                    {
+                        // Update config but preserve status
+                        instance.Config = model;
                     }
-                };
-                
-                _scrapers[config.Id] = scraperInstance;
-                SaveScraperConfigurations();
+                    else
+                    {
+                        _scrapers[id] = new ScraperInstance
+                        {
+                            Config = model,
+                            Status = new ScraperStatus
+                            {
+                                IsRunning = false,
+                                LastMonitorCheck = null
+                            }
+                        };
+                    }
+                }
+
+                return model;
             }
-            
-            return config;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting scraper configuration with ID {id} from database");
+                
+                // Fallback to in-memory cache
+                lock (_scrapers)
+                {
+                    return _scrapers.TryGetValue(id, out var instance) ? instance.Config : null;
+                }
+            }
         }
         
-        public bool UpdateScraperConfig(string id, ScraperConfigModel config)
+        public async Task<ScraperConfigModel> CreateScraperConfig(ScraperConfigModel config)
         {
-            lock (_scrapers)
+            try
             {
-                if (!_scrapers.ContainsKey(id))
+                // Generate a new ID if none provided
+                if (string.IsNullOrEmpty(config.Id))
                 {
-                    return false;
+                    config.Id = Guid.NewGuid().ToString();
                 }
                 
-                // Don't allow changing config while scraper is running
-                if (_scrapers[id].Status.IsRunning)
+                // Ensure creation date is set
+                if (config.CreatedAt == default)
                 {
-                    return false;
+                    config.CreatedAt = DateTime.Now;
                 }
                 
+                // Convert to entity for the repository
+                var entity = ToEntity(config);
+                
+                // Save to repository
+                await _configRepository.AddAsync(entity);
+                await _configRepository.SaveChangesAsync();
+                
+                // Get the saved entity with generated ID
+                config.Id = entity.Id.ToString();
+                
+                // Add to in-memory cache
+                lock (_scrapers)
+                {
+                    _scrapers[config.Id] = new ScraperInstance
+                    {
+                        Config = config,
+                        Status = new ScraperStatus
+                        {
+                            IsRunning = false,
+                            LastMonitorCheck = null
+                        }
+                    };
+                }
+                
+                _logger.LogInformation($"Created scraper configuration: {config.Name} ({config.Id})");
+                return config;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error creating scraper configuration '{config.Name}'");
+                
+                // Add to in-memory cache as a fallback
+                lock (_scrapers)
+                {
+                    if (!_scrapers.ContainsKey(config.Id))
+                    {
+                        _scrapers[config.Id] = new ScraperInstance
+                        {
+                            Config = config,
+                            Status = new ScraperStatus
+                            {
+                                IsRunning = false,
+                                LastMonitorCheck = null
+                            }
+                        };
+                    }
+                }
+                
+                return config;
+            }
+        }
+        
+        public async Task<bool> UpdateScraperConfig(string id, ScraperConfigModel config)
+        {
+            try
+            {
                 // Ensure the ID stays the same
                 config.Id = id;
+
+                // Check in-memory cache first to verify not running
+                lock (_scrapers)
+                {
+                    if (!_scrapers.ContainsKey(id))
+                    {
+                        return false;
+                    }
+                    
+                    // Don't allow changing config while scraper is running
+                    if (_scrapers[id].Status.IsRunning)
+                    {
+                        return false;
+                    }
+                }
+
+                // Convert to entity for the repository
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
+                    return false;
+                }
+
+                // Get the existing entity
+                var existingEntity = await _configRepository.GetByIdAsync(guidId);
+                if (existingEntity == null)
+                {
+                    _logger.LogWarning($"Scraper with ID {id} not found in database");
+                    return false;
+                }
+
+                // Update entity properties
+                var entity = ToEntity(config);
                 
-                // Update the configuration
-                _scrapers[id].Config = config;
-                SaveScraperConfigurations();
-                
+                // Update in repository
+                await _configRepository.UpdateAsync(entity);
+                await _configRepository.SaveChangesAsync();
+
+                // Update in-memory cache
+                lock (_scrapers)
+                {
+                    if (_scrapers.TryGetValue(id, out var instance))
+                    {
+                        // Update config but preserve status
+                        instance.Config = config;
+                    }
+                }
+
+                _logger.LogInformation($"Updated scraper configuration: {config.Name} ({config.Id})");
                 return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating scraper configuration with ID {id}");
+                return false;
             }
         }
         
-        public bool DeleteScraperConfig(string id)
+        public async Task<bool> DeleteScraperConfig(string id)
         {
-            lock (_scrapers)
+            try
             {
-                if (!_scrapers.ContainsKey(id))
+                // Check in-memory cache first to verify not running
+                lock (_scrapers)
                 {
+                    if (!_scrapers.ContainsKey(id))
+                    {
+                        return false;
+                    }
+                    
+                    // Don't allow deletion while scraper is running
+                    if (_scrapers[id].Status.IsRunning)
+                    {
+                        return false;
+                    }
+                }
+
+                // Parse the ID to GUID
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
                     return false;
                 }
-                
-                // Don't allow deletion while scraper is running
-                if (_scrapers[id].Status.IsRunning)
+
+                // Delete from repository
+                var entity = await _configRepository.GetByIdAsync(guidId);
+                if (entity == null)
                 {
+                    _logger.LogWarning($"Scraper with ID {id} not found in database");
                     return false;
                 }
-                
-                _scrapers.Remove(id);
-                SaveScraperConfigurations();
-                
+
+                await _configRepository.DeleteAsync(entity);
+                await _configRepository.SaveChangesAsync();
+
+                // Remove from in-memory cache
+                lock (_scrapers)
+                {
+                    _scrapers.Remove(id);
+                }
+
+                _logger.LogInformation($"Deleted scraper configuration with ID {id}");
                 return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error deleting scraper configuration with ID {id}");
+                return false;
             }
         }
         
