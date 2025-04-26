@@ -1,27 +1,42 @@
-﻿import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import React, { useState, useEffect } from 'react';
+import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import {
-    Typography,
-    Paper,
-    Box,
-    TextField,
-    Switch,
-    FormControlLabel,
-    Button,
-    Divider,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
-    Slider,
-    Grid,
-    Alert
+  Typography,
+  Paper,
+  Box,
+  TextField,
+  Grid,
+  Button,
+  FormControlLabel,
+  Switch,
+  Divider,
+  Alert,
+  CircularProgress,
+  Breadcrumbs,
+  Link,
+  Tabs,
+  Tab,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  IconButton,
+  Tooltip,
+  Slider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SettingsIcon from '@mui/icons-material/Settings';
+import HomeIcon from '@mui/icons-material/Home';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import RestoreIcon from '@mui/icons-material/Restore';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
-import { startScraping } from '../services/api';
+import { fetchScraper, createScraper, updateScraper, startScraper } from '../services/api';
 
 const Configuration = ({ isRunning, setIsRunning, setScrapingStats }) => {
     const navigate = useNavigate();
@@ -109,7 +124,7 @@ const Configuration = ({ isRunning, setIsRunning, setScrapingStats }) => {
             }
 
             // Start scraping
-            await startScraping(config);
+            await startScraper(config);
             setIsRunning(true);
 
             // Reset stats

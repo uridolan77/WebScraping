@@ -2,6 +2,10 @@
 {
     public class ScraperConfig
     {
+        // Multi-scraper support
+        public string ScraperId { get; set; }
+        public string ScraperName { get; set; } = "Default Scraper";
+        
         public string StartUrl { get; set; }
         public string BaseUrl { get; set; }
         public string OutputDirectory { get; set; }
@@ -22,6 +26,10 @@
         public bool EnableChangeDetection { get; set; } = true;
         public bool TrackContentVersions { get; set; } = true;
         public int MaxVersionsToKeep { get; set; } = 5;
+        
+        // Notifications
+        public bool NotifyOnChanges { get; set; } = false;
+        public string NotificationEmail { get; set; }
 
         // Adaptive Crawling options
         public bool EnableAdaptiveCrawling { get; set; } = true;

@@ -1,8 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using WebScraper;
+using System.Threading.Tasks;
+using WebScraperApi.Models;
+using WebScraperApi.Services;
 
 namespace WebScraperApi.Controllers
 {
@@ -10,155 +11,198 @@ namespace WebScraperApi.Controllers
     [Route("api/[controller]")]
     public class ScraperController : ControllerBase
     {
-        private static Scraper _activeScraper;
-        private static ScraperConfig _config = new ScraperConfig();
-        private static bool _isRunning = false;
-        private static DateTime? _startTime;
-        private static DateTime? _endTime;
-        private static List<string> _logMessages = new List<string>();
-        private static readonly object _lock = new object();
-        private static Dictionary<string, ScrapedPage> _scrapedPages = new Dictionary<string, ScrapedPage>();
-
-        // Add a logger to capture console output
-        public static void LogMessage(string message)
+        private readonly ScraperManager _scraperManager;
+        
+        public ScraperController(ScraperManager scraperManager)
         {
-            lock (_lock)
-            {
-                _logMessages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-                // Keep only the last 1000 messages
-                if (_logMessages.Count > 1000)
-                {
-                    _logMessages.RemoveAt(0);
-                }
-            }
+            _scraperManager = scraperManager;
         }
-
-        [HttpGet("status")]
-        public IActionResult GetStatus()
+        
+        [HttpGet]
+        public IActionResult GetAllScrapers()
         {
+            var scrapers = _scraperManager.GetAllScraperConfigs();
+            return Ok(scrapers);
+        }
+        
+        [HttpGet("{id}")]
+        public IActionResult GetScraper(string id)
+        {
+            var config = _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            return Ok(config);
+        }
+        
+        [HttpPost]
+        public IActionResult CreateScraper([FromBody] ScraperConfigModel config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var createdConfig = _scraperManager.CreateScraperConfig(config);
+            return CreatedAtAction(nameof(GetScraper), new { id = createdConfig.Id }, createdConfig);
+        }
+        
+        [HttpPut("{id}")]
+        public IActionResult UpdateScraper(string id, [FromBody] ScraperConfigModel config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var success = _scraperManager.UpdateScraperConfig(id, config);
+            if (!success)
+            {
+                return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            return Ok(config);
+        }
+        
+        [HttpDelete("{id}")]
+        public IActionResult DeleteScraper(string id)
+        {
+            var success = _scraperManager.DeleteScraperConfig(id);
+            if (!success)
+            {
+                return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            return NoContent();
+        }
+        
+        [HttpGet("{id}/status")]
+        public IActionResult GetScraperStatus(string id)
+        {
+            var status = _scraperManager.GetScraperStatus(id);
+            if (status == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var config = _scraperManager.GetScraperConfig(id);
+            
             return Ok(new
             {
-                IsRunning = _isRunning,
-                StartTime = _startTime,
-                EndTime = _endTime,
-                UrlsProcessed = _scrapedPages.Count,
-                ElapsedTime = _startTime.HasValue ? (DateTime.Now - _startTime.Value).ToString(@"hh\:mm\:ss") : null,
-                CurrentConfig = _config
+                ScraperId = id,
+                ScraperName = config.Name,
+                status.IsRunning,
+                status.StartTime,
+                status.EndTime,
+                status.ElapsedTime,
+                status.UrlsProcessed,
+                LastMonitorCheck = status.LastMonitorCheck,
+                IsMonitoring = config.EnableContinuousMonitoring,
+                MonitoringInterval = config.MonitoringIntervalMinutes
             });
         }
-
-        [HttpGet("logs")]
-        public IActionResult GetLogs([FromQuery] int limit = 100)
+        
+        [HttpGet("{id}/logs")]
+        public IActionResult GetScraperLogs(string id, [FromQuery] int limit = 100)
         {
-            lock (_lock)
-            {
-                var logs = _logMessages.Count <= limit
-                    ? _logMessages
-                    : _logMessages.GetRange(_logMessages.Count - limit, limit);
-
-                return Ok(new { Logs = logs });
-            }
+            var logs = _scraperManager.GetScraperLogs(id, limit);
+            return Ok(new { Logs = logs });
         }
-
-        [HttpGet("results")]
-        public IActionResult GetResults([FromQuery] int limit = 20)
+        
+        [HttpPost("{id}/start")]
+        public async Task<IActionResult> StartScraper(string id)
         {
-            lock (_lock)
+            var config = _scraperManager.GetScraperConfig(id);
+            if (config == null)
             {
-                var results = _scrapedPages.Values
-                    .OrderByDescending(p => p.ScrapedDateTime)
-                    .Take(limit)
-                    .ToList();
-
-                return Ok(new { Results = results });
+                return NotFound($"Scraper with ID {id} not found");
             }
-        }
-
-        [HttpPost("start")]
-        public IActionResult StartScraping([FromBody] ScraperConfig config)
-        {
-            if (_isRunning)
+            
+            var success = await _scraperManager.StartScraper(id);
+            if (!success)
             {
                 return BadRequest("Scraper is already running");
             }
-
-            try
-            {
-                // Apply default values if not provided
-                if (config == null)
-                {
-                    config = new ScraperConfig();
-                }
-
-                if (string.IsNullOrEmpty(config.StartUrl))
-                {
-                    return BadRequest("Start URL is required");
-                }
-
-                _config = config;
-                _startTime = DateTime.Now;
-                _endTime = null;
-                _isRunning = true;
-
-                // Clear previous results if not in append mode
-                if (!config.AppendToExistingData)
-                {
-                    _scrapedPages.Clear();
-                    _logMessages.Clear();
-                }
-
-                LogMessage($"Starting scraping from {config.StartUrl}");
-                
-                // Initialize scraper with the LogMessage function
-                _activeScraper = new Scraper(_config, LogMessage);
-
-                // Start scraping in a background thread
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _activeScraper.StartScrapingAsync();
-                        _isRunning = false;
-                        _endTime = DateTime.Now;
-                        LogMessage("Scraping completed successfully");
-                    }
-                    catch (Exception ex)
-                    {
-                        _isRunning = false;
-                        _endTime = DateTime.Now;
-                        LogMessage($"Scraping failed: {ex.Message}");
-                    }
-                });
-
-                return Ok(new { Message = "Scraper started successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Failed to start scraper: {ex.Message}");
-            }
+            
+            return Ok(new { Message = $"Scraper '{config.Name}' started successfully" });
         }
-
-        [HttpPost("stop")]
-        public IActionResult StopScraping()
+        
+        [HttpPost("{id}/stop")]
+        public IActionResult StopScraper(string id)
         {
-            if (!_isRunning)
+            var config = _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var success = _scraperManager.StopScraperInstance(id);
+            if (!success)
             {
                 return BadRequest("Scraper is not running");
             }
-
-            try
-            {
-                // Gracefully stop the scraper
-                _isRunning = false;
-                _endTime = DateTime.Now;
-                LogMessage("Scraping stopped by user");
-
-                return Ok(new { Message = "Scraper stopped successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Failed to stop scraper: {ex.Message}");
-            }
+            
+            return Ok(new { Message = $"Scraper '{config.Name}' stopped successfully" });
         }
+        
+        [HttpPost("{id}/monitor")]
+        public IActionResult SetMonitoring(string id, [FromBody] MonitoringSettings settings)
+        {
+            var config = _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            // Update monitoring settings
+            config.EnableContinuousMonitoring = settings.Enabled;
+            config.MonitoringIntervalMinutes = settings.IntervalMinutes;
+            config.NotifyOnChanges = settings.NotifyOnChanges;
+            config.NotificationEmail = settings.NotificationEmail;
+            config.TrackChangesHistory = settings.TrackChangesHistory;
+            
+            // Update the config
+            var success = _scraperManager.UpdateScraperConfig(id, config);
+            if (!success)
+            {
+                return BadRequest("Failed to update monitoring settings");
+            }
+            
+            return Ok(new 
+            { 
+                Message = settings.Enabled 
+                    ? $"Monitoring enabled for '{config.Name}' with {settings.IntervalMinutes} minute interval" 
+                    : $"Monitoring disabled for '{config.Name}'"
+            });
+        }
+        
+        [HttpGet("results")]
+        public IActionResult GetResults([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string search = null, [FromQuery] string scraperId = null)
+        {
+            // This is a placeholder - in a real implementation,
+            // we'd query the actual results from disk or database
+            // filtered by the scraper ID
+            
+            return Ok(new
+            {
+                Results = new Dictionary<string, object>(),
+                TotalCount = 0,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = 0,
+                ScraperId = scraperId
+            });
+        }
+    }
+    
+    public class MonitoringSettings
+    {
+        public bool Enabled { get; set; } = true;
+        public int IntervalMinutes { get; set; } = 1440; // 24 hours by default
+        public bool NotifyOnChanges { get; set; } = false;
+        public string NotificationEmail { get; set; }
+        public bool TrackChangesHistory { get; set; } = true;
     }
 }

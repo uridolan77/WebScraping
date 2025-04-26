@@ -58,7 +58,21 @@ namespace WebScraper
             }
 
             // Initialize modules with the logger
-            _changeDetector = new ContentChangeDetector(_config.MaxVersionsToKeep, _logger);
+            _changeDetector = new ContentChangeDetector(_config.OutputDirectory, _logger);
+            
+            // Register this scraper with the change detector
+            if (!string.IsNullOrEmpty(_config.ScraperId))
+            {
+                _changeDetector.RegisterScraper(
+                    _config.ScraperId,
+                    _config.ScraperName,
+                    _config.MaxVersionsToKeep,
+                    _config.TrackContentVersions,
+                    _config.NotifyOnChanges,
+                    _config.NotificationEmail
+                );
+            }
+            
             _crawlStrategy = new AdaptiveCrawlStrategy(_logger);
             _patternLearner = new PatternLearner(_logger, _config.OutputDirectory);
             _rateLimiter = new AdaptiveRateLimiter(_logger);

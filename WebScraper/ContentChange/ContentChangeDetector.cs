@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.IO;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace WebScraper.ContentChange
 {
@@ -22,31 +25,188 @@ namespace WebScraper.ContentChange
         public DateTime VersionDate { get; set; }
         public ChangeType ChangeFromPrevious { get; set; }
         public Dictionary<string, string> ChangedSections { get; set; } = new Dictionary<string, string>();
+        public string ScraperId { get; set; } // Track which scraper created this version
+    }
+
+    public class ChangeNotification
+    {
+        public string Url { get; set; }
+        public string ScraperId { get; set; }
+        public string ScraperName { get; set; }
+        public ChangeType ChangeType { get; set; }
+        public DateTime DetectedAt { get; set; }
+        public Dictionary<string, string> ChangedSections { get; set; }
+        public string Summary { get; set; }
     }
 
     public class ContentChangeDetector
     {
-        private readonly Dictionary<string, List<PageVersion>> _pageVersions = new Dictionary<string, List<PageVersion>>();
-        private readonly int _maxVersionsToKeep;
+        private readonly Dictionary<string, Dictionary<string, List<PageVersion>>> _scraperPageVersions = new Dictionary<string, Dictionary<string, List<PageVersion>>>();
+        private readonly Dictionary<string, ScraperContentSettings> _scraperSettings = new Dictionary<string, ScraperContentSettings>();
         private readonly Action<string> _logger;
+        private readonly string _dataStoragePath;
+        private List<ChangeNotification> _pendingNotifications = new List<ChangeNotification>();
 
-        public ContentChangeDetector(int maxVersionsToKeep = 5, Action<string> logger = null)
+        public ContentChangeDetector(string dataStoragePath = null, Action<string> logger = null)
         {
-            _maxVersionsToKeep = maxVersionsToKeep;
+            _dataStoragePath = dataStoragePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ContentVersions");
             _logger = logger ?? (_ => {}); // Default no-op logger if none provided
+            
+            // Ensure storage directory exists
+            if (!Directory.Exists(_dataStoragePath))
+            {
+                Directory.CreateDirectory(_dataStoragePath);
+            }
         }
 
-        public void LoadVersionHistory(Dictionary<string, List<PageVersion>> history)
+        public class ScraperContentSettings
         {
+            public string ScraperId { get; set; }
+            public string ScraperName { get; set; }
+            public int MaxVersionsToKeep { get; set; } = 5;
+            public bool TrackChangesHistory { get; set; } = true;
+            public bool NotifyOnChanges { get; set; } = false;
+            public string NotificationEmail { get; set; }
+        }
+
+        public void RegisterScraper(string scraperId, string scraperName, int maxVersionsToKeep = 5, bool trackChangesHistory = true, bool notifyOnChanges = false, string notificationEmail = null)
+        {
+            _scraperSettings[scraperId] = new ScraperContentSettings
+            {
+                ScraperId = scraperId,
+                ScraperName = scraperName,
+                MaxVersionsToKeep = maxVersionsToKeep,
+                TrackChangesHistory = trackChangesHistory,
+                NotifyOnChanges = notifyOnChanges,
+                NotificationEmail = notificationEmail
+            };
+            
+            if (!_scraperPageVersions.ContainsKey(scraperId))
+            {
+                _scraperPageVersions[scraperId] = new Dictionary<string, List<PageVersion>>();
+                
+                // Try to load existing data for this scraper
+                LoadVersionHistory(scraperId);
+            }
+            
+            _logger($"Registered scraper {scraperId} ({scraperName}) with max {maxVersionsToKeep} versions");
+        }
+
+        public void UpdateScraperSettings(string scraperId, int? maxVersionsToKeep = null, bool? trackChangesHistory = null, bool? notifyOnChanges = null, string notificationEmail = null)
+        {
+            if (!_scraperSettings.ContainsKey(scraperId))
+            {
+                _logger($"Cannot update settings for unknown scraper: {scraperId}");
+                return;
+            }
+            
+            var settings = _scraperSettings[scraperId];
+            
+            if (maxVersionsToKeep.HasValue)
+                settings.MaxVersionsToKeep = maxVersionsToKeep.Value;
+                
+            if (trackChangesHistory.HasValue)
+                settings.TrackChangesHistory = trackChangesHistory.Value;
+                
+            if (notifyOnChanges.HasValue)
+                settings.NotifyOnChanges = notifyOnChanges.Value;
+                
+            if (notificationEmail != null)
+                settings.NotificationEmail = notificationEmail;
+                
+            _logger($"Updated settings for scraper {scraperId}");
+        }
+
+        public void LoadVersionHistory(string scraperId)
+        {
+            try
+            {
+                var filePath = Path.Combine(_dataStoragePath, $"{scraperId}_versions.json");
+                
+                if (File.Exists(filePath))
+                {
+                    var json = File.ReadAllText(filePath);
+                    var history = JsonConvert.DeserializeObject<Dictionary<string, List<PageVersion>>>(json);
+                    
+                    if (history != null)
+                    {
+                        _scraperPageVersions[scraperId] = history;
+                        _logger($"Loaded version history for scraper {scraperId} with {history.Count} URLs");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error loading version history for scraper {scraperId}: {ex.Message}");
+            }
+        }
+
+        public void SaveVersionHistory(string scraperId)
+        {
+            if (!_scraperSettings.TryGetValue(scraperId, out var settings) || !settings.TrackChangesHistory)
+            {
+                return; // Don't save if tracking is disabled
+            }
+            
+            try
+            {
+                if (_scraperPageVersions.TryGetValue(scraperId, out var versions))
+                {
+                    var filePath = Path.Combine(_dataStoragePath, $"{scraperId}_versions.json");
+                    var json = JsonConvert.SerializeObject(versions);
+                    File.WriteAllText(filePath, json);
+                    _logger($"Saved version history for scraper {scraperId} with {versions.Count} URLs");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error saving version history for scraper {scraperId}: {ex.Message}");
+            }
+        }
+
+        public void LoadVersionHistory(Dictionary<string, List<PageVersion>> history, string scraperId = null)
+        {
+            if (string.IsNullOrEmpty(scraperId))
+            {
+                scraperId = "default";
+            }
+            
+            if (!_scraperPageVersions.ContainsKey(scraperId))
+            {
+                _scraperPageVersions[scraperId] = new Dictionary<string, List<PageVersion>>();
+            }
+            
             foreach (var entry in history)
             {
-                _pageVersions[entry.Key] = entry.Value;
+                _scraperPageVersions[scraperId][entry.Key] = entry.Value;
             }
-            _logger($"Loaded version history for {history.Count} URLs");
+            
+            _logger($"Loaded version history for scraper {scraperId} with {history.Count} URLs");
         }
 
-        public PageVersion TrackPageVersion(string url, string content, string textContent)
+        public PageVersion TrackPageVersion(string url, string content, string textContent, string scraperId = null)
         {
+            if (string.IsNullOrEmpty(scraperId))
+            {
+                scraperId = "default";
+            }
+            
+            // Ensure we have settings for this scraper
+            if (!_scraperSettings.ContainsKey(scraperId))
+            {
+                RegisterScraper(scraperId, "Unknown Scraper");
+            }
+            
+            // Ensure we have a dictionary for this scraper
+            if (!_scraperPageVersions.ContainsKey(scraperId))
+            {
+                _scraperPageVersions[scraperId] = new Dictionary<string, List<PageVersion>>();
+            }
+            
+            var scraperVersions = _scraperPageVersions[scraperId];
+            var settings = _scraperSettings[scraperId];
+            var maxVersions = settings.MaxVersionsToKeep;
+            
             var hash = ComputeHash(content);
 
             // Create new version
@@ -57,11 +217,12 @@ namespace WebScraper.ContentChange
                 TextContent = textContent,
                 Hash = hash,
                 VersionDate = DateTime.Now,
-                ChangeFromPrevious = ChangeType.None
+                ChangeFromPrevious = ChangeType.None,
+                ScraperId = scraperId
             };
 
             // Check if we already have versions for this URL
-            if (_pageVersions.TryGetValue(url, out var versions))
+            if (scraperVersions.TryGetValue(url, out var versions))
             {
                 var latestVersion = versions.OrderByDescending(v => v.VersionDate).FirstOrDefault();
 
@@ -71,42 +232,110 @@ namespace WebScraper.ContentChange
                     var changeType = AnalyzeChanges(latestVersion.TextContent, textContent);
                     newVersion.ChangeFromPrevious = changeType;
                     
-                    _logger($"Detected {changeType} change for {url}");
+                    _logger($"Detected {changeType} change for {url} [Scraper: {scraperId}]");
 
                     // If significant change, extract the changed sections
                     if (changeType > ChangeType.Minor)
                     {
                         newVersion.ChangedSections = ExtractChangedSections(latestVersion.TextContent, textContent);
                         _logger($"Extracted {newVersion.ChangedSections.Count} changed sections");
+                        
+                        // Create notification if needed
+                        if (settings.NotifyOnChanges && !string.IsNullOrEmpty(settings.NotificationEmail))
+                        {
+                            CreateChangeNotification(newVersion, settings);
+                        }
                     }
 
                     // Add new version
                     versions.Add(newVersion);
 
                     // Keep only the latest N versions
-                    if (versions.Count > _maxVersionsToKeep)
+                    if (versions.Count > maxVersions)
                     {
                         versions = versions.OrderByDescending(v => v.VersionDate)
-                            .Take(_maxVersionsToKeep)
+                            .Take(maxVersions)
                             .ToList();
-                        _pageVersions[url] = versions;
-                        _logger($"Pruned version history for {url} to {_maxVersionsToKeep} versions");
+                        scraperVersions[url] = versions;
+                        _logger($"Pruned version history for {url} to {maxVersions} versions");
+                    }
+                    
+                    // Save changes if tracking is enabled
+                    if (settings.TrackChangesHistory)
+                    {
+                        SaveVersionHistory(scraperId);
                     }
 
                     return newVersion;
                 }
 
                 // No change, just return the latest version
-                _logger($"No content change detected for {url}");
+                _logger($"No content change detected for {url} [Scraper: {scraperId}]");
                 return latestVersion;
             }
             else
             {
                 // First time seeing this URL
-                _pageVersions[url] = new List<PageVersion> { newVersion };
-                _logger($"Created first version for {url}");
+                scraperVersions[url] = new List<PageVersion> { newVersion };
+                _logger($"Created first version for {url} [Scraper: {scraperId}]");
+                
+                // Save the new version
+                if (settings.TrackChangesHistory)
+                {
+                    SaveVersionHistory(scraperId);
+                }
+                
                 return newVersion;
             }
+        }
+
+        private void CreateChangeNotification(PageVersion version, ScraperContentSettings settings)
+        {
+            var notification = new ChangeNotification
+            {
+                Url = version.Url,
+                ScraperId = settings.ScraperId,
+                ScraperName = settings.ScraperName,
+                ChangeType = version.ChangeFromPrevious,
+                DetectedAt = DateTime.Now,
+                ChangedSections = version.ChangedSections,
+                Summary = GenerateChangeSummary(version)
+            };
+            
+            _pendingNotifications.Add(notification);
+            _logger($"Created change notification for {version.Url} ({version.ChangeFromPrevious})");
+        }
+        
+        private string GenerateChangeSummary(PageVersion version)
+        {
+            var summary = new StringBuilder();
+            summary.AppendLine($"Content change detected for: {version.Url}");
+            summary.AppendLine($"Change level: {version.ChangeFromPrevious}");
+            summary.AppendLine($"Detected at: {version.VersionDate}");
+            summary.AppendLine();
+            
+            if (version.ChangedSections.TryGetValue("Added", out var addedContent))
+            {
+                summary.AppendLine("ADDED CONTENT:");
+                summary.AppendLine(TruncateContent(addedContent, 500));
+                summary.AppendLine();
+            }
+            
+            if (version.ChangedSections.TryGetValue("Removed", out var removedContent))
+            {
+                summary.AppendLine("REMOVED CONTENT:");
+                summary.AppendLine(TruncateContent(removedContent, 500));
+            }
+            
+            return summary.ToString();
+        }
+        
+        private string TruncateContent(string content, int maxLength)
+        {
+            if (content.Length <= maxLength)
+                return content;
+                
+            return content.Substring(0, maxLength) + "...";
         }
 
         public ChangeType AnalyzeChanges(string oldContent, string newContent)
@@ -176,9 +405,26 @@ namespace WebScraper.ContentChange
                 .ToList();
         }
 
-        public Dictionary<string, List<PageVersion>> GetVersionHistory()
+        public Dictionary<string, List<PageVersion>> GetVersionHistory(string scraperId = null)
         {
-            return _pageVersions;
+            if (string.IsNullOrEmpty(scraperId))
+            {
+                scraperId = "default";
+            }
+            
+            if (_scraperPageVersions.TryGetValue(scraperId, out var versions))
+            {
+                return versions;
+            }
+            
+            return new Dictionary<string, List<PageVersion>>();
+        }
+        
+        public List<ChangeNotification> GetPendingNotifications()
+        {
+            var notifications = _pendingNotifications.ToList();
+            _pendingNotifications.Clear();
+            return notifications;
         }
 
         private string ComputeHash(string content)

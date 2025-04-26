@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
+using WebScraperApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,10 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .AllowAnyHeader());
 });
+
+// Add the ScraperManager as a singleton hosted service
+builder.Services.AddSingleton<ScraperManager>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<ScraperManager>());
 
 // Add Swagger
 builder.Services.AddSwaggerGen(c =>

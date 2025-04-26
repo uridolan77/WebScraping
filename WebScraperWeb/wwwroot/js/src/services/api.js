@@ -1,105 +1,129 @@
-﻿// Base API URL
-const API_URL = 'https://localhost:7143/api';
+﻿// API service for the multi-scraper functionality
 
-// Helper function for handling API errors
+// Base API URL
+const API_URL = '/api';
+
+// Helper function to handle API responses
 const handleResponse = async (response) => {
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    const errorMessage = errorData?.message || `Error: ${response.status} ${response.statusText}`;
-    throw new Error(errorMessage);
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `API error: ${response.status}`);
   }
   return response.json();
 };
 
-/**
- * Fetch the current status of the scraper
- */
-export const fetchScraperStatus = async () => {
-  try {
-    const response = await fetch(`${API_URL}/scraper/status`);
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching scraper status:', error);
-    throw error;
-  }
+// Fetch all scrapers
+export const fetchAllScrapers = async () => {
+  const response = await fetch(`${API_URL}/scraper`);
+  return handleResponse(response);
 };
 
-/**
- * Start the scraper with the provided configuration
- */
-export const startScraping = async (config) => {
-  try {
-    const response = await fetch(`${API_URL}/scraper/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(config),
-    });
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error starting scraper:', error);
-    throw error;
-  }
+// Fetch a specific scraper by ID
+export const fetchScraper = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}`);
+  return handleResponse(response);
 };
 
-/**
- * Stop the currently running scraper
- */
-export const stopScraping = async () => {
-  try {
-    const response = await fetch(`${API_URL}/scraper/stop`, {
-      method: 'POST',
-    });
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error stopping scraper:', error);
-    throw error;
-  }
+// Create a new scraper
+export const createScraper = async (scraperConfig) => {
+  const response = await fetch(`${API_URL}/scraper`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(scraperConfig)
+  });
+  return handleResponse(response);
 };
 
-/**
- * Fetch the logs from the scraper
- */
-export const fetchLogs = async (limit = 100) => {
-  try {
-    const response = await fetch(`${API_URL}/scraper/logs?limit=${limit}`);
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching logs:', error);
-    throw error;
-  }
+// Update an existing scraper
+export const updateScraper = async (id, scraperConfig) => {
+  const response = await fetch(`${API_URL}/scraper/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(scraperConfig)
+  });
+  return handleResponse(response);
 };
 
-/**
- * Fetch the results of scraping (paginated)
- */
-export const fetchResults = async (page = 1, pageSize = 20, search = '') => {
-  try {
-    const url = new URL(`${API_URL}/scraper/results`);
-    url.searchParams.append('page', page);
-    url.searchParams.append('pageSize', pageSize);
-    if (search) {
-      url.searchParams.append('search', search);
-    }
-    
-    const response = await fetch(url);
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching results:', error);
-    throw error;
-  }
+// Delete a scraper
+export const deleteScraper = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}`, {
+    method: 'DELETE'
+  });
+  return handleResponse(response);
 };
 
-/**
- * Fetch details for a specific scraped URL
- */
+// Start a scraper
+export const startScraper = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}/start`, {
+    method: 'POST'
+  });
+  return handleResponse(response);
+};
+
+// Stop a scraper
+export const stopScraper = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}/stop`, {
+    method: 'POST'
+  });
+  return handleResponse(response);
+};
+
+// Get scraper status
+export const fetchScraperStatus = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}/status`);
+  return handleResponse(response);
+};
+
+// Get scraper logs
+export const fetchScraperLogs = async (id) => {
+  const response = await fetch(`${API_URL}/scraper/${id}/logs`);
+  return handleResponse(response);
+};
+
+// Set monitoring settings
+export const setMonitoring = async (id, settings) => {
+  const response = await fetch(`${API_URL}/scraper/${id}/monitoring`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(settings)
+  });
+  return handleResponse(response);
+};
+
+// Fetch scraping results
+export const fetchResults = async (params = {}) => {
+  const queryParams = new URLSearchParams();
+  if (params.scraperId) queryParams.append('scraperId', params.scraperId);
+  if (params.page) queryParams.append('page', params.page);
+  if (params.pageSize) queryParams.append('pageSize', params.pageSize);
+  if (params.searchTerm) queryParams.append('searchTerm', params.searchTerm);
+  
+  const response = await fetch(`${API_URL}/results?${queryParams.toString()}`);
+  return handleResponse(response);
+};
+
+// Fetch result detail
 export const fetchResultDetail = async (url) => {
-  try {
-    const response = await fetch(`${API_URL}/scraper/result/${encodeURIComponent(url)}`);
-    return handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching result detail:', error);
-    throw error;
-  }
+  const encodedUrl = encodeURIComponent(url);
+  const response = await fetch(`${API_URL}/results/${encodedUrl}`);
+  return handleResponse(response);
+};
+
+// For compatibility with the old API
+export const fetchLogs = async () => {
+  const response = await fetch(`${API_URL}/scraper/logs`);
+  return handleResponse(response);
+};
+
+export const stopScraping = async () => {
+  const response = await fetch(`${API_URL}/scraper/stop`, {
+    method: 'POST'
+  });
+  return handleResponse(response);
 };

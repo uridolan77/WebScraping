@@ -1,0 +1,283 @@
+import React, { useState, useEffect } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import {
+  Typography,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardActions,
+  Grid,
+  Chip,
+  CircularProgress,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  IconButton,
+  Tooltip,
+  Paper
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import LaunchIcon from '@mui/icons-material/Launch';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+
+import { fetchAllScrapers, deleteScraper } from '../services/api';
+import MonitoringDialog from '../components/MonitoringDialog';
+
+const getStatusColor = (status) => {
+  switch (status?.toLowerCase()) {
+    case 'running':
+      return 'success';
+    case 'idle':
+      return 'default';
+    case 'error':
+      return 'error';
+    default:
+      return 'primary';
+  }
+};
+
+const getStatusIcon = (status) => {
+  switch (status?.toLowerCase()) {
+    case 'running':
+      return <CheckCircleIcon fontSize="small" />;
+    case 'idle':
+      return <PauseCircleIcon fontSize="small" />;
+    case 'error':
+      return <ErrorIcon fontSize="small" />;
+    default:
+      return null;
+  }
+};
+
+const ScraperList = () => {
+  const [scrapers, setScrapers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [monitoringDialogOpen, setMonitoringDialogOpen] = useState(false);
+  const [selectedScraperId, setSelectedScraperId] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const loadScrapers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchAllScrapers();
+        setScrapers(data);
+      } catch (err) {
+        console.error('Error loading scrapers:', err);
+        setError('Failed to load scrapers. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadScrapers();
+  }, [refreshTrigger]);
+
+  const handleDeleteClick = (id) => {
+    setSelectedScraperId(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteScraper(selectedScraperId);
+      setDeleteDialogOpen(false);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Error deleting scraper:', err);
+      setError('Failed to delete scraper. Please try again later.');
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleMonitoringClick = (id) => {
+    setSelectedScraperId(id);
+    setMonitoringDialogOpen(true);
+  };
+
+  const handleMonitoringSave = () => {
+    setMonitoringDialogOpen(false);
+    setRefreshTrigger(prev => prev + 1); // Refresh list to show updated monitoring status
+  };
+
+  const formatLastRun = (timestamp) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
+  return (
+    <Box sx={{ mb: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">My Web Scrapers</Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          component={RouterLink}
+          to="/configure"
+        >
+          New Scraper
+        </Button>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : scrapers.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>No scrapers configured yet</Typography>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Get started by creating your first web scraper
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            component={RouterLink}
+            to="/configure"
+          >
+            Create Your First Scraper
+          </Button>
+        </Paper>
+      ) : (
+        <Grid container spacing={3}>
+          {scrapers.map((scraper) => (
+            <Grid item xs={12} sm={6} md={4} key={scraper.id}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Typography variant="h6" component="div" noWrap gutterBottom>
+                    {scraper.name || scraper.baseUrl}
+                  </Typography>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Chip
+                      size="small"
+                      color={getStatusColor(scraper.status)}
+                      label={scraper.status || 'Unknown'}
+                      icon={getStatusIcon(scraper.status)}
+                      sx={{ mr: 1, mb: 1 }}
+                    />
+                    {scraper.monitoring?.enabled && (
+                      <Chip
+                        size="small"
+                        color="info"
+                        icon={<MonitorHeartIcon fontSize="small" />}
+                        label="Monitoring"
+                        sx={{ mr: 1, mb: 1 }}
+                      />
+                    )}
+                  </Box>
+                  
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    <strong>URL:</strong> {scraper.baseUrl}
+                  </Typography>
+                  
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    <strong>Last Run:</strong> {formatLastRun(scraper.lastRun)}
+                  </Typography>
+                  
+                  {scraper.pagesCrawled > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Pages Crawled:</strong> {scraper.pagesCrawled.toLocaleString()}
+                    </Typography>
+                  )}
+                </CardContent>
+                
+                <CardActions>
+                  <Button 
+                    size="small" 
+                    startIcon={<DashboardIcon />}
+                    component={RouterLink}
+                    to={`/dashboard/${scraper.id}`}
+                  >
+                    Dashboard
+                  </Button>
+                  
+                  <Button
+                    size="small"
+                    startIcon={<MonitorHeartIcon />}
+                    onClick={() => handleMonitoringClick(scraper.id)}
+                  >
+                    Monitoring
+                  </Button>
+                  
+                  <Box sx={{ flexGrow: 1 }} />
+                  
+                  <Tooltip title="Edit">
+                    <IconButton 
+                      size="small" 
+                      component={RouterLink} 
+                      to={`/configure/${scraper.id}`}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  
+                  <Tooltip title="Delete">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleDeleteClick(scraper.id)}
+                      color="error"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Scraper</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this scraper? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" autoFocus>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Monitoring Settings Dialog */}
+      {selectedScraperId && (
+        <MonitoringDialog
+          open={monitoringDialogOpen}
+          onClose={() => setMonitoringDialogOpen(false)}
+          onSave={handleMonitoringSave}
+          scraperId={selectedScraperId}
+          initialValues={scrapers.find(s => s.id === selectedScraperId)?.monitoring}
+        />
+      )}
+    </Box>
+  );
+};
+
+export default ScraperList;
