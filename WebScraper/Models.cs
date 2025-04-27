@@ -321,6 +321,11 @@ namespace WebScraper
     public class DocumentMetadata
     {
         /// <summary>
+        /// Gets or sets the document URL
+        /// </summary>
+        public string Url { get; set; }
+        
+        /// <summary>
         /// Gets or sets the document title
         /// </summary>
         public string Title { get; set; }
@@ -356,6 +361,11 @@ namespace WebScraper
         public string FileType { get; set; }
         
         /// <summary>
+        /// Gets or sets the document type
+        /// </summary>
+        public string DocumentType { get; set; }
+        
+        /// <summary>
         /// Gets or sets the document file size in bytes
         /// </summary>
         public long FileSizeBytes { get; set; }
@@ -389,6 +399,46 @@ namespace WebScraper
         /// Gets or sets the document language
         /// </summary>
         public string Language { get; set; }
+
+        /// <summary>
+        /// Gets or sets the date the document was processed
+        /// </summary>
+        public DateTime ProcessedDate { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// Gets or sets the document publication date
+        /// </summary>
+        public DateTime? PublicationDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the document publish date (alias for PublicationDate)
+        /// </summary>
+        public DateTime? PublishDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the path to the locally stored file
+        /// </summary>
+        public string LocalFilePath { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the content hash of the document
+        /// </summary>
+        public string ContentHash { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the text content of the document
+        /// </summary>
+        public string TextContent { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the document classification
+        /// </summary>
+        public ClassificationResult Classification { get; set; }
+        
+        /// <summary>
+        /// Gets or sets additional metadata extracted from the document
+        /// </summary>
+        public Dictionary<string, object> ExtractedMetadata { get; set; } = new Dictionary<string, object>();
         
         /// <summary>
         /// Gets or sets additional custom metadata

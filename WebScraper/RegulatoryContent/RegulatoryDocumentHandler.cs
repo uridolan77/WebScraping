@@ -190,10 +190,11 @@ namespace WebScraper.RegulatoryContent
                 var classification = _contentClassifier.ClassifyContent("file://document", metadata.TextContent, htmlDoc);
                 metadata.Classification = new ClassificationResult 
                 {
-                    IsRegulatoryContent = classification.IsRegulatoryContent,
-                    ConfidenceScore = classification.ConfidenceScore,
-                    Impact = classification.Impact,
-                    PrimaryCategory = classification.PrimaryCategory
+                    PrimaryCategory = classification.PrimaryCategory ?? "Unknown",
+                    Category = classification.Category ?? "Unknown",
+                    Confidence = classification.ConfidenceScore,
+                    Impact = (RegulatoryImpact)classification.Impact,
+                    MatchedKeywords = classification.Topics?.ToList() ?? new List<string>()
                 };
 
                 // Find publication date if available

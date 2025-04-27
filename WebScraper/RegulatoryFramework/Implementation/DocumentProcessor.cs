@@ -154,13 +154,13 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error processing linked document: {Url}", url);
+                        _logger.LogError("Error processing linked document: {Url}", url, ex);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing linked documents for page: {Url}", pageUrl);
+                _logger.LogError("Error processing linked documents for page: {Url}", pageUrl, ex);
             }
         }
         

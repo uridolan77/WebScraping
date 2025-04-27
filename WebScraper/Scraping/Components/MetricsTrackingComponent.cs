@@ -149,7 +149,8 @@ namespace WebScraper.Scraping.Components
                 }
                 
                 var domainMetrics = _metrics.DomainMetrics[domain];
-                domainMetrics.RequestCount++;
+                // Don't directly increment RequestCount as it's a calculated property
+                // Instead update the underlying properties that it's calculated from
                 domainMetrics.TotalResponseTimeMs += elapsedMs;
                 domainMetrics.AverageResponseTimeMs = domainMetrics.TotalResponseTimeMs / domainMetrics.RequestCount;
                 domainMetrics.TotalBytesDownloaded += contentSizeBytes;
@@ -158,17 +159,19 @@ namespace WebScraper.Scraping.Components
                 if (statusCode >= 200 && statusCode < 300)
                 {
                     _metrics.SuccessfulUrls++;
-                    domainMetrics.SuccessfulRequests++;
+                    domainMetrics.SuccessfulRequests++; // This will affect RequestCount
                 }
                 else if (statusCode >= 400 && statusCode < 500)
                 {
                     _metrics.ClientErrors++;
                     domainMetrics.ClientErrors++;
+                    domainMetrics.FailedRequests++; // This will affect RequestCount
                 }
                 else if (statusCode >= 500)
                 {
                     _metrics.ServerErrors++;
                     domainMetrics.ServerErrors++;
+                    domainMetrics.FailedRequests++; // This will affect RequestCount
                 }
                 
                 if (statusCode == 429)
@@ -205,7 +208,7 @@ namespace WebScraper.Scraping.Components
                 }
                 
                 var domainMetrics = _metrics.DomainMetrics[domain];
-                domainMetrics.RequestCount++;
+                // Instead of incrementing RequestCount directly, update FailedRequests
                 domainMetrics.FailedRequests++;
                 
                 // Track error type
@@ -241,10 +244,9 @@ namespace WebScraper.Scraping.Components
                 _metrics.TotalLinksExtracted += linksExtracted;
                 _metrics.ContentItemsExtracted++;
                 
-                // Calculate averages
-                _metrics.AveragePageProcessingTimeMs = _metrics.TotalPageProcessingTimeMs / _metrics.PagesProcessed;
-                _metrics.AverageLinksPerPage = _metrics.PagesProcessed > 0 ? 
-                    (double)_metrics.TotalLinksExtracted / _metrics.PagesProcessed : 0;
+                // Remove direct assignments to read-only properties
+                // The AveragePageProcessingTimeMs and AverageLinksPerPage properties
+                // are calculated automatically via their getters
             }
             catch (Exception ex)
             {
@@ -278,8 +280,8 @@ namespace WebScraper.Scraping.Components
                 docMetrics.Count++;
                 docMetrics.TotalSizeBytes += sizeBytes;
                 docMetrics.TotalProcessingTimeMs += processingTimeMs;
-                docMetrics.AverageSizeBytes = docMetrics.TotalSizeBytes / docMetrics.Count;
-                docMetrics.AverageProcessingTimeMs = docMetrics.TotalProcessingTimeMs / docMetrics.Count;
+                // Remove direct assignments to calculated properties
+                // These are now calculated via their getters
             }
             catch (Exception ex)
             {

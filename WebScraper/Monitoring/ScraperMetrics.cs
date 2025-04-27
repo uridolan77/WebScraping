@@ -402,5 +402,15 @@ namespace WebScraper.Monitoring
         /// Number of processing errors
         /// </summary>
         public int ProcessingErrors { get; set; }
+        
+        /// <summary>
+        /// Average size in bytes per document
+        /// </summary>
+        public double AverageSizeBytes => Count > 0 ? (double)TotalSizeBytes / Count : 0;
+        
+        /// <summary>
+        /// Average processing time in ms per document
+        /// </summary>
+        public double AverageProcessingTimeMs => Count > 0 ? (double)TotalProcessingTimeMs / Count : 0;
     }
 }

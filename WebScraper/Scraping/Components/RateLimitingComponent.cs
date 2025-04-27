@@ -62,7 +62,7 @@ namespace WebScraper.Scraping.Components
                 var limiter = GetRateLimiterForDomain(domain);
                 
                 // Wait for permission to proceed
-                await limiter.WaitForPermissionAsync();
+                await limiter.WaitForPermissionAsync(url);
             }
             catch (Exception ex)
             {
@@ -93,22 +93,22 @@ namespace WebScraper.Scraping.Components
                 if (statusCode >= 200 && statusCode < 300)
                 {
                     // Success - adjust rate based on response time
-                    limiter.ReportSuccess(responseTimeMs);
+                    limiter.ReportSuccess(url, TimeSpan.FromMilliseconds(responseTimeMs));
                 }
                 else if (statusCode == 429 || statusCode == 503)
                 {
                     // Rate limited or service overloaded
-                    limiter.ReportRateLimited();
+                    limiter.ReportRateLimited(url);
                 }
                 else if (statusCode >= 500)
                 {
                     // Server error
-                    limiter.ReportServerError();
+                    limiter.ReportServerError(url);
                 }
                 else if (statusCode >= 400)
                 {
                     // Client error - not a rate limiting issue
-                    limiter.ReportClientError();
+                    limiter.ReportClientError(url);
                 }
             }
             catch (Exception ex)

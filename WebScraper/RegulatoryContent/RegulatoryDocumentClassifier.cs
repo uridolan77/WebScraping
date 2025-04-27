@@ -63,6 +63,18 @@ namespace WebScraper.RegulatoryContent
         }
 
         /// <summary>
+        /// Regulatory impact levels for changes
+        /// </summary>
+        public enum RegulatoryImpact
+        {
+            None = 0,
+            Low = 1,
+            Medium = 2,
+            High = 3,
+            Critical = 4
+        }
+        
+        /// <summary>
         /// Regulatory document types
         /// </summary>
         public enum DocumentType
@@ -87,12 +99,14 @@ namespace WebScraper.RegulatoryContent
             public double Confidence { get; set; }
             public Dictionary<DocumentType, double> TypeScores { get; set; } = new Dictionary<DocumentType, double>();
             public List<string> MatchedKeywords { get; set; } = new List<string>();
+            public string[] Topics { get; set; } = new string[0]; // Add Topics property
             
             // Additional properties required by RegulatoryDocumentHandler
             public bool IsRegulatoryContent { get; set; }
             public double ConfidenceScore { get => Confidence; set => Confidence = value; }
             public RegulatoryImpact Impact { get; set; } = RegulatoryImpact.None;
             public string PrimaryCategory { get => PrimaryType.ToString(); }
+            public string Category { get => PrimaryType.ToString(); }
         }
 
         /// <summary>

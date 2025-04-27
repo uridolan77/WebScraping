@@ -584,13 +584,154 @@ namespace WebScraper.ContentChange
             
             return summary.ToString();
         }
-        
-        private string TruncateContent(string content, int maxLength)
+
+        private List<ChangedSentence> ExtractChangedSentences(string oldContent, string newContent)
         {
-            if (content.Length <= maxLength)
-                return content;
+            var result = new List<ChangedSentence>();
+            
+            // Split content into sentences
+            var oldSentences = SplitIntoSentences(oldContent);
+            var newSentences = SplitIntoSentences(newContent);
+            
+            // Find added sentences
+            foreach (var sentence in newSentences)
+            {
+                if (!oldSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(new ChangedSentence
+                    {
+                        After = sentence,
+                        Before = null,
+                        ChangeType = SentenceChangeType.Added,
+                        Context = GetSentenceContext(newSentences, sentence),
+                        Importance = 0.7
+                    });
+                }
+            }
+            
+            // Find removed sentences
+            foreach (var sentence in oldSentences)
+            {
+                if (!newSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(new ChangedSentence
+                    {
+                        After = null,
+                        Before = sentence,
+                        ChangeType = SentenceChangeType.Removed,
+                        Context = GetSentenceContext(oldSentences, sentence),
+                        Importance = 0.8
+                    });
+                }
+            }
+            
+            // Find modified sentences using similarity detection
+            var potentialModifications = FindSimilarSentences(oldSentences, newSentences);
+            foreach (var pair in potentialModifications)
+            {
+                result.Add(new ChangedSentence
+                {
+                    Before = pair.Item1,
+                    After = pair.Item2,
+                    ChangeType = SentenceChangeType.Modified,
+                    Context = GetSentenceContext(newSentences, pair.Item2),
+                    Importance = 0.9
+                });
+            }
+            
+            return result;
+        }
+        
+        private List<string> SplitIntoSentences(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return new List<string>();
                 
-            return content.Substring(0, maxLength) + "...";
+            // Simple sentence splitting on common sentence terminators
+            var sentences = text.Split(new[] { ". ", "! ", "? ", ".\r", "!\r", "?\r", ".\n", "!\n", "?\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s) && s.Length > 5)
+                .ToList();
+                
+            // Add final period to last sentence if needed
+            for (int i = 0; i < sentences.Count; i++)
+            {
+                var s = sentences[i];
+                if (!s.EndsWith(".") && !s.EndsWith("!") && !s.EndsWith("?"))
+                {
+                    sentences[i] = s + ".";
+                }
+            }
+                
+            return sentences;
+        }
+        
+        private string GetSentenceContext(List<string> sentences, string sentence)
+        {
+            int index = sentences.IndexOf(sentence);
+            if (index < 0) return string.Empty;
+            
+            // Try to get one sentence before and after for context
+            int start = Math.Max(0, index - 1);
+            int end = Math.Min(sentences.Count - 1, index + 1);
+            
+            if (start == index && end == index)
+                return "Section: Unknown";
+                
+            if (start == index)
+                return "Beginning of section";
+                
+            if (end == index)
+                return "End of section";
+                
+            return "Middle of section";
+        }
+        
+        private List<Tuple<string, string>> FindSimilarSentences(List<string> oldSentences, List<string> newSentences)
+        {
+            var result = new List<Tuple<string, string>>();
+            
+            // Simple similarity detection based on word overlap
+            foreach (var oldSentence in oldSentences)
+            {
+                if (newSentences.Contains(oldSentence, StringComparer.OrdinalIgnoreCase))
+                    continue; // Exact match, not modified
+                    
+                // Get words from old sentence
+                var oldWords = oldSentence.Split(new[] { ' ', '\t', ',', ';', ':', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(w => w.Length > 3)
+                    .ToList();
+                    
+                if (oldWords.Count < 3)
+                    continue; // Too short to reliably detect similarity
+                    
+                foreach (var newSentence in newSentences)
+                {
+                    if (oldSentences.Contains(newSentence, StringComparer.OrdinalIgnoreCase))
+                        continue; // Exact match with another old sentence
+                        
+                    // Get words from new sentence
+                    var newWords = newSentence.Split(new[] { ' ', '\t', ',', ';', ':', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Where(w => w.Length > 3)
+                        .ToList();
+                        
+                    if (newWords.Count < 3)
+                        continue; // Too short
+                        
+                    // Count common words
+                    int commonWords = oldWords.Count(w => newWords.Contains(w, StringComparer.OrdinalIgnoreCase));
+                    double similarity = (double)commonWords / Math.Max(oldWords.Count, newWords.Count);
+                    
+                    // If similarity is high but not identical, consider it a modification
+                    if (similarity > 0.5 && similarity < 0.95)
+                    {
+                        result.Add(new Tuple<string, string>(oldSentence, newSentence));
+                        break; // Only match each old sentence to one new sentence at most
+                    }
+                }
+            }
+            
+            return result;
         }
     }
 }

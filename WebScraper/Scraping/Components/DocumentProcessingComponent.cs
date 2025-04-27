@@ -1,7 +1,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Net.Http;
 using WebScraper.RegulatoryContent;
+using WebScraper.Interfaces;
 
 namespace WebScraper.Scraping.Components
 {
@@ -14,6 +17,12 @@ namespace WebScraper.Scraping.Components
         private OfficeDocumentHandler _officeDocumentHandler;
         private string _documentsDirectory;
         private bool _documentProcessingEnabled;
+        private readonly HttpClient _httpClient;
+        
+        public DocumentProcessingComponent()
+        {
+            _httpClient = new HttpClient();
+        }
         
         /// <summary>
         /// Initializes the component
@@ -52,7 +61,8 @@ namespace WebScraper.Scraping.Components
                 if (Config.ProcessPdfDocuments)
                 {
                     LogInfo("Initializing PDF document handler...");
-                    _pdfDocumentHandler = new PdfDocumentHandler(_documentsDirectory, LogInfo);
+                    // Fix: Pass _httpClient as the second parameter
+                    _pdfDocumentHandler = new PdfDocumentHandler(_documentsDirectory, _httpClient, LogInfo);
                     LogInfo("PDF document handler initialized");
                 }
                 
@@ -60,7 +70,8 @@ namespace WebScraper.Scraping.Components
                 if (Config.ProcessOfficeDocuments)
                 {
                     LogInfo("Initializing Office document handler...");
-                    _officeDocumentHandler = new OfficeDocumentHandler(_documentsDirectory, LogInfo);
+                    // Fix: Pass _httpClient as the second parameter
+                    _officeDocumentHandler = new OfficeDocumentHandler(_documentsDirectory, _httpClient, LogInfo);
                     LogInfo("Office document handler initialized");
                 }
                 
@@ -213,32 +224,40 @@ namespace WebScraper.Scraping.Components
         /// </summary>
         private string CreateSafeFileName(string url, string extension)
         {
-            // Remove scheme and domain
-            Uri uri = new Uri(url);
-            string path = uri.Host + uri.AbsolutePath;
-            
-            // Replace invalid characters
-            foreach (char c in Path.GetInvalidFileNameChars())
+            try
             {
-                path = path.Replace(c, '_');
+                // Remove scheme and domain
+                Uri uri = new Uri(url);
+                string path = uri.Host + uri.AbsolutePath;
+                
+                // Replace invalid characters
+                foreach (char c in Path.GetInvalidFileNameChars())
+                {
+                    path = path.Replace(c, '_');
+                }
+                
+                // Replace other problematic characters
+                path = path.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
+                
+                // Ensure extension
+                if (string.IsNullOrEmpty(extension))
+                {
+                    extension = ".bin";
+                }
+                
+                // Add extension if needed
+                if (!path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                {
+                    path += extension;
+                }
+                
+                return path;
             }
-            
-            // Replace other problematic characters
-            path = path.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
-            
-            // Ensure extension
-            if (string.IsNullOrEmpty(extension))
+            catch (Exception ex)
             {
-                extension = ".bin";
+                LogError(ex, $"Error creating safe filename from URL: {url}");
+                return $"document_{DateTime.Now.Ticks}{extension}";
             }
-            
-            // Add extension if needed
-            if (!path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
-            {
-                path += extension;
-            }
-            
-            return path;
         }
         
         /// <summary>

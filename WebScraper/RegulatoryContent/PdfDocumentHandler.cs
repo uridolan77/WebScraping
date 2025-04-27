@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using iText.Kernel.Pdf;
@@ -17,10 +18,28 @@ namespace WebScraper.RegulatoryContent
         private readonly Action<string> _logger;
         private Dictionary<string, PdfMetadata> _pdfMetadata = new Dictionary<string, PdfMetadata>();
 
+        // Constructor with all parameters
         public PdfDocumentHandler(string storageDirectory, HttpClient httpClient = null, Action<string> logger = null)
         {
             _storageDirectory = storageDirectory;
             _httpClient = httpClient ?? new HttpClient();
+            _logger = logger ?? Console.WriteLine;
+
+            // Create storage directory if it doesn't exist
+            if (!Directory.Exists(_storageDirectory))
+            {
+                Directory.CreateDirectory(_storageDirectory);
+            }
+
+            // Load existing metadata if available
+            LoadPdfMetadata();
+        }
+
+        // Constructor that accepts just logger - needed for compatibility with RegulatoryDocumentHandler
+        public PdfDocumentHandler(Action<string> logger = null)
+        {
+            _storageDirectory = Path.Combine(Path.GetTempPath(), "PdfDocuments");
+            _httpClient = new HttpClient();
             _logger = logger ?? Console.WriteLine;
 
             // Create storage directory if it doesn't exist
@@ -239,44 +258,98 @@ namespace WebScraper.RegulatoryContent
             return await ExtractPdfText(pdfUrl);
         }
 
-        public async Task<string> ExtractTextAsync(byte[] document)
+        // Add ExtractTextAsync method to match the interface expected by DocumentProcessingComponent
+        public async Task<DocumentProcessingResult> ExtractTextAsync(string filePath)
         {
             try
             {
-                // Create a temporary file to process the PDF
-                string tempFilePath = Path.Combine(_storageDirectory, $"temp_pdf_{Guid.NewGuid()}.pdf");
+                var text = await ExtractTextFromPdfFile(filePath);
+                string title = Path.GetFileNameWithoutExtension(filePath);
+                string author = null;
+                DateTime? creationDate = null;
+                DateTime? modificationDate = null;
+                int pageCount = 0;
+                List<string> keywords = new List<string>();
                 
-                try
+                // Try to extract metadata from the PDF
+                using (var pdfReader = new PdfReader(filePath))
+                using (var pdfDocument = new PdfDocument(pdfReader))
                 {
-                    // Write the PDF bytes to a temp file
-                    await File.WriteAllBytesAsync(tempFilePath, document);
+                    pageCount = pdfDocument.GetNumberOfPages();
                     
-                    // Extract the text from the temp file
-                    string extractedText = await ExtractTextFromPdfFile(tempFilePath);
-                    
-                    _logger($"Successfully extracted {extractedText.Length} characters from PDF");
-                    return extractedText;
-                }
-                finally
-                {
-                    // Clean up the temp file
-                    if (File.Exists(tempFilePath))
+                    var info = pdfDocument.GetDocumentInfo();
+                    if (info != null)
                     {
-                        try
+                        if (!string.IsNullOrEmpty(info.GetTitle()))
+                            title = info.GetTitle();
+                        
+                        if (!string.IsNullOrEmpty(info.GetAuthor()))
+                            author = info.GetAuthor();
+                        
+                        if (!string.IsNullOrEmpty(info.GetKeywords()))
+                            keywords = new List<string>(info.GetKeywords().Split(',').Select(k => k.Trim()));
+                        
+                        // Parse creation date if present
+                        string creationDateStr = info.GetMoreInfo("CreationDate");
+                        if (!string.IsNullOrEmpty(creationDateStr))
                         {
-                            File.Delete(tempFilePath);
+                            // PDF dates are often in format: D:YYYYMMDDHHmmSSOHH'mm'
+                            // Try to extract a valid date
+                            if (creationDateStr.StartsWith("D:") && creationDateStr.Length >= 15)
+                            {
+                                try
+                                {
+                                    string dateStr = creationDateStr.Substring(2);
+                                    int year = int.Parse(dateStr.Substring(0, 4));
+                                    int month = int.Parse(dateStr.Substring(4, 2));
+                                    int day = int.Parse(dateStr.Substring(6, 2));
+                                    int hour = int.Parse(dateStr.Substring(8, 2));
+                                    int minute = int.Parse(dateStr.Substring(10, 2));
+                                    
+                                    creationDate = new DateTime(year, month, day, hour, minute, 0);
+                                }
+                                catch
+                                {
+                                    _logger($"Failed to parse creation date: {creationDateStr}");
+                                }
+                            }
+                            else if (DateTime.TryParse(creationDateStr, out var parsedDate))
+                            {
+                                creationDate = parsedDate;
+                            }
                         }
-                        catch (Exception ex)
+                        
+                        // Parse modification date if present
+                        string modDateStr = info.GetMoreInfo("ModDate");
+                        if (!string.IsNullOrEmpty(modDateStr))
                         {
-                            _logger($"Warning: Failed to delete temporary PDF file: {ex.Message}");
+                            if (DateTime.TryParse(modDateStr, out var parsedDate))
+                            {
+                                modificationDate = parsedDate;
+                            }
                         }
                     }
                 }
+                
+                return new DocumentProcessingResult
+                {
+                    Text = text,
+                    Title = title,
+                    Author = author,
+                    CreationDate = creationDate,
+                    ModificationDate = modificationDate,
+                    PageCount = pageCount,
+                    Keywords = keywords
+                };
             }
             catch (Exception ex)
             {
-                _logger($"Error extracting text from PDF: {ex.Message}");
-                return $"[PDF EXTRACTION ERROR: {ex.Message}]";
+                _logger($"Error extracting text and metadata from PDF {filePath}: {ex.Message}");
+                return new DocumentProcessingResult
+                {
+                    Text = $"[PDF EXTRACTION ERROR: {ex.Message}]",
+                    Title = Path.GetFileNameWithoutExtension(filePath)
+                };
             }
         }
 
@@ -342,5 +415,18 @@ namespace WebScraper.RegulatoryContent
             public string DocumentType { get; set; }
             public Dictionary<string, string> AdditionalMetadata { get; set; } = new Dictionary<string, string>();
         }
+    }
+
+    // Add DocumentProcessingResult class if it doesn't exist elsewhere
+    // This should match the class in OfficeDocumentHandler
+    public class DocumentProcessingResult
+    {
+        public string Text { get; set; }
+        public string Title { get; set; }
+        public string Author { get; set; }
+        public DateTime? CreationDate { get; set; }
+        public DateTime? ModificationDate { get; set; }
+        public int PageCount { get; set; }
+        public List<string> Keywords { get; set; } = new List<string>();
     }
 }

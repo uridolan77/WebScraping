@@ -178,7 +178,7 @@ namespace WebScraper.Scraping.Components
                 var pageVersion = _changeDetector.TrackPageVersion(url, content, textContent);
                 
                 // Handle significant changes detection
-                var previousVersion = _changeDetector.GetPreviousVersion(url, pageVersion);
+                var previousVersion = _changeDetector.GetPreviousVersion(url);
                 if (previousVersion != null && pageVersion.ChangeFromPrevious != ChangeType.None)
                 {
                     var changes = _changeDetector.DetectSignificantChanges(
@@ -211,7 +211,7 @@ namespace WebScraper.Scraping.Components
             LogInfo($"Significant changes detected at {url}: {changes.ChangedSentences.Count} changed sentences");
             
             // Get notification component if there are critical changes and notifications are enabled
-            if (Config.NotifyOnChanges && changes.HasCriticalChanges)
+            if (Config.NotifyOnChanges && changes.HasCriticalChanges())
             {
                 // In a full implementation, we would get a notification component and send an alert
                 // For now, we'll just log it

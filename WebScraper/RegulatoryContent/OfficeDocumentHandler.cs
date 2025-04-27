@@ -12,6 +12,7 @@ using DocumentFormat.OpenXml.Presentation;
 using Newtonsoft.Json;
 using System.Linq;
 using System.Xml;
+using System.Text.RegularExpressions;
 
 namespace WebScraper.RegulatoryContent
 {
@@ -29,6 +30,23 @@ namespace WebScraper.RegulatoryContent
         {
             _storageDirectory = storageDirectory;
             _httpClient = httpClient ?? new HttpClient();
+            _logger = logger ?? Console.WriteLine;
+
+            // Create storage directory if it doesn't exist
+            if (!Directory.Exists(_storageDirectory))
+            {
+                Directory.CreateDirectory(_storageDirectory);
+            }
+
+            // Load existing metadata if available
+            LoadDocumentMetadata();
+        }
+
+        // Add constructor overload that accepts just the logger
+        public OfficeDocumentHandler(Action<string> logger = null)
+        {
+            _storageDirectory = Path.Combine(Path.GetTempPath(), "OfficeDocuments");
+            _httpClient = new HttpClient();
             _logger = logger ?? Console.WriteLine;
 
             // Create storage directory if it doesn't exist
@@ -79,120 +97,244 @@ namespace WebScraper.RegulatoryContent
 
         private async Task<string> DownloadDocumentIfNeeded(string documentUrl)
         {
-            string filename = GetSafeFilenameFromUrl(documentUrl);
-            string localPath = Path.Combine(_storageDirectory, filename);
+            string localPath = Path.Combine(_storageDirectory, GetSafeFilenameFromUrl(documentUrl));
             
-            // Download only if we don't have it already
-            if (!File.Exists(localPath))
+            // Check if we have already downloaded this file
+            if (File.Exists(localPath))
             {
-                _logger($"Downloading document from {documentUrl}");
-                
-                try
-                {
-                    var response = await _httpClient.GetAsync(documentUrl);
-                    response.EnsureSuccessStatusCode();
-                    
-                    using (var stream = await response.Content.ReadAsStreamAsync())
-                    using (var fileStream = File.Create(localPath))
-                    {
-                        await stream.CopyToAsync(fileStream);
-                    }
-                    
-                    _logger($"Document downloaded to {localPath}");
-                }
-                catch (Exception ex)
-                {
-                    _logger($"Error downloading document {documentUrl}: {ex.Message}");
-                    throw;
-                }
+                _logger($"Using cached version of {documentUrl}");
+                return localPath;
             }
             
-            return localPath;
+            // Download the file
+            _logger($"Downloading {documentUrl}");
+            try
+            {
+                byte[] data = await _httpClient.GetByteArrayAsync(documentUrl);
+                File.WriteAllBytes(localPath, data);
+                
+                // Add a metadata entry
+                if (!_docMetadata.ContainsKey(documentUrl))
+                {
+                    _docMetadata[documentUrl] = new OfficeDocumentMetadata
+                    {
+                        Url = documentUrl,
+                        LocalFilePath = localPath,
+                        DownloadDate = DateTime.Now,
+                        FileSizeBytes = data.Length,
+                        DocumentType = GetDocumentType(Path.GetExtension(documentUrl))
+                    };
+                    
+                    SaveDocumentMetadataToDisk();
+                }
+                
+                return localPath;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error downloading {documentUrl}: {ex.Message}");
+                return null;
+            }
         }
 
         private string GetSafeFilenameFromUrl(string url)
         {
-            // Remove query string
-            var baseUrl = url.Split('?')[0];
+            // Extract filename from URL
+            string filename = Path.GetFileName(url);
             
-            // Get the last part of the URL
-            var fileName = Path.GetFileName(baseUrl);
-            
-            // Replace invalid filename characters
-            foreach (var c in Path.GetInvalidFileNameChars())
+            // If URL doesn't have a clear filename, hash it
+            if (string.IsNullOrEmpty(filename))
             {
-                fileName = fileName.Replace(c, '_');
+                filename = url.GetHashCode().ToString("X8");
+                filename += Path.GetExtension(url);
             }
             
-            // Ensure unique by adding a timestamp if needed
-            if (File.Exists(Path.Combine(_storageDirectory, fileName)))
+            // Replace invalid characters
+            foreach (char c in Path.GetInvalidFileNameChars())
             {
-                var timeStamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-                fileName = Path.GetFileNameWithoutExtension(fileName) + 
-                           "_" + timeStamp + Path.GetExtension(fileName);
+                filename = filename.Replace(c, '_');
             }
             
-            return fileName;
+            return filename;
         }
 
         public async Task<string> ExtractTextFromDocument(string documentUrl)
         {
             try
             {
-                // Download the document if not already downloaded
-                var localPath = await DownloadDocumentIfNeeded(documentUrl);
-                string extension = Path.GetExtension(localPath).ToLowerInvariant();
+                // Download the document if needed
+                string filePath = await DownloadDocumentIfNeeded(documentUrl);
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return "[DOCUMENT DOWNLOAD FAILED]";
+                }
                 
-                // Extract text based on document type
-                string extractedText;
+                // Get the file extension
+                string extension = Path.GetExtension(filePath).ToLowerInvariant();
+                
+                // Extract text based on the file type
+                string text;
+                switch (extension)
+                {
+                    case ".docx":
+                    case ".doc":
+                        text = ExtractTextFromWordDocument(filePath);
+                        break;
+                    case ".xlsx":
+                    case ".xls":
+                        text = ExtractTextFromExcelDocument(filePath);
+                        break;
+                    case ".pptx":
+                    case ".ppt":
+                        text = ExtractTextFromPowerPointDocument(filePath);
+                        break;
+                    default:
+                        text = $"[UNSUPPORTED DOCUMENT FORMAT: {extension}]";
+                        break;
+                }
+                
+                return text;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error extracting text from {documentUrl}: {ex.Message}");
+                return $"[DOCUMENT PROCESSING ERROR: {ex.Message}]";
+            }
+        }
+        
+        // Add ExtractTextAsync method which is being called in DocumentProcessingComponent.cs
+        public async Task<DocumentProcessingResult> ExtractTextAsync(string filePath)
+        {
+            try
+            {
+                string extension = Path.GetExtension(filePath).ToLowerInvariant();
+                string text;
+                string title = Path.GetFileNameWithoutExtension(filePath);
+                string author = null;
+                DateTime? creationDate = null;
+                DateTime? modificationDate = null;
+                int pageCount = 0;
+                List<string> keywords = new List<string>();
                 
                 switch (extension)
                 {
                     case ".docx":
-                        extractedText = ExtractTextFromWordDocument(localPath);
+                    case ".doc":
+                        text = ExtractTextFromWordDocument(filePath);
+                        using (WordprocessingDocument doc = WordprocessingDocument.Open(filePath, false))
+                        {
+                            var props = doc.PackageProperties;
+                            if (props != null)
+                            {
+                                if (!string.IsNullOrEmpty(props.Title))
+                                    title = props.Title;
+                                if (!string.IsNullOrEmpty(props.Creator))
+                                    author = props.Creator;
+                                if (props.Created != null)
+                                    creationDate = props.Created;
+                                if (props.Modified != null)
+                                    modificationDate = props.Modified;
+                                if (!string.IsNullOrEmpty(props.Keywords))
+                                    keywords = props.Keywords.Split(',').Select(k => k.Trim()).ToList();
+                            }
+                        }
                         break;
                     case ".xlsx":
-                        extractedText = ExtractTextFromExcelDocument(localPath);
+                    case ".xls":
+                        text = ExtractTextFromExcelDocument(filePath);
+                        using (SpreadsheetDocument doc = SpreadsheetDocument.Open(filePath, false))
+                        {
+                            var props = doc.PackageProperties;
+                            if (props != null)
+                            {
+                                if (!string.IsNullOrEmpty(props.Title))
+                                    title = props.Title;
+                                if (!string.IsNullOrEmpty(props.Creator))
+                                    author = props.Creator;
+                                if (props.Created != null)
+                                    creationDate = props.Created;
+                                if (props.Modified != null)
+                                    modificationDate = props.Modified;
+                                if (!string.IsNullOrEmpty(props.Keywords))
+                                    keywords = props.Keywords.Split(',').Select(k => k.Trim()).ToList();
+                            }
+                        }
                         break;
                     case ".pptx":
-                        extractedText = ExtractTextFromPowerPointDocument(localPath);
-                        break;
-                    case ".doc":
-                    case ".xls":
                     case ".ppt":
-                        extractedText = $"[LEGACY OFFICE FORMAT NOT SUPPORTED: {extension}]";
-                        _logger($"Legacy Office format not supported: {extension}");
+                        text = ExtractTextFromPowerPointDocument(filePath);
+                        using (PresentationDocument doc = PresentationDocument.Open(filePath, false))
+                        {
+                            var props = doc.PackageProperties;
+                            if (props != null)
+                            {
+                                if (!string.IsNullOrEmpty(props.Title))
+                                    title = props.Title;
+                                if (!string.IsNullOrEmpty(props.Creator))
+                                    author = props.Creator;
+                                if (props.Created != null)
+                                    creationDate = props.Created;
+                                if (props.Modified != null)
+                                    modificationDate = props.Modified;
+                                if (!string.IsNullOrEmpty(props.Keywords))
+                                    keywords = props.Keywords.Split(',').Select(k => k.Trim()).ToList();
+                            }
+                            // Try to count slides for page count
+                            var presentationPart = doc.PresentationPart;
+                            if (presentationPart?.Presentation?.SlideIdList != null)
+                            {
+                                pageCount = presentationPart.Presentation.SlideIdList.Count();
+                            }
+                        }
                         break;
                     default:
-                        extractedText = $"[UNSUPPORTED DOCUMENT FORMAT: {extension}]";
-                        _logger($"Unsupported document format: {extension}");
+                        text = $"[UNSUPPORTED DOCUMENT FORMAT: {extension}]";
                         break;
                 }
                 
-                _logger($"Extracted {extractedText.Length} characters from document: {documentUrl}");
-                
-                // Update metadata
-                if (!_docMetadata.TryGetValue(documentUrl, out var metadata))
+                return new DocumentProcessingResult
                 {
-                    metadata = new OfficeDocumentMetadata
-                    {
-                        Url = documentUrl,
-                        LocalFilePath = localPath,
-                        DownloadDate = DateTime.Now,
-                        DocumentType = GetDocumentType(extension),
-                        FileSizeBytes = new FileInfo(localPath).Length
-                    };
-                    _docMetadata[documentUrl] = metadata;
-                }
-                
-                SaveDocumentMetadataToDisk();
-                
-                return extractedText;
+                    Text = text,
+                    Title = title,
+                    Author = author,
+                    CreationDate = creationDate,
+                    ModificationDate = modificationDate,
+                    PageCount = pageCount,
+                    Keywords = keywords
+                };
             }
             catch (Exception ex)
             {
-                _logger($"Error extracting text from document {documentUrl}: {ex.Message}");
-                return $"[DOCUMENT EXTRACTION ERROR: {ex.Message}]";
+                _logger($"Error extracting text from {filePath}: {ex.Message}");
+                return new DocumentProcessingResult
+                {
+                    Text = $"[DOCUMENT PROCESSING ERROR: {ex.Message}]",
+                    Title = Path.GetFileNameWithoutExtension(filePath)
+                };
+            }
+        }
+
+        // Add ExtractTextAsync method overload for byte[] parameter
+        public async Task<string> ExtractTextAsync(byte[] documentBytes)
+        {
+            try
+            {
+                // Create a temporary file to save the bytes
+                string tempPath = Path.Combine(Path.GetTempPath(), $"tempoffice_{Guid.NewGuid()}.docx");
+                File.WriteAllBytes(tempPath, documentBytes);
+                
+                // Process the file
+                var result = await ExtractTextAsync(tempPath);
+                
+                // Clean up the temp file
+                try { File.Delete(tempPath); } catch { }
+                
+                return result.Text;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error extracting text from document bytes: {ex.Message}");
+                return $"[DOCUMENT PROCESSING ERROR: {ex.Message}]";
             }
         }
 
@@ -230,26 +372,14 @@ namespace WebScraper.RegulatoryContent
                         {
                             text.AppendLine(para.InnerText);
                         }
-                        
-                        // Extract tables
-                        foreach (var table in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Table>())
-                        {
-                            foreach (var row in table.Descendants<TableRow>())
-                            {
-                                var rowText = string.Join("\t", row.Descendants<TableCell>().Select(cell => cell.InnerText));
-                                text.AppendLine(rowText);
-                            }
-                            text.AppendLine();
-                        }
                     }
                 }
                 
-                _logger($"Successfully extracted text from Word document: {filePath}");
                 return text.ToString();
             }
             catch (Exception ex)
             {
-                _logger($"Error extracting text from Word document {filePath}: {ex.Message}");
+                _logger($"Error extracting text from Word document: {ex.Message}");
                 return $"[WORD DOCUMENT EXTRACTION ERROR: {ex.Message}]";
             }
         }
@@ -282,46 +412,48 @@ namespace WebScraper.RegulatoryContent
                     // Get shared string table
                     SharedStringTable sharedStrings = doc.WorkbookPart.SharedStringTablePart?.SharedStringTable;
                     
-                    // Get all worksheets
-                    var sheets = doc.WorkbookPart.Workbook.Descendants<Sheet>();
-                    
-                    foreach (var sheet in sheets)
+                    // Process each worksheet
+                    foreach (var worksheetPart in doc.WorkbookPart.WorksheetParts)
                     {
-                        text.AppendLine($"--- Sheet: {sheet.Name} ---");
-                        
-                        // Get the worksheet part
-                        WorksheetPart worksheetPart = (WorksheetPart)doc.WorkbookPart.GetPartById(sheet.Id);
-                        Worksheet worksheet = worksheetPart.Worksheet;
-                        
-                        // Get all cells with data
-                        var cells = worksheet.Descendants<Cell>().Where(c => c.CellValue != null);
-                        
-                        // Group cells by row
-                        var rows = cells.GroupBy(c => GetRowIndex(c.CellReference));
-                        
-                        foreach (var row in rows.OrderBy(r => r.Key))
+                        var sheetName = doc.WorkbookPart.Workbook.Descendants<Sheet>()
+                            .FirstOrDefault(s => s.Id == doc.WorkbookPart.GetIdOfPart(worksheetPart))?.Name;
+                            
+                        if (!string.IsNullOrEmpty(sheetName))
                         {
-                            var rowText = new StringBuilder();
+                            text.AppendLine($"[Sheet: {sheetName}]");
+                        }
+                        
+                        Worksheet worksheet = worksheetPart.Worksheet;
+                        SheetData sheetData = worksheet.GetFirstChild<SheetData>();
+                        
+                        if (sheetData != null)
+                        {
+                            string currentRowIndex = null;
+                            StringBuilder rowText = new StringBuilder();
                             
-                            foreach (var cell in row.OrderBy(c => GetColumnIndex(c.CellReference)))
+                            foreach (var row in sheetData.Descendants<Row>())
                             {
-                                string cellValue = GetCellValue(cell, sharedStrings);
-                                rowText.Append(cellValue + "\t");
+                                rowText.Clear();
+                                
+                                foreach (var cell in row.Descendants<Cell>())
+                                {
+                                    string cellValue = GetCellValue(cell, sharedStrings);
+                                    rowText.Append(cellValue + "\t");
+                                }
+                                
+                                text.AppendLine(rowText.ToString().TrimEnd('\t'));
                             }
-                            
-                            text.AppendLine(rowText.ToString().TrimEnd('\t'));
                         }
                         
                         text.AppendLine();
                     }
                 }
                 
-                _logger($"Successfully extracted text from Excel document: {filePath}");
                 return text.ToString();
             }
             catch (Exception ex)
             {
-                _logger($"Error extracting text from Excel document {filePath}: {ex.Message}");
+                _logger($"Error extracting text from Excel document: {ex.Message}");
                 return $"[EXCEL DOCUMENT EXTRACTION ERROR: {ex.Message}]";
             }
         }
@@ -351,86 +483,92 @@ namespace WebScraper.RegulatoryContent
                         }
                     }
                     
-                    // Get presentation part
+                    // Extract text from slides
                     var presentationPart = doc.PresentationPart;
-                    var presentation = presentationPart.Presentation;
-                    
-                    // Get all slides
-                    var slideIds = presentation.SlideIdList.ChildElements;
-                    int slideNumber = 1;
-                    
-                    foreach (SlideId slideId in slideIds)
+                    if (presentationPart?.Presentation?.SlideIdList != null)
                     {
-                        text.AppendLine($"--- Slide {slideNumber++} ---");
+                        int slideNumber = 1;
                         
-                        // Get the slide part
-                        SlidePart slidePart = (SlidePart)presentationPart.GetPartById(slideId.RelationshipId);
-                        
-                        // Get all text elements
-                        var textElements = slidePart.Slide.Descendants<DocumentFormat.OpenXml.Drawing.Text>();
-                        
-                        foreach (var textElement in textElements)
+                        foreach (var slideId in presentationPart.Presentation.SlideIdList.ChildElements)
                         {
-                            text.AppendLine(textElement.Text);
+                            var slidePartId = ((SlideId)slideId).RelationshipId;
+                            var slidePart = (SlidePart)presentationPart.GetPartById(slidePartId);
+                            
+                            text.AppendLine($"[Slide {slideNumber}]");
+                            
+                            // Extract text from text elements
+                            foreach (var paragraph in slidePart.Slide.Descendants<DocumentFormat.OpenXml.Drawing.Paragraph>())
+                            {
+                                text.AppendLine(paragraph.InnerText);
+                            }
+                            
+                            text.AppendLine();
+                            slideNumber++;
                         }
-                        
-                        text.AppendLine();
                     }
                 }
                 
-                _logger($"Successfully extracted text from PowerPoint document: {filePath}");
                 return text.ToString();
             }
             catch (Exception ex)
             {
-                _logger($"Error extracting text from PowerPoint document {filePath}: {ex.Message}");
+                _logger($"Error extracting text from PowerPoint document: {ex.Message}");
                 return $"[POWERPOINT DOCUMENT EXTRACTION ERROR: {ex.Message}]";
             }
         }
 
         private string GetCellValue(Cell cell, SharedStringTable sharedStrings)
         {
-            if (cell.DataType == null)
+            if (cell == null)
+                return string.Empty;
+                
+            string value = cell.InnerText;
+            
+            // If the cell contains a shared string
+            if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
             {
-                // Numeric cell value
-                return cell.CellValue?.Text ?? "";
+                if (sharedStrings != null && int.TryParse(value, out int index))
+                {
+                    if (index < sharedStrings.ChildElements.Count)
+                    {
+                        return sharedStrings.ChildElements[index].InnerText;
+                    }
+                }
             }
             
-            if (cell.DataType.Value == CellValues.SharedString && sharedStrings != null)
-            {
-                // Shared string value
-                int ssid = int.Parse(cell.CellValue.Text);
-                return sharedStrings.ChildElements[ssid].InnerText;
-            }
-            
-            // Other cell value types
-            return cell.CellValue?.Text ?? "";
+            return value;
         }
 
         private string GetRowIndex(string cellReference)
         {
-            // Extract the row index from cell reference like "A1", "B12", etc.
-            return new string(cellReference.Where(c => char.IsDigit(c)).ToArray());
+            // Remove column part
+            return Regex.Replace(cellReference, "[A-Za-z]", "");
         }
 
         private string GetColumnIndex(string cellReference)
         {
-            // Extract the column index from cell reference like "A1", "B12", etc.
-            return new string(cellReference.Where(c => char.IsLetter(c)).ToArray());
+            // Remove row part
+            return Regex.Replace(cellReference, "[0-9]", "");
         }
 
         private string GetDocumentType(string extension)
         {
-            return extension.ToLowerInvariant() switch
+            extension = extension.ToLowerInvariant();
+            
+            switch (extension)
             {
-                ".docx" => "Word Document",
-                ".xlsx" => "Excel Spreadsheet",
-                ".pptx" => "PowerPoint Presentation",
-                ".doc" => "Legacy Word Document",
-                ".xls" => "Legacy Excel Spreadsheet",
-                ".ppt" => "Legacy PowerPoint Presentation",
-                _ => "Unknown Office Document"
-            };
+                case ".docx":
+                case ".doc":
+                    return "Word";
+                case ".xlsx":
+                case ".xls":
+                    return "Excel";
+                case ".pptx":
+                case ".ppt":
+                    return "PowerPoint";
+                default:
+                    return "Unknown";
+            }
         }
 
         public class OfficeDocumentMetadata
@@ -445,5 +583,17 @@ namespace WebScraper.RegulatoryContent
             public string DocumentType { get; set; }
             public Dictionary<string, string> AdditionalMetadata { get; set; } = new Dictionary<string, string>();
         }
+    }
+    
+    // Add DocumentProcessingResult class for ExtractTextAsync method
+    public class DocumentProcessingResult
+    {
+        public string Text { get; set; }
+        public string Title { get; set; }
+        public string Author { get; set; }
+        public DateTime? CreationDate { get; set; }
+        public DateTime? ModificationDate { get; set; }
+        public int PageCount { get; set; }
+        public List<string> Keywords { get; set; } = new List<string>();
     }
 }
