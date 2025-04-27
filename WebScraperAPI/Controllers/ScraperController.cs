@@ -195,6 +195,116 @@ namespace WebScraperApi.Controllers
                 ScraperId = scraperId
             });
         }
+        
+        #region New API endpoints for additional functionality
+        
+        [HttpGet("{id}/changes")]
+        public async Task<IActionResult> GetDetectedChanges(string id, [FromQuery] DateTime? since = null, [FromQuery] int limit = 100)
+        {
+            var changes = await _scraperManager.GetDetectedChanges(id, since, limit);
+            if (changes == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or has no changes detected");
+            }
+            
+            return Ok(new { Changes = changes });
+        }
+        
+        [HttpGet("{id}/documents")]
+        public async Task<IActionResult> GetProcessedDocuments(string id, [FromQuery] string documentType = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var documents = await _scraperManager.GetProcessedDocuments(id, documentType, page, pageSize);
+            if (documents == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or has no processed documents");
+            }
+            
+            return Ok(documents);
+        }
+        
+        [HttpGet("{id}/analytics")]
+        public async Task<IActionResult> GetScraperAnalytics(string id)
+        {
+            var analytics = await _scraperManager.GetScraperAnalytics(id);
+            if (analytics == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or analytics not available");
+            }
+            
+            return Ok(analytics);
+        }
+        
+        [HttpPut("{id}/content-extraction")]
+        public async Task<IActionResult> UpdateContentExtractionRules(string id, [FromBody] ContentExtractionRules rules)
+        {
+            var success = await _scraperManager.UpdateContentExtractionRules(id, rules);
+            if (!success)
+            {
+                return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            return Ok(new { Message = "Content extraction rules updated successfully" });
+        }
+        
+        [HttpGet("{id}/patterns")]
+        public async Task<IActionResult> GetLearnedPatterns(string id)
+        {
+            var patterns = await _scraperManager.GetLearnedPatterns(id);
+            if (patterns == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or has no learned patterns");
+            }
+            
+            return Ok(patterns);
+        }
+        
+        [HttpGet("{id}/regulatory-alerts")]
+        public async Task<IActionResult> GetRegulatoryAlerts(string id, [FromQuery] DateTime? since = null, [FromQuery] string importance = null)
+        {
+            var alerts = await _scraperManager.GetRegulatoryAlerts(id, since, importance);
+            if (alerts == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or has no regulatory alerts");
+            }
+            
+            return Ok(new { Alerts = alerts });
+        }
+        
+        [HttpPut("{id}/regulatory-config")]
+        public async Task<IActionResult> UpdateRegulatoryConfig(string id, [FromBody] RegulatoryConfigModel config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var success = await _scraperManager.UpdateRegulatoryConfig(id, config);
+            if (!success)
+            {
+                return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            return Ok(new { Message = "Regulatory configuration updated successfully" });
+        }
+        
+        [HttpPost("{id}/export-data")]
+        public async Task<IActionResult> ExportScrapedData(string id, [FromBody] ExportOptions options)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var result = await _scraperManager.ExportScrapedData(id, options);
+            if (result == null)
+            {
+                return NotFound($"Scraper with ID {id} not found or has no data to export");
+            }
+            
+            return Ok(result);
+        }
+        
+        #endregion
     }
     
     public class MonitoringSettings
@@ -205,4 +315,41 @@ namespace WebScraperApi.Controllers
         public string NotificationEmail { get; set; }
         public bool TrackChangesHistory { get; set; } = true;
     }
+    
+    #region New model classes for additional endpoints
+    
+    public class ContentExtractionRules
+    {
+        public List<string> IncludeSelectors { get; set; } = new List<string>();
+        public List<string> ExcludeSelectors { get; set; } = new List<string>();
+        public bool ExtractMetadata { get; set; } = true;
+        public bool ExtractStructuredData { get; set; } = false;
+        public string CustomJsExtractor { get; set; }
+    }
+    
+    public class RegulatoryConfigModel
+    {
+        public bool EnableRegulatoryContentAnalysis { get; set; } = false;
+        public bool TrackRegulatoryChanges { get; set; } = false;
+        public bool ClassifyRegulatoryDocuments { get; set; } = false;
+        public bool ExtractStructuredContent { get; set; } = false;
+        public bool ProcessPdfDocuments { get; set; } = false;
+        public bool MonitorHighImpactChanges { get; set; } = false;
+        public bool IsUKGCWebsite { get; set; } = false;
+        public List<string> KeywordAlertList { get; set; } = new List<string>();
+        public string NotificationEndpoint { get; set; }
+    }
+    
+    public class ExportOptions
+    {
+        public string Format { get; set; } = "json";
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public bool IncludeRawHtml { get; set; } = false;
+        public bool IncludeProcessedContent { get; set; } = true;
+        public bool IncludeMetadata { get; set; } = true;
+        public string OutputPath { get; set; }
+    }
+    
+    #endregion
 }
