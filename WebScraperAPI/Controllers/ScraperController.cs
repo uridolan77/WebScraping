@@ -489,10 +489,13 @@ namespace WebScraperApi.Controllers
             
             var result = await _scraperManager.PerformBatchOperation(request);
             
+            // Cast the dynamic result to access its properties
+            dynamic dynamicResult = result;
+            
             return Ok(new { 
-                SuccessCount = result.SuccessCount,
-                FailureCount = result.FailureCount,
-                Results = result.Results
+                SuccessCount = dynamicResult.SuccessCount,
+                FailureCount = dynamicResult.FailureCount,
+                Results = dynamicResult.Results
             });
         }
         
