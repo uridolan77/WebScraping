@@ -42,8 +42,11 @@ namespace WebScraperApi.Services
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
                 
+                // Create an HttpClient for validation
+                var httpClient = new System.Net.Http.HttpClient();
+                
                 // First validate the configuration using our validator
-                var validator = new ConfigurationValidator(logAction);
+                var validator = new ConfigurationValidator(httpClient, logAction);
                 var validationResult = await validator.ValidateConfigurationAsync(scraperConfig);
                 
                 if (!validationResult.IsValid && !validationResult.CanRunWithWarnings)
@@ -86,9 +89,9 @@ namespace WebScraperApi.Services
                     scraper = new EnhancedScraper(
                         scraperConfig, 
                         scraperLogger,
-                        crawlStrategy: null,
-                        contentExtractor: null,
-                        documentProcessor: documentProcessor);
+                        crawlStrategy: null!, // Using null-forgiving operator
+                        contentExtractor: null!, // Using null-forgiving operator
+                        documentProcessor: documentProcessor!); // Using null-forgiving operator
                 }
                 else
                 {
@@ -162,6 +165,7 @@ namespace WebScraperApi.Services
                                 config.ProcessPdfDocuments || 
                                 config.ProcessJsHeavyPages;
                                 
+
             return useEnhancedScraper;
         }
         
@@ -185,7 +189,7 @@ namespace WebScraperApi.Services
         /// <summary>
         /// Creates a document processor based on the provided configuration
         /// </summary>
-        private WebScraper.RegulatoryFramework.Interfaces.IDocumentProcessor CreateDocumentProcessor(ScraperConfig config, Action<string> logAction)
+        private WebScraper.RegulatoryFramework.Interfaces.IDocumentProcessor? CreateDocumentProcessor(ScraperConfig config, Action<string> logAction)
         {
             // Create document processor if needed
             if (config.ProcessPdfDocuments)
@@ -198,7 +202,7 @@ namespace WebScraperApi.Services
                 
                 // Create the PDF document handler with proper parameters
                 var pdfHandler = new WebScraper.RegulatoryContent.PdfDocumentHandler(
-                    config.OutputDirectory, 
+                    config.OutputDirectory,
                     httpClient,
                     logAction);
                 
@@ -218,7 +222,7 @@ namespace WebScraperApi.Services
         public bool IsRunning { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
-        public string ElapsedTime { get; set; }
+        public string ElapsedTime { get; set; } = string.Empty; // Initialize with empty string
         public int UrlsProcessed { get; set; }
         public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
         public DateTime? LastMonitorCheck { get; set; }
