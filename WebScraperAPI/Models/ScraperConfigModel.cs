@@ -73,6 +73,28 @@ namespace WebScraperApi.Models
         
         public bool TrackChangesHistory { get; set; } = true;
         
+        // Regulatory content monitoring options
+        public bool EnableRegulatoryContentAnalysis { get; set; } = false;
+        
+        public bool TrackRegulatoryChanges { get; set; } = false;
+        
+        public bool ClassifyRegulatoryDocuments { get; set; } = false;
+        
+        public bool ExtractStructuredContent { get; set; } = false;
+        
+        public bool ProcessPdfDocuments { get; set; } = false;
+        
+        public bool MonitorHighImpactChanges { get; set; } = false;
+        
+        // UKGC specific options
+        public bool IsUKGCWebsite { get; set; } = false;
+        
+        public bool PrioritizeEnforcementActions { get; set; } = true;
+        
+        public bool PrioritizeLCCP { get; set; } = true;
+        
+        public bool PrioritizeAML { get; set; } = true;
+        
         // Get the monitoring interval as TimeSpan
         public TimeSpan GetMonitoringInterval() => TimeSpan.FromMinutes(MonitoringIntervalMinutes);
         
@@ -104,7 +126,21 @@ namespace WebScraperApi.Models
                 EnableAdaptiveRateLimiting = this.EnableAdaptiveRateLimiting,
                 MinDelayBetweenRequests = this.MinDelayBetweenRequests,
                 MaxDelayBetweenRequests = this.MaxDelayBetweenRequests,
-                MonitorResponseTimes = this.MonitorResponseTimes
+                MonitorResponseTimes = this.MonitorResponseTimes,
+                
+                // Add regulatory options
+                EnableRegulatoryContentAnalysis = this.EnableRegulatoryContentAnalysis,
+                TrackRegulatoryChanges = this.TrackRegulatoryChanges,
+                ClassifyRegulatoryDocuments = this.ClassifyRegulatoryDocuments,
+                ExtractStructuredContent = this.ExtractStructuredContent,
+                ProcessPdfDocuments = this.ProcessPdfDocuments,
+                MonitorHighImpactChanges = this.MonitorHighImpactChanges,
+                
+                // UKGC specific options
+                IsUKGCWebsite = this.IsUKGCWebsite,
+                PrioritizeEnforcementActions = this.PrioritizeEnforcementActions,
+                PrioritizeLCCP = this.PrioritizeLCCP,
+                PrioritizeAML = this.PrioritizeAML
             };
         }
     }

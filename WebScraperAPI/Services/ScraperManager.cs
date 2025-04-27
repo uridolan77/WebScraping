@@ -505,8 +505,36 @@ namespace WebScraperApi.Services
                         _logger.LogInformation($"Starting scraper {id}: {scraperInstance.Config.Name}");
                         AddLogMessage(id, $"Starting scraper: {scraperInstance.Config.Name}");
                         
-                        // Create and initialize the scraper
-                        scraperInstance.Scraper = new Scraper(config, message => AddLogMessage(id, message));
+                        // Check if regulatory features are enabled
+                        bool useEnhancedScraper = IsRegulatoryFeaturesEnabled(config);
+                        
+                        if (useEnhancedScraper)
+                        {
+                            AddLogMessage(id, "Using enhanced scraper with regulatory capabilities");
+                            
+                            // Create and initialize the enhanced scraper
+                            var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+                            {
+                                builder.AddConsole();
+                                builder.SetMinimumLevel(LogLevel.Information);
+                            });
+                            
+                            var scraperLogger = loggerFactory.CreateLogger<EnhancedScraper>();
+                            
+                            // Create the enhanced scraper
+                            scraperInstance.Scraper = new EnhancedScraper(
+                                config, 
+                                scraperLogger,
+                                contentExtractor: null,
+                                documentProcessor: null);
+                        }
+                        else
+                        {
+                            // Create and initialize the standard scraper
+                            scraperInstance.Scraper = new Scraper(config, message => AddLogMessage(id, message));
+                        }
+                        
+                        // Initialize the scraper
                         await scraperInstance.Scraper.InitializeAsync();
                         
                         // Start scraping
@@ -524,6 +552,14 @@ namespace WebScraperApi.Services
                         scraperInstance.Status.IsRunning = false;
                         scraperInstance.Status.EndTime = DateTime.Now;
                         AddLogMessage(id, "Scraping completed successfully");
+                        
+                        // Get and log regulatory statistics if applicable
+                        if (useEnhancedScraper && scraperInstance.Scraper is EnhancedScraper enhancedScraper)
+                        {
+                            var stats = enhancedScraper.GetRegulatoryStatistics();
+                            AddLogMessage(id, "Regulatory Statistics:");
+                            AddLogMessage(id, stats);
+                        }
                     }
                     catch (Exception ex)
                     {

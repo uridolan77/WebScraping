@@ -59,7 +59,7 @@ namespace WebScraper.RegulatoryFramework.Example
             foreach (var url in urlsToProcess)
             {
                 Console.WriteLine($"Processing URL: {url}");
-                await scraper.ProcessUrlAsync(url);
+                await scraper.ProcessUrl(url);
             }
             
             // Get the current state of the scraper
@@ -120,7 +120,7 @@ namespace WebScraper.RegulatoryFramework.Example
             
             // Create the scraper with only the components we need
             var scraper = new EnhancedScraper(
-                config,
+                config.ToScraperConfig(), // Use extension method to convert RegulatoryScraperConfig to ScraperConfig
                 logger,
                 contentExtractor: contentExtractor,
                 changeDetector: null, // Comment out: changeDetector
@@ -128,7 +128,7 @@ namespace WebScraper.RegulatoryFramework.Example
                 stateStore: stateStore);
             
             // Process a URL
-            await scraper.ProcessUrlAsync("https://www.gamblingcommission.gov.uk/licensees-and-businesses/lccp/online");
+            await scraper.ProcessUrl("https://www.gamblingcommission.gov.uk/licensees-and-businesses/lccp/online");
             
             Console.WriteLine("Manual example completed successfully");
         }

@@ -19,20 +19,20 @@ namespace WebScraper
     public class Scraper
     {
         // Configuration and state
-        private readonly ScraperConfig _config;
+        protected readonly ScraperConfig _config;
         private readonly HashSet<string> _visitedUrls = new HashSet<string>();
         private readonly Dictionary<string, ScrapedPage> _scrapedData = new Dictionary<string, ScrapedPage>();
-        private readonly Action<string> _logger;
-        private readonly string _outputDirectory;
+        protected readonly Action<string> _logger;
+        protected readonly string _outputDirectory;
 
         // Component modules
-        private readonly ContentChangeDetector _changeDetector;
-        private readonly AdaptiveCrawlStrategy _crawlStrategy;
-        private readonly PatternLearner _patternLearner;
-        private readonly AdaptiveRateLimiter _rateLimiter;
+        protected readonly ContentChangeDetector _changeDetector;
+        protected readonly AdaptiveCrawlStrategy _crawlStrategy;
+        protected readonly PatternLearner _patternLearner;
+        protected readonly AdaptiveRateLimiter _rateLimiter;
 
         // HTTP client
-        private readonly HttpClient _httpClient;
+        protected readonly HttpClient _httpClient;
 
         // Crawling state
         private bool _isRunning = false;
@@ -192,7 +192,7 @@ namespace WebScraper
             _isRunning = false;
         }
 
-        private async Task ScrapeUrlsAsync(ConcurrentBag<string> urls)
+        protected async Task ScrapeUrlsAsync(ConcurrentBag<string> urls)
         {
             var tasks = new List<Task>();
 
@@ -228,7 +228,7 @@ namespace WebScraper
             await Task.WhenAll(tasks);
         }
 
-        private async Task ProcessUrlAsync(string url)
+        protected virtual async Task ProcessUrlAsync(string url)
         {
             if (!IsAllowedByRobotsTxt(url))
                 return;
