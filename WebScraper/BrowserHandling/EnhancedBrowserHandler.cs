@@ -36,11 +36,21 @@ namespace WebScraper.BrowserHandling
             return await _headlessBrowserHandler.CreatePageAsync(contextId);
         }
         
-        public async Task<NavigationResult> NavigateToUrlAsync(string contextId, string pageId, string url, NavigationWaitUntil waitUntil)
+        public async Task<NavigationResult> NavigateToUrlAsync(string contextId, string pageId, string url, Interfaces.NavigationWaitUntil waitUntil)
         {
             try
             {
-                var result = await _headlessBrowserHandler.NavigateToUrlAsync(contextId, pageId, url, (HeadlessBrowser.NavigationWaitUntil)waitUntil);
+                // Convert from Interface's NavigationWaitUntil to HeadlessBrowser's NavigationWaitUntil
+                var headlessWaitUntil = waitUntil switch
+                {
+                    Interfaces.NavigationWaitUntil.DOMContentLoaded => HeadlessBrowser.NavigationWaitUntil.DOMContentLoaded,
+                    Interfaces.NavigationWaitUntil.Load => HeadlessBrowser.NavigationWaitUntil.Load,
+                    Interfaces.NavigationWaitUntil.NetworkIdle => HeadlessBrowser.NavigationWaitUntil.NetworkIdle,
+                    Interfaces.NavigationWaitUntil.NetworkAlmostIdle => HeadlessBrowser.NavigationWaitUntil.NetworkAlmostIdle,
+                    _ => HeadlessBrowser.NavigationWaitUntil.Load // Default case
+                };
+                
+                var result = await _headlessBrowserHandler.NavigateToUrlAsync(contextId, pageId, url, headlessWaitUntil);
                 
                 return new NavigationResult
                 {

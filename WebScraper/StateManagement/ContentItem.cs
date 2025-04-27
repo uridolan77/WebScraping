@@ -80,9 +80,9 @@ namespace WebScraper.StateManagement
             {
                 var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
                 return Convert.ToBase64String(bytes)
-                    .Replace('/', '_')
-                    .Replace('+', '-')
-                    .Replace('=', '');
+                    .Replace("/", "_")
+                    .Replace("+", "-")
+                    .Replace("=", "");
             }
         }
     }
