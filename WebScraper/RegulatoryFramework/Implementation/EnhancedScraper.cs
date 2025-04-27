@@ -11,7 +11,7 @@ using WebScraper.RegulatoryFramework.Interfaces;
 namespace WebScraper.RegulatoryFramework.Implementation
 {
     /// <summary>
-    /// Enhanced scraper implemented with dependency injection
+    /// Enhanced scraper for regulatory content
     /// </summary>
     public class EnhancedScraper
     {
@@ -293,14 +293,25 @@ namespace WebScraper.RegulatoryFramework.Implementation
                    classification.Impact == RegulatoryImpact.Critical;
         }
     }
-    
+
     /// <summary>
     /// State information for the scraper
     /// </summary>
     public class ScraperState
     {
+        /// <summary>
+        /// Gets or sets the configured domain
+        /// </summary>
         public string ConfiguredDomain { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the enabled features
+        /// </summary>
         public Dictionary<string, bool> EnabledFeatures { get; set; } = new Dictionary<string, bool>();
+        
+        /// <summary>
+        /// Gets or sets the crawl strategy metadata
+        /// </summary>
         public Dictionary<string, object> CrawlStrategyMetadata { get; set; } = new Dictionary<string, object>();
     }
     

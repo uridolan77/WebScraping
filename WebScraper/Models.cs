@@ -99,52 +99,44 @@ namespace WebScraper
     public class ContentNode
     {
         /// <summary>
-        /// Title of the content node
-        /// </summary>
-        public string Title { get; set; }
-        
-        /// <summary>
-        /// Textual content of the node
-        /// </summary>
-        public string Content { get; set; }
-        
-        /// <summary>
-        /// Type of content node (e.g., Section, Article, Division)
+        /// Type of the node
         /// </summary>
         public string NodeType { get; set; }
         
         /// <summary>
-        /// Depth of the node in the hierarchy (0 for root)
+        /// Content of the node
+        /// </summary>
+        public string Content { get; set; }
+        
+        /// <summary>
+        /// Depth in the hierarchy
         /// </summary>
         public int Depth { get; set; }
         
         /// <summary>
-        /// Child content nodes
+        /// Title of the node
         /// </summary>
-        public List<ContentNode> Children { get; set; } = new List<ContentNode>();
+        public string Title { get; set; }
         
         /// <summary>
-        /// Metadata about the content node
-        /// </summary>
-        public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
-        
-        /// <summary>
-        /// Relevance score for the content (0.0-1.0)
+        /// Relevance score of the node
         /// </summary>
         public double RelevanceScore { get; set; }
         
         /// <summary>
-        /// HTML attributes of the source node
+        /// Attributes of the node
         /// </summary>
         public Dictionary<string, string> Attributes { get; set; } = new Dictionary<string, string>();
-
+        
         /// <summary>
-        /// Converts this node to a RegulatoryFramework ContentNode
+        /// Children of the node
         /// </summary>
-        public RegulatoryFramework.Interfaces.ContentNode ToFrameworkContentNode()
-        {
-            return RegulatoryFramework.Interfaces.ContentNode.FromLegacyContentNode(this);
-        }
+        public List<ContentNode> Children { get; set; } = new List<ContentNode>();
+        
+        /// <summary>
+        /// Metadata of the node
+        /// </summary>
+        public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
     }
 
     /// <summary>
@@ -194,69 +186,39 @@ namespace WebScraper
     public class ScraperState
     {
         /// <summary>
-        /// ID of the scraper
-        /// </summary>
-        public string ScraperId { get; set; }
-        
-        /// <summary>
-        /// Current status of the scraper
-        /// </summary>
-        public string Status { get; set; }
-        
-        /// <summary>
-        /// When the last run started
-        /// </summary>
-        public DateTime LastRunStartTime { get; set; }
-        
-        /// <summary>
-        /// When the last run ended
-        /// </summary>
-        public DateTime LastRunEndTime { get; set; }
-        
-        /// <summary>
-        /// When the last successful run completed
-        /// </summary>
-        public DateTime? LastSuccessfulRunTime { get; set; }
-        
-        /// <summary>
-        /// Progress data in JSON format
-        /// </summary>
-        public string ProgressData { get; set; }
-        
-        /// <summary>
-        /// Configuration snapshot in JSON format
-        /// </summary>
-        public string ConfigSnapshot { get; set; }
-        
-        /// <summary>
-        /// Domain being scraped
+        /// Gets or sets the configured domain
         /// </summary>
         public string ConfiguredDomain { get; set; }
         
         /// <summary>
-        /// Enabled features
+        /// Gets or sets the enabled features
         /// </summary>
-        public List<string> EnabledFeatures { get; set; } = new List<string>();
+        public Dictionary<string, bool> EnabledFeatures { get; set; } = new Dictionary<string, bool>();
         
         /// <summary>
-        /// Last error message
+        /// Gets or sets the crawl strategy metadata
+        /// </summary>
+        public Dictionary<string, object> CrawlStrategyMetadata { get; set; } = new Dictionary<string, object>();
+        
+        /// <summary>
+        /// Gets or sets the last run time
+        /// </summary>
+        public DateTime? LastRunTime { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the number of pages processed
+        /// </summary>
+        public int PagesProcessed { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the number of errors encountered
+        /// </summary>
+        public int ErrorsEncountered { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the last error message
         /// </summary>
         public string LastError { get; set; }
-        
-        /// <summary>
-        /// Number of pages scraped
-        /// </summary>
-        public int PagesScraped { get; set; }
-        
-        /// <summary>
-        /// Number of errors occurred
-        /// </summary>
-        public int ErrorCount { get; set; }
-        
-        /// <summary>
-        /// When the state was last updated
-        /// </summary>
-        public DateTime UpdatedAt { get; set; } = DateTime.Now;
     }
 
     /// <summary>
@@ -272,166 +234,124 @@ namespace WebScraper
     }
 
     /// <summary>
-    /// Result of change analysis
-    /// </summary>
-    public class ChangeAnalysisResult
-    {
-        /// <summary>
-        /// Whether there are changes
-        /// </summary>
-        public bool HasChanges { get; set; }
-        
-        /// <summary>
-        /// Percentage of change
-        /// </summary>
-        public double ChangePercentage { get; set; }
-        
-        /// <summary>
-        /// Content that was added
-        /// </summary>
-        public List<string> AddedContent { get; set; } = new List<string>();
-        
-        /// <summary>
-        /// Content that was removed
-        /// </summary>
-        public List<string> RemovedContent { get; set; } = new List<string>();
-        
-        /// <summary>
-        /// Content that was modified
-        /// </summary>
-        public List<string> ModifiedContent { get; set; } = new List<string>();
-    }
-
-    /// <summary>
-    /// Result of content classification
+    /// ClassificationResult for content classification
     /// </summary>
     public class ClassificationResult
     {
         /// <summary>
-        /// Whether the content is regulatory
+        /// Gets or sets the primary category of the content
         /// </summary>
-        public bool IsRegulatoryContent { get; set; }
+        public string PrimaryCategory { get; set; }
         
         /// <summary>
-        /// Confidence score for the classification
-        /// </summary>
-        public double ConfidenceScore { get; set; }
-        
-        /// <summary>
-        /// Category of the content
+        /// Gets or sets the category of the content (legacy property)
         /// </summary>
         public string Category { get; set; }
         
         /// <summary>
-        /// Regulatory impact of the content
+        /// Gets or sets the confidence level of the classification (0.0-1.0)
         /// </summary>
-        public RegulatoryImpact Impact { get; set; }
+        public double Confidence { get; set; }
         
         /// <summary>
-        /// List of keywords found in the content
+        /// Gets or sets the list of all categories with their confidence scores
         /// </summary>
-        public List<string> Keywords { get; set; } = new List<string>();
+        public Dictionary<string, double> CategoryScores { get; set; } = new Dictionary<string, double>();
         
         /// <summary>
-        /// Primary category of the content
+        /// Gets or sets the regulatory impact of the content
         /// </summary>
-        public string PrimaryCategory { get; set; }
+        public RegulatoryImpact Impact { get; set; } = RegulatoryImpact.None;
+        
+        /// <summary>
+        /// Gets or sets the list of keywords that contributed to the classification
+        /// </summary>
+        public List<string> MatchedKeywords { get; set; } = new List<string>();
+        
+        /// <summary>
+        /// Gets or sets the timestamp of the classification
+        /// </summary>
+        public DateTime ClassificationTime { get; set; } = DateTime.Now;
     }
 
     /// <summary>
-    /// Metadata extracted from a document
+    /// DocumentMetadata for document processing
     /// </summary>
     public class DocumentMetadata
     {
         /// <summary>
-        /// URL of the document
-        /// </summary>
-        public string Url { get; set; }
-        
-        /// <summary>
-        /// Title of the document
+        /// Gets or sets the document title
         /// </summary>
         public string Title { get; set; }
         
         /// <summary>
-        /// Type of the document (e.g., PDF, DOCX)
-        /// </summary>
-        public string DocumentType { get; set; }
-        
-        /// <summary>
-        /// Publication date of the document
-        /// </summary>
-        public DateTime? PublicationDate { get; set; }
-        
-        /// <summary>
-        /// Author of the document
+        /// Gets or sets the document author
         /// </summary>
         public string Author { get; set; }
         
         /// <summary>
-        /// Number of pages in the document
+        /// Gets or sets the document creation date
+        /// </summary>
+        public DateTime? CreationDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the document last modified date
+        /// </summary>
+        public DateTime? LastModifiedDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the document page count
         /// </summary>
         public int PageCount { get; set; }
         
         /// <summary>
-        /// Text content of the document
+        /// Gets or sets the document word count
         /// </summary>
-        public string TextContent { get; set; }
+        public int WordCount { get; set; }
         
         /// <summary>
-        /// Hash of the content for integrity checking
+        /// Gets or sets the document file type
         /// </summary>
-        public string ContentHash { get; set; }
+        public string FileType { get; set; }
         
         /// <summary>
-        /// Classification result of the document
+        /// Gets or sets the document file size in bytes
         /// </summary>
-        public ClassificationResult Classification { get; set; }
+        public long FileSizeBytes { get; set; }
         
         /// <summary>
-        /// Extracted metadata in key-value pairs
+        /// Gets or sets the document keywords
         /// </summary>
-        public Dictionary<string, object> ExtractedMetadata { get; set; } = new Dictionary<string, object>();
+        public List<string> Keywords { get; set; } = new List<string>();
         
         /// <summary>
-        /// Publish date for the document
+        /// Gets or sets the document subject
         /// </summary>
-        public DateTime? PublishDate { get; set; }
+        public string Subject { get; set; }
         
         /// <summary>
-        /// Local file path where the document is stored
+        /// Gets or sets the document categories
         /// </summary>
-        public string LocalFilePath { get; set; }
+        public List<string> Categories { get; set; } = new List<string>();
         
         /// <summary>
-        /// When the document was processed
+        /// Gets or sets the document comments
         /// </summary>
-        public DateTime ProcessedDate { get; set; } = DateTime.Now;
-    }
-
-    /// <summary>
-    /// Validation result for configurations or content
-    /// </summary>
-    public class ValidationResult
-    {
-        /// <summary>
-        /// Whether the configuration or content is valid
-        /// </summary>
-        public bool IsValid { get; set; }
+        public string Comments { get; set; }
         
         /// <summary>
-        /// Whether it can run with warnings
+        /// Gets or sets the document content type
         /// </summary>
-        public bool CanRunWithWarnings { get; set; }
+        public string ContentType { get; set; }
         
         /// <summary>
-        /// List of error messages
+        /// Gets or sets the document language
         /// </summary>
-        public List<string> Errors { get; set; } = new List<string>();
+        public string Language { get; set; }
         
         /// <summary>
-        /// List of warning messages
+        /// Gets or sets additional custom metadata
         /// </summary>
-        public List<string> Warnings { get; set; } = new List<string>();
+        public Dictionary<string, object> CustomMetadata { get; set; } = new Dictionary<string, object>();
     }
 }

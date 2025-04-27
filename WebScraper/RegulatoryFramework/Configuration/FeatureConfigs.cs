@@ -136,6 +136,11 @@ namespace WebScraper.RegulatoryFramework.Configuration
         /// Whether to extract metadata from content
         /// </summary>
         public bool ExtractMetadata { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to preserve HTML formatting in extracted content
+        /// </summary>
+        public bool PreserveHtml { get; set; } = false;
     }
     
     /// <summary>
@@ -144,40 +149,43 @@ namespace WebScraper.RegulatoryFramework.Configuration
     public class DocumentProcessingConfig : FeatureConfigBase
     {
         /// <summary>
-        /// Directory to store downloaded documents
-        /// </summary>
-        public string DocumentStoragePath { get; set; } = "regulatory_documents";
-        
-        /// <summary>
         /// Whether to download documents
         /// </summary>
         public bool DownloadDocuments { get; set; } = true;
         
         /// <summary>
-        /// Extract metadata from documents
+        /// Path to store downloaded documents
         /// </summary>
-        public bool ExtractMetadata { get; set; } = true;
-        
-        /// <summary>
-        /// Extract full text from documents
-        /// </summary>
-        public bool ExtractFullText { get; set; } = true;
+        public string DocumentStoragePath { get; set; } = "documents";
         
         /// <summary>
         /// Document types to process
         /// </summary>
-        public List<string> DocumentTypes { get; set; } = new List<string> { ".pdf", ".docx", ".xlsx" };
-        
-        /// <summary>
-        /// Regular expression patterns to extract metadata from documents
-        /// </summary>
-        public Dictionary<string, string> MetadataPatterns { get; set; } = new Dictionary<string, string>();
+        public List<string> DocumentExtensions { get; set; } = new List<string> { ".pdf", ".doc", ".docx", ".xls", ".xlsx" };
         
         /// <summary>
         /// Maximum file size to download (in bytes)
         /// </summary>
-        public long MaxFileSize { get; set; } = 20 * 1024 * 1024; // 20 MB
+        public long MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10 MB
         
+        /// <summary>
+        /// Whether to extract text from documents
+        /// </summary>
+        public bool ExtractText { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to analyze document metadata
+        /// </summary>
+        public bool ExtractMetadata { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to store downloaded documents locally
+        /// </summary>
+        public bool StoreDocumentsLocally { get; set; } = true;
+        
+        /// <summary>
+        /// Validates the configuration
+        /// </summary>
         public override List<string> Validate()
         {
             var errors = new List<string>();
