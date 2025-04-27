@@ -304,6 +304,59 @@ namespace WebScraperApi.Controllers
             return Ok(result);
         }
         
+        [HttpPut("{id}/webhook-config")]
+        public async Task<IActionResult> UpdateWebhookConfig(string id, [FromBody] Models.WebhookConfig config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var success = await _scraperManager.UpdateWebhookConfig(id, config);
+            if (!success)
+            {
+                return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            return Ok(new { Message = "Webhook configuration updated successfully" });
+        }
+
+        [HttpPost("{id}/compress")]
+        public async Task<IActionResult> CompressStoredContent(string id)
+        {
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var result = await _scraperManager.CompressStoredContent(id);
+            if (result == null)
+            {
+                return BadRequest("Failed to compress content");
+            }
+            
+            return Ok(result);
+        }
+
+        [HttpGet("{id}/metrics")]
+        public async Task<IActionResult> GetScraperMetrics(string id)
+        {
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var metrics = await _scraperManager.GetScraperMetrics(id);
+            if (metrics == null)
+            {
+                return NotFound($"Scraper metrics not available for {id}");
+            }
+            
+            return Ok(metrics);
+        }
+        
         #endregion
     }
 }

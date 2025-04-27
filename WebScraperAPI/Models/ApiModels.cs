@@ -158,4 +158,35 @@ namespace WebScraperApi.Models
         /// </summary>
         public bool TrackChangesHistory { get; set; } = true;
     }
+    
+    /// <summary>
+    /// Configuration for webhook notifications
+    /// </summary>
+    public class WebhookConfig
+    {
+        /// <summary>
+        /// Gets or sets whether webhook notifications are enabled
+        /// </summary>
+        public bool Enabled { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the webhook URL to send notifications to
+        /// </summary>
+        public string WebhookUrl { get; set; }
+        
+        /// <summary>
+        /// Gets or sets whether to notify on content changes
+        /// </summary>
+        public bool NotifyOnContentChanges { get; set; } = true;
+        
+        /// <summary>
+        /// Gets or sets whether to notify when documents are processed
+        /// </summary>
+        public bool NotifyOnDocumentProcessed { get; set; } = false;
+        
+        /// <summary>
+        /// Gets or sets whether to notify on scraper status changes
+        /// </summary>
+        public bool NotifyOnScraperStatusChange { get; set; } = true;
+    }
 }

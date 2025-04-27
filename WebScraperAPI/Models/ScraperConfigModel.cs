@@ -115,6 +115,22 @@ namespace WebScraperApi.Models
         
         public string NotificationEndpoint { get; set; }
         
+        // Webhook configuration properties
+        public bool WebhookEnabled { get; set; }
+        public string WebhookUrl { get; set; }
+        public bool NotifyOnContentChanges { get; set; }
+        public bool NotifyOnDocumentProcessed { get; set; }
+        public bool NotifyOnScraperStatusChange { get; set; }
+        
+        // Content compression settings
+        public bool EnableContentCompression { get; set; } = true;
+        public int CompressionThresholdBytes { get; set; } = 1024; // Compress files larger than 1KB by default
+        
+        // Enhanced telemetry settings
+        public bool CollectDetailedMetrics { get; set; } = true;
+        public int MetricsReportingIntervalSeconds { get; set; } = 60;
+        public bool TrackDomainMetrics { get; set; } = true;
+        
         // Get the monitoring interval as TimeSpan
         public TimeSpan GetMonitoringInterval() => TimeSpan.FromMinutes(MonitoringIntervalMinutes);
         

@@ -766,6 +766,197 @@ namespace WebScraperApi.Services
         }
         
         /// <summary>
+        /// Exports scraped data for a specific scraper
+        /// </summary>
+        public async Task<object> ExportScrapedData(string id, ExportOptions options)
+        {
+            try
+            {
+                if (!_scrapers.TryGetValue(id, out var scraperInstance))
+                {
+                    return null;
+                }
+                
+                // Get the scraper's output directory
+                var outputDir = scraperInstance.Config.OutputDirectory;
+                if (string.IsNullOrEmpty(outputDir))
+                {
+                    outputDir = Path.Combine("ScrapedData", id);
+                }
+                
+                if (!Directory.Exists(outputDir))
+                {
+                    return new { Error = "No data found to export" };
+                }
+                
+                // Generate export filename
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string exportFileName = $"export_{scraperInstance.Config.Name.Replace(" ", "_")}_{timestamp}.{options.Format.ToLowerInvariant()}";
+                
+                // Set output path
+                string outputPath = options.OutputPath;
+                if (string.IsNullOrEmpty(outputPath))
+                {
+                    outputPath = Path.Combine(outputDir, "exports");
+                    Directory.CreateDirectory(outputPath);
+                }
+                string fullPath = Path.Combine(outputPath, exportFileName);
+                
+                // Collect data for export
+                var dataToExport = new List<Dictionary<string, object>>();
+                
+                // Get all HTML and text files
+                var htmlFiles = Directory.GetFiles(outputDir, "*.html", SearchOption.AllDirectories);
+                
+                foreach (var htmlFile in htmlFiles)
+                {
+                    var textFile = htmlFile + ".txt";
+                    
+                    // Create data entry
+                    var dataEntry = new Dictionary<string, object>
+                    {
+                        ["Url"] = Path.GetFileNameWithoutExtension(htmlFile)
+                            .Replace("_", "/")
+                            .Replace("www.", "http://www."),
+                        ["ScrapedDate"] = File.GetCreationTime(htmlFile)
+                    };
+                    
+                    // Filter by date range if specified
+                    DateTime scrapedDate = (DateTime)dataEntry["ScrapedDate"];
+                    if ((options.StartDate.HasValue && scrapedDate < options.StartDate.Value) ||
+                        (options.EndDate.HasValue && scrapedDate > options.EndDate.Value))
+                    {
+                        continue;
+                    }
+                    
+                    // Check if file is compressed
+                    var compressedHtmlFile = htmlFile + ".gz";
+                    var compressedTextFile = textFile + ".gz";
+                    
+                    // Include raw HTML if requested
+                    if (options.IncludeRawHtml)
+                    {
+                        if (File.Exists(htmlFile))
+                        {
+                            dataEntry["RawHtml"] = await File.ReadAllTextAsync(htmlFile);
+                        }
+                        else if (File.Exists(compressedHtmlFile))
+                        {
+                            // Create compression service to decompress
+                            var compressionLogger = _loggerFactory.CreateLogger<WebScraper.StateManagement.CompressedContentStorage>();
+                            var compressionService = new WebScraper.StateManagement.CompressedContentStorage(compressionLogger);
+                            
+                            // Decompress and read content
+                            var content = await File.ReadAllTextAsync(compressedHtmlFile);
+                            dataEntry["RawHtml"] = await compressionService.DecompressContentAsync(content);
+                        }
+                    }
+                    
+                    // Include processed content if requested
+                    if (options.IncludeProcessedContent)
+                    {
+                        if (File.Exists(textFile))
+                        {
+                            dataEntry["ProcessedContent"] = await File.ReadAllTextAsync(textFile);
+                        }
+                        else if (File.Exists(compressedTextFile))
+                        {
+                            // Create compression service to decompress
+                            var compressionLogger = _loggerFactory.CreateLogger<WebScraper.StateManagement.CompressedContentStorage>();
+                            var compressionService = new WebScraper.StateManagement.CompressedContentStorage(compressionLogger);
+                            
+                            // Decompress and read content
+                            var content = await File.ReadAllTextAsync(compressedTextFile);
+                            dataEntry["ProcessedContent"] = await compressionService.DecompressContentAsync(content);
+                        }
+                    }
+                    
+                    // Include metadata if requested
+                    if (options.IncludeMetadata)
+                    {
+                        var metadataFile = Path.Combine(
+                            Path.GetDirectoryName(htmlFile),
+                            Path.GetFileNameWithoutExtension(htmlFile) + "_metadata.json"
+                        );
+                        var compressedMetadataFile = metadataFile + ".gz";
+                        
+                        if (File.Exists(metadataFile))
+                        {
+                            var json = await File.ReadAllTextAsync(metadataFile);
+                            var metadata = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                            
+                            if (metadata != null)
+                            {
+                                dataEntry["Metadata"] = metadata;
+                            }
+                        }
+                        else if (File.Exists(compressedMetadataFile))
+                        {
+                            // Create compression service to decompress
+                            var compressionLogger = _loggerFactory.CreateLogger<WebScraper.StateManagement.CompressedContentStorage>();
+                            var compressionService = new WebScraper.StateManagement.CompressedContentStorage(compressionLogger);
+                            
+                            // Decompress and read content
+                            var content = await File.ReadAllTextAsync(compressedMetadataFile);
+                            var decompressedJson = await compressionService.DecompressContentAsync(content);
+                            var metadata = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(decompressedJson);
+                            
+                            if (metadata != null)
+                            {
+                                dataEntry["Metadata"] = metadata;
+                            }
+                        }
+                    }
+                    
+                    dataToExport.Add(dataEntry);
+                }
+                
+                // Export the data
+                switch (options.Format.ToLowerInvariant())
+                {
+                    case "json":
+                        await File.WriteAllTextAsync(fullPath, 
+                            Newtonsoft.Json.JsonConvert.SerializeObject(dataToExport, Newtonsoft.Json.Formatting.Indented));
+                        break;
+                    case "csv":
+                        // Simplified CSV export - in a real implementation, use a CSV library
+                        using (var writer = new StreamWriter(fullPath))
+                        {
+                            // Write CSV header from first entry
+                            if (dataToExport.Count > 0)
+                            {
+                                var header = string.Join(",", dataToExport[0].Keys.Select(k => $"\"{k}\""));
+                                await writer.WriteLineAsync(header);
+                                
+                                // Write data rows
+                                foreach (var entry in dataToExport)
+                                {
+                                    var row = string.Join(",", entry.Values.Select(v => $"\"{v}\""));
+                                    await writer.WriteLineAsync(row);
+                                }
+                            }
+                        }
+                        break;
+                    default:
+                        return new { Error = $"Unsupported export format: {options.Format}" };
+                }
+                
+                return new 
+                { 
+                    Message = $"Data exported successfully to {fullPath}",
+                    FilePath = fullPath,
+                    RecordCount = dataToExport.Count,
+                    Format = options.Format
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error exporting scraped data for scraper {id}");
+                return new { Error = $"Export failed: {ex.Message}" };
+            }
+        }
+        
+        /// <summary>
         /// Gets processed documents for a specific scraper
         /// </summary>
         public async Task<object> GetProcessedDocuments(string id, string documentType = null, int page = 1, int pageSize = 20)
@@ -961,6 +1152,179 @@ namespace WebScraperApi.Services
         }
         
         /// <summary>
+        /// Updates webhook configuration for a specific scraper
+        /// </summary>
+        public async Task<bool> UpdateWebhookConfig(string id, WebhookConfig config)
+        {
+            try
+            {
+                if (!_scrapers.TryGetValue(id, out var scraperInstance) || scraperInstance.Status.IsRunning)
+                {
+                    return false;
+                }
+                
+                // Update webhook configuration in the config
+                scraperInstance.Config.WebhookEnabled = config.Enabled;
+                scraperInstance.Config.WebhookUrl = config.WebhookUrl;
+                scraperInstance.Config.NotifyOnContentChanges = config.NotifyOnContentChanges;
+                scraperInstance.Config.NotifyOnDocumentProcessed = config.NotifyOnDocumentProcessed;
+                scraperInstance.Config.NotifyOnScraperStatusChange = config.NotifyOnScraperStatusChange;
+                
+                // Save the updated configuration
+                var success = await _configService.UpdateScraperConfigAsync(id, scraperInstance.Config);
+                
+                if (success)
+                {
+                    // Create a new webhook notifier if enabled
+                    if (config.Enabled && !string.IsNullOrEmpty(config.WebhookUrl))
+                    {
+                        var webhookLogger = _loggerFactory.CreateLogger<WebScraper.Notifications.WebhookNotifier>();
+                        scraperInstance.WebhookNotifier = new WebScraper.Notifications.WebhookNotifier(
+                            webhookLogger,
+                            id,
+                            scraperInstance.Config.Name,
+                            config.WebhookUrl);
+                        
+                        // Test the webhook connection
+                        await scraperInstance.WebhookNotifier.NotifyScraperStatusChangeAsync(
+                            "WebhookConfigured", 
+                            "Webhook configuration has been updated");
+                    }
+                    else
+                    {
+                        // Disable webhook notifier
+                        scraperInstance.WebhookNotifier = null;
+                    }
+                    
+                    SaveScraperConfigurations();
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating webhook config for scraper {id}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Compresses stored content for a specific scraper
+        /// </summary>
+        public async Task<object> CompressStoredContent(string id)
+        {
+            try
+            {
+                if (!_scrapers.TryGetValue(id, out var scraperInstance))
+                {
+                    return null;
+                }
+                
+                // Get the scraper's output directory
+                var outputDir = scraperInstance.Config.OutputDirectory;
+                if (string.IsNullOrEmpty(outputDir))
+                {
+                    outputDir = Path.Combine("ScrapedData", id);
+                }
+                
+                // Ensure the directory exists
+                if (!Directory.Exists(outputDir))
+                {
+                    return new 
+                    { 
+                        Message = "No content found to compress",
+                        ScraperId = id,
+                        FilesCompressed = 0
+                    };
+                }
+                
+                // Create compression service
+                var compressionLogger = _loggerFactory.CreateLogger<WebScraper.StateManagement.CompressedContentStorage>();
+                var compressionService = new WebScraper.StateManagement.CompressedContentStorage(compressionLogger);
+                
+                // Find text and HTML files to compress
+                var filesToCompress = Directory.GetFiles(outputDir, "*.html", SearchOption.AllDirectories)
+                    .Concat(Directory.GetFiles(outputDir, "*.txt", SearchOption.AllDirectories))
+                    .Concat(Directory.GetFiles(outputDir, "*.json", SearchOption.AllDirectories))
+                    .Where(f => !Path.GetFileName(f).EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                int filesCompressed = 0;
+                
+                // Compress each file
+                foreach (var file in filesToCompress)
+                {
+                    await compressionService.CompressFileAsync(file);
+                    filesCompressed++;
+                    
+                    // Log progress periodically
+                    if (filesCompressed % 100 == 0)
+                    {
+                        AddLogMessage(id, $"Compressed {filesCompressed} files so far...");
+                    }
+                }
+                
+                AddLogMessage(id, $"Content compression completed. Compressed {filesCompressed} files.");
+                
+                return new 
+                { 
+                    Message = $"Content compression completed successfully",
+                    ScraperId = id,
+                    FilesCompressed = filesCompressed
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error compressing content for scraper {id}");
+                return new { Error = $"Compression failed: {ex.Message}" };
+            }
+        }
+        
+        /// <summary>
+        /// Gets detailed telemetry metrics for a specific scraper
+        /// </summary>
+        public async Task<object> GetScraperMetrics(string id)
+        {
+            try
+            {
+                if (!_scrapers.TryGetValue(id, out var scraperInstance))
+                {
+                    return null;
+                }
+                
+                // Get basic analytics
+                var analytics = await GetScraperAnalytics(id) as Dictionary<string, object>;
+                
+                // Check if metrics service exists
+                if (scraperInstance.MetricsService != null)
+                {
+                    // Get metrics snapshot
+                    var metricsSnapshot = scraperInstance.MetricsService.GetMetricsSnapshot();
+                    
+                    // Add metrics to analytics
+                    if (analytics != null)
+                    {
+                        analytics["DetailedMetrics"] = metricsSnapshot;
+                    }
+                    else
+                    {
+                        analytics = new Dictionary<string, object>
+                        {
+                            ["DetailedMetrics"] = metricsSnapshot
+                        };
+                    }
+                }
+                
+                return analytics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting metrics for scraper {id}");
+                return null;
+            }
+        }
+        
+        /// <summary>
         /// Gets learned patterns for a specific scraper
         /// </summary>
         public async Task<object> GetLearnedPatterns(string id)
@@ -1102,150 +1466,6 @@ namespace WebScraperApi.Services
             }
         }
         
-        /// <summary>
-        /// Exports scraped data for a specific scraper
-        /// </summary>
-        public async Task<object> ExportScrapedData(string id, ExportOptions options)
-        {
-            try
-            {
-                if (!_scrapers.TryGetValue(id, out var scraperInstance))
-                {
-                    return null;
-                }
-                
-                // Get the scraper's output directory
-                var outputDir = scraperInstance.Config.OutputDirectory;
-                if (string.IsNullOrEmpty(outputDir))
-                {
-                    outputDir = Path.Combine("ScrapedData", id);
-                }
-                
-                if (!Directory.Exists(outputDir))
-                {
-                    return new { Error = "No data found to export" };
-                }
-                
-                // Generate export filename
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string exportFileName = $"export_{scraperInstance.Config.Name.Replace(" ", "_")}_{timestamp}.{options.Format.ToLowerInvariant()}";
-                
-                // Set output path
-                string outputPath = options.OutputPath;
-                if (string.IsNullOrEmpty(outputPath))
-                {
-                    outputPath = Path.Combine(outputDir, "exports");
-                    Directory.CreateDirectory(outputPath);
-                }
-                string fullPath = Path.Combine(outputPath, exportFileName);
-                
-                // Collect data for export
-                var dataToExport = new List<Dictionary<string, object>>();
-                
-                // Get all HTML and text files
-                var htmlFiles = Directory.GetFiles(outputDir, "*.html", SearchOption.AllDirectories);
-                
-                foreach (var htmlFile in htmlFiles)
-                {
-                    var textFile = htmlFile + ".txt";
-                    
-                    // Create data entry
-                    var dataEntry = new Dictionary<string, object>
-                    {
-                        ["Url"] = Path.GetFileNameWithoutExtension(htmlFile)
-                            .Replace("_", "/")
-                            .Replace("www.", "http://www."),
-                        ["ScrapedDate"] = File.GetCreationTime(htmlFile)
-                    };
-                    
-                    // Filter by date range if specified
-                    DateTime scrapedDate = (DateTime)dataEntry["ScrapedDate"];
-                    if ((options.StartDate.HasValue && scrapedDate < options.StartDate.Value) ||
-                        (options.EndDate.HasValue && scrapedDate > options.EndDate.Value))
-                    {
-                        continue;
-                    }
-                    
-                    // Include raw HTML if requested
-                    if (options.IncludeRawHtml && File.Exists(htmlFile))
-                    {
-                        dataEntry["RawHtml"] = await File.ReadAllTextAsync(htmlFile);
-                    }
-                    
-                    // Include processed content if requested
-                    if (options.IncludeProcessedContent && File.Exists(textFile))
-                    {
-                        dataEntry["ProcessedContent"] = await File.ReadAllTextAsync(textFile);
-                    }
-                    
-                    // Include metadata if requested
-                    if (options.IncludeMetadata)
-                    {
-                        var metadataFile = Path.Combine(
-                            Path.GetDirectoryName(htmlFile),
-                            Path.GetFileNameWithoutExtension(htmlFile) + "_metadata.json"
-                        );
-                        
-                        if (File.Exists(metadataFile))
-                        {
-                            var json = await File.ReadAllTextAsync(metadataFile);
-                            var metadata = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                            
-                            if (metadata != null)
-                            {
-                                dataEntry["Metadata"] = metadata;
-                            }
-                        }
-                    }
-                    
-                    dataToExport.Add(dataEntry);
-                }
-                
-                // Export the data
-                switch (options.Format.ToLowerInvariant())
-                {
-                    case "json":
-                        await File.WriteAllTextAsync(fullPath, 
-                            Newtonsoft.Json.JsonConvert.SerializeObject(dataToExport, Newtonsoft.Json.Formatting.Indented));
-                        break;
-                    case "csv":
-                        // Simplified CSV export - in a real implementation, use a CSV library
-                        using (var writer = new StreamWriter(fullPath))
-                        {
-                            // Write CSV header from first entry
-                            if (dataToExport.Count > 0)
-                            {
-                                var header = string.Join(",", dataToExport[0].Keys.Select(k => $"\"{k}\""));
-                                await writer.WriteLineAsync(header);
-                                
-                                // Write data rows
-                                foreach (var entry in dataToExport)
-                                {
-                                    var row = string.Join(",", entry.Values.Select(v => $"\"{v}\""));
-                                    await writer.WriteLineAsync(row);
-                                }
-                            }
-                        }
-                        break;
-                    default:
-                        return new { Error = $"Unsupported export format: {options.Format}" };
-                }
-                
-                return new 
-                { 
-                    Message = $"Data exported successfully to {fullPath}",
-                    FilePath = fullPath,
-                    RecordCount = dataToExport.Count,
-                    Format = options.Format
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error exporting scraped data for scraper {id}");
-                return new { Error = $"Export failed: {ex.Message}" };
-            }
-        }
-        
         #endregion
     }
     
@@ -1255,5 +1475,7 @@ namespace WebScraperApi.Services
         public ScraperStatus Status { get; set; }
         public Scraper Scraper { get; set; }
         public PersistentStateManager StateManager { get; set; }
+        public WebScraper.Notifications.WebhookNotifier WebhookNotifier { get; set; }
+        public WebScraper.Monitoring.ScraperMetrics MetricsService { get; set; }
     }
 }
