@@ -38,7 +38,7 @@ namespace WebScraper.RegulatoryContent
             _documentClassifier = new RegulatoryDocumentClassifier(_logger);
             _changeDetector = new RegulatoryChangeDetector(_logger);
             _contentExtractor = new StructuredContentExtractor(_logger);
-            _pdfHandler = new PdfDocumentHandler(outputDirectory, _logger);
+            _pdfHandler = new PdfDocumentHandler(outputDirectory, null, _logger);
             
             // Add gambling industry specific keywords to the document classifier
             AddGamblingSpecificKeywords();

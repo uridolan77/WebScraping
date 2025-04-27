@@ -56,9 +56,11 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     // Create a new browser context for isolation
                     var context = await _browser.NewContextAsync(new BrowserNewContextOptions
                     {
-                        UserAgent = _config.BrowserUserAgent ?? _browser.BrowserType.Name == "chromium" 
-                            ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                            : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0",
+                        UserAgent = _config.BrowserUserAgent != null 
+                            ? _config.BrowserUserAgent 
+                            : _browser.BrowserType.Name == "chromium" 
+                                ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                                : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0",
                         JavaScriptEnabled = !_config.DisableJavaScript
                     });
                     
@@ -184,7 +186,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 // Add proxy if specified
                 if (!string.IsNullOrEmpty(_config.Proxy))
                 {
-                    launchOptions.Proxy = new ProxySettings { Server = _config.Proxy };
+                    launchOptions.Proxy = new() { Server = _config.Proxy };
                 }
                 
                 // Launch the appropriate browser type

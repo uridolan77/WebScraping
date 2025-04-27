@@ -108,9 +108,11 @@ namespace WebScraper.RegulatoryFramework.Example
                 config.HierarchicalExtractionConfig,
                 loggerFactory.CreateLogger<StructureAwareExtractor>());
             
+            /*
             var changeDetector = new ComplianceChangeDetector(
                 config.ChangeDetectionConfig,
                 loggerFactory.CreateLogger<ComplianceChangeDetector>());
+            */
             
             var documentProcessor = new DocumentProcessor(
                 config.DocumentProcessingConfig,
@@ -121,7 +123,7 @@ namespace WebScraper.RegulatoryFramework.Example
                 config,
                 logger,
                 contentExtractor: contentExtractor,
-                changeDetector: changeDetector,
+                changeDetector: null, // Comment out: changeDetector
                 documentProcessor: documentProcessor,
                 stateStore: stateStore);
             

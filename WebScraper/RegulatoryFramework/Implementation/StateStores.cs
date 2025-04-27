@@ -183,7 +183,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 }
                 
                 // Manage version history size
-                await PruneVersionHistoryAsync(url);
+                await PruneVersionHistoryAsync(version.Url);
             }
             catch (Exception ex)
             {

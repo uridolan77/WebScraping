@@ -325,17 +325,22 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     metadata.ExtractedMetadata["Producer"] = info.GetProducer();
                 }
                 
-                if (info.GetCreationDate() != null)
+                // Update to use the correct API for getting creation date in iText7
+                if (info.GetMoreInfo("CreationDate") != null)
                 {
-                    var creationDate = info.GetCreationDate();
-                    if (creationDate != null)
+                    var creationDateStr = info.GetMoreInfo("CreationDate");
+                    if (creationDateStr != null)
                     {
-                        metadata.ExtractedMetadata["CreationDate"] = creationDate.ToString();
+                        metadata.ExtractedMetadata["CreationDate"] = creationDateStr;
                         
-                        // If no publish date was found, use creation date
-                        if (!metadata.PublishDate.HasValue)
+                        // Try to parse the creation date
+                        if (DateTime.TryParse(creationDateStr, out var parsedDate))
                         {
-                            metadata.PublishDate = creationDate.GetTime();
+                            // If no publish date was found, use creation date
+                            if (!metadata.PublishDate.HasValue)
+                            {
+                                metadata.PublishDate = parsedDate;
+                            }
                         }
                     }
                 }

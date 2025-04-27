@@ -32,11 +32,13 @@ namespace WebScraper.RegulatoryFramework.Configuration
             services.AddSingleton<EnhancedScraper>();
             
             // Register each component based on feature flags
+            /*
             if (config.EnablePriorityCrawling)
             {
                 services.AddSingleton<ICrawlStrategy>(sp => 
                     new PriorityCrawler(config.PriorityCrawlingConfig, sp.GetService<ILogger<PriorityCrawler>>()));
             }
+            */
             
             if (config.EnableHierarchicalExtraction)
             {
@@ -50,6 +52,7 @@ namespace WebScraper.RegulatoryFramework.Configuration
                     new DocumentProcessor(config.DocumentProcessingConfig, sp.GetService<ILogger<DocumentProcessor>>()));
             }
             
+            /*
             if (config.EnableComplianceChangeDetection)
             {
                 services.AddSingleton<IChangeDetector>(sp => 
@@ -61,6 +64,7 @@ namespace WebScraper.RegulatoryFramework.Configuration
                 services.AddSingleton<IContentClassifier>(sp => 
                     new ContentClassifier(config.ClassificationConfig, sp.GetService<ILogger<ContentClassifier>>()));
             }
+            */
             
             if (config.EnableDynamicContentRendering)
             {
@@ -68,11 +72,13 @@ namespace WebScraper.RegulatoryFramework.Configuration
                     new PlaywrightRenderer(config.DynamicContentConfig, sp.GetService<ILogger<PlaywrightRenderer>>()));
             }
             
+            /*
             if (config.EnableAlertSystem)
             {
                 services.AddSingleton<IAlertService>(sp => 
                     new AlertService(config.AlertSystemConfig, sp.GetService<ILogger<AlertService>>()));
             }
+            */
             
             // Add state store based on configuration
             switch (config.StateStoreType)
