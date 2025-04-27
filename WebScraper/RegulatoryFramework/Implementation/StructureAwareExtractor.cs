@@ -68,7 +68,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
         /// <summary>
         /// Extracts structured content from an HTML document
         /// </summary>
-        public List<ContentNode> ExtractStructuredContent(HtmlDocument document)
+        public List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> ExtractStructuredContent(HtmlDocument document)
         {
             try
             {
@@ -91,18 +91,20 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 if (parentNodes == null || parentNodes.Count == 0)
                 {
                     // Fallback to body
-                    var rootNode = new ContentNode
+                    var rootNode = new WebScraper.RegulatoryFramework.Interfaces.ContentNode
                     {
-                        Title = document.DocumentNode.SelectSingleNode("//title")?.InnerText.Trim() ?? "Untitled",
+                        NodeType = "Document",
                         Content = document.DocumentNode.InnerText.Trim(),
                         Depth = 0,
-                        NodeType = "Document"
+                        Metadata = new Dictionary<string, object> {
+                            ["title"] = document.DocumentNode.SelectSingleNode("//title")?.InnerText.Trim() ?? "Untitled"
+                        }
                     };
                     
-                    return new List<ContentNode> { rootNode };
+                    return new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> { rootNode };
                 }
                 
-                var rootNodes = new List<ContentNode>();
+                var rootNodes = new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode>();
                 
                 foreach (var parentNode in parentNodes)
                 {
@@ -135,15 +137,15 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     }
                     
                     // Create the content node
-                    var contentNode = new ContentNode
+                    var contentNode = new WebScraper.RegulatoryFramework.Interfaces.ContentNode
                     {
-                        Title = title,
+                        NodeType = DetermineNodeType(parentNode),
                         Content = content,
                         Depth = GetNodeDepth(parentNode),
-                        NodeType = DetermineNodeType(parentNode)
+                        Metadata = new Dictionary<string, object> { ["title"] = title }
                     };
                     
-                    // Add metadata
+                    // Extract metadata
                     ExtractNodeMetadata(contentNode, parentNode);
                     
                     // Extract child nodes recursively
@@ -161,15 +163,18 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 _logger.LogError(ex, "Error extracting structured content");
                 
                 // Return minimal content on error
-                var errorNode = new ContentNode
+                var errorNode = new WebScraper.RegulatoryFramework.Interfaces.ContentNode
                 {
-                    Title = document.DocumentNode.SelectSingleNode("//title")?.InnerText.Trim() ?? "Error",
+                    NodeType = "Error",
                     Content = "Error extracting structured content",
                     Depth = 0,
-                    NodeType = "Error"
+                    Metadata = new Dictionary<string, object> {
+                        ["title"] = document.DocumentNode.SelectSingleNode("//title")?.InnerText.Trim() ?? "Error",
+                        ["error"] = ex.Message
+                    }
                 };
                 
-                return new List<ContentNode> { errorNode };
+                return new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> { errorNode };
             }
         }
         
@@ -358,6 +363,102 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
             
             return currentNode != null; // True if we found the parent in the hierarchy
+        }
+        
+        // Fix ContentNode type conversion issues
+        private bool AnalyzeNodeImportance(WebScraper.RegulatoryFramework.Interfaces.ContentNode node)
+        {
+            try
+            {
+                // Convert to our local ContentNode type first for analysis
+                var localNode = new WebScraper.ContentNode
+                {
+                    NodeType = node.NodeType,
+                    Content = node.Content,
+                    Depth = node.Depth,
+                    Title = node.Title,
+                    RelevanceScore = node.RelevanceScore,
+                    Attributes = ConvertAttributes(node.Attributes),
+                    Children = new List<WebScraper.ContentNode>()
+                };
+
+                // Now we can analyze it using our existing logic
+                return AnalyzeLocalNodeImportance(localNode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error analyzing node importance");
+                return false;
+            }
+        }
+
+        private bool AnalyzeLocalNodeImportance(WebScraper.ContentNode node)
+        {
+            // Implementation of the node importance analyzer
+            // This is where the original code would go
+            
+            // Check if the node has a high relevance score
+            if (node.RelevanceScore > 0.7)
+                return true;
+                
+            // Check if the node contains keywords
+            foreach (var keyword in _config.KeywordPatterns)
+            {
+                if (node.Content?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true)
+                    return true;
+            }
+            
+            // Check node attributes for relevance
+            if (node.Attributes != null && node.Attributes.Any(attr => 
+                attr.Key == "class" && _config.RelevantClasses.Contains(attr.Value)))
+            {
+                return true;
+            }
+            
+            return false;
+        }
+
+        private Dictionary<string, string> ConvertAttributes(Dictionary<string, string> attributes)
+        {
+            if (attributes == null)
+                return new Dictionary<string, string>();
+                
+            return new Dictionary<string, string>(attributes);
+        }
+
+        // Add a helper method to convert between ContentNode types
+        private WebScraper.ContentNode ConvertToLegacyContentNode(WebScraper.RegulatoryFramework.Interfaces.ContentNode node)
+        {
+            if (node == null) return null;
+            
+            var result = new WebScraper.ContentNode
+            {
+                NodeType = node.NodeType,
+                Content = node.Content,
+                Depth = node.Depth,
+                RelevanceScore = node.RelevanceScore,
+                Title = node.Title,
+                Attributes = new Dictionary<string, string>(),
+                Children = new List<WebScraper.ContentNode>(),
+                Metadata = new Dictionary<string, object>()
+            };
+            
+            foreach (var kvp in node.Attributes)
+            {
+                result.Attributes[kvp.Key] = kvp.Value;
+            }
+            
+            foreach (var child in node.Children)
+            {
+                result.Children.Add(ConvertToLegacyContentNode(child));
+            }
+            
+            foreach (var kvp in node.Metadata)
+            {
+                result.Metadata[kvp.Key] = kvp.Value;
+            }
+            
+            return result;
         }
     }
     

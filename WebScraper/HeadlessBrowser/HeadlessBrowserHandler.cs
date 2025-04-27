@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
@@ -607,6 +608,64 @@ namespace WebScraper.HeadlessBrowser
             public IBrowserContext Context { get; set; }
             public Dictionary<string, IPage> Pages { get; set; }
         }
+
+        // Add methods for browser context management
+        public BrowserContext GetBrowserContext(string contextId)
+        {
+            try
+            {
+                if (_contexts.TryGetValue(contextId, out var context))
+                {
+                    return context.Context;
+                }
+                
+                _logger?.Invoke($"Browser context {contextId} not found");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error getting browser context: {ex.Message}");
+                return null;
+            }
+        }
+
+        public IEnumerable<BrowserContextInfo> GetBrowserContexts()
+        {
+            return _contexts.Values;
+        }
+
+        // Add CloseAllContextsAsync method
+        public async Task CloseAllContextsAsync()
+        {
+            foreach (var contextId in _contexts.Keys.ToList())
+            {
+                await CloseContextAsync(contextId);
+            }
+        }
+
+        // Add GetPageAsync method
+        public async Task<string> GetPageAsync(string contextId, string pageId)
+        {
+            try
+            {
+                if (_contexts.TryGetValue(contextId, out var browserContext))
+                {
+                    // Find the page by ID
+                    var page = browserContext.Pages.FirstOrDefault(p => p.Id == pageId);
+                    if (page != null)
+                    {
+                        return await page.ContentAsync();
+                    }
+                }
+                _logger?.Invoke($"Page {pageId} in context {contextId} not found");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error getting page content: {ex.Message}");
+                return null;
+            }
+        }
     }
 
     /// <summary>
@@ -829,5 +888,48 @@ namespace WebScraper.HeadlessBrowser
         /// WebKit-based browser (Safari)
         /// </summary>
         Webkit
+    }
+
+    /// <summary>
+    /// Context information for a browser instance
+    /// </summary>
+    public class BrowserContext
+    {
+        public Microsoft.Playwright.IBrowserContext Context { get; set; }
+        public List<Page> Pages { get; set; } = new List<Page>();
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+    }
+
+    /// <summary>
+    /// Page wrapper for Playwright IPage
+    /// </summary>
+    public class Page
+    {
+        public Microsoft.Playwright.IPage PlaywrightPage { get; set; }
+        public string Url { get; set; }
+        public string Title { get; set; }
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        
+        public async Task<string> GetContentAsync()
+        {
+            return await PlaywrightPage.ContentAsync();
+        }
+        
+        public async Task<string> GetTextContentAsync()
+        {
+            return await PlaywrightPage.TextContentAsync("body");
+        }
+    }
+
+    /// <summary>
+    /// Information about a browser context
+    /// </summary>
+    public class BrowserContextInfo
+    {
+        public string Id { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int PageCount { get; set; }
+        public List<string> PageUrls { get; set; } = new List<string>();
     }
 }

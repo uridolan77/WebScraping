@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.IO;
 using WebScraper.Interfaces;
+using HtmlAgilityPack;
 
 namespace WebScraper.RegulatoryContent
 {
@@ -10,17 +11,15 @@ namespace WebScraper.RegulatoryContent
     /// </summary>
     public class RegulatoryDocumentHandler : IDocumentHandler
     {
-        private readonly PdfDocumentHandler _pdfHandler;
-        private readonly OfficeDocumentHandler _officeHandler;
-        private readonly Action<string> _logAction;
-        private readonly RegulatoryDocumentClassifier _classifier;
+        private readonly Action<string> _logger;
+        private readonly RegulatoryDocumentClassifier _contentClassifier;
+        private readonly OfficeDocumentHandler _officeDocumentHandler;
 
-        public RegulatoryDocumentHandler(Action<string> logAction)
+        public RegulatoryDocumentHandler(Action<string> logger = null)
         {
-            _logAction = logAction ?? (msg => { });
-            _pdfHandler = new PdfDocumentHandler(logAction);
-            _officeHandler = new OfficeDocumentHandler(logAction);
-            _classifier = new RegulatoryDocumentClassifier(logAction);
+            _logger = logger ?? (msg => { });
+            _contentClassifier = new RegulatoryDocumentClassifier(_logger);
+            _officeDocumentHandler = new OfficeDocumentHandler(_logger);
         }
 
         public bool CanHandle(string url)
@@ -39,35 +38,212 @@ namespace WebScraper.RegulatoryContent
             {
                 if (url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 {
-                    return await _pdfHandler.ExtractTextAsync(url);
+                    byte[] pdfBytes = await DownloadFileAsync(url);
+                    return await new PdfDocumentHandler(_logger).ExtractTextAsync(pdfBytes);
                 }
                 else if (url.EndsWith(".doc", StringComparison.OrdinalIgnoreCase) || 
                         url.EndsWith(".docx", StringComparison.OrdinalIgnoreCase) ||
                         url.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
                         url.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
                 {
-                    return await _officeHandler.ExtractTextAsync(url);
+                    byte[] officeBytes = await DownloadFileAsync(url);
+                    return GetExtractedText(officeBytes);
                 }
                 
-                _logAction($"No suitable handler found for URL: {url}");
+                _logger($"No suitable handler found for URL: {url}");
                 return string.Empty;
             }
             catch (Exception ex)
             {
-                _logAction($"Error extracting text from {url}: {ex.Message}");
+                _logger($"Error extracting text from {url}: {ex.Message}");
                 return string.Empty;
             }
         }
         
         public async Task<bool> IsRegulatoryDocument(string url, string content)
         {
-            return await _classifier.IsRegulatoryDocument(url, content);
+            return await _contentClassifier.IsRegulatoryDocument(url, content);
         }
         
         public async Task<StructuredContentResult> ExtractStructuredContent(string url, string content)
         {
-            var extractor = new StructuredContentExtractor(_logAction);
+            var extractor = new StructuredContentExtractor(_logger);
             return await extractor.ExtractStructuredContent(url, content);
+        }
+
+        private async Task<byte[]> DownloadFileAsync(string url)
+        {
+            using (var httpClient = new System.Net.Http.HttpClient())
+            {
+                return await httpClient.GetByteArrayAsync(url);
+            }
+        }
+        
+        // Add missing method overloads for HTML document handling
+        public async Task<bool> IsRegulatoryDocument(string url, HtmlDocument htmlDoc)
+        {
+            try
+            {
+                string htmlContent = null;
+                string textContent = null;
+                
+                if (htmlDoc != null)
+                {
+                    // Extract content from the provided HTML document
+                    textContent = htmlDoc.DocumentNode.InnerText;
+                    htmlContent = htmlDoc.DocumentNode.OuterHtml;
+                }
+                else
+                {
+                    // Fetch the HTML content
+                    using (var httpClient = new System.Net.Http.HttpClient())
+                    {
+                        htmlContent = await httpClient.GetStringAsync(url);
+                        
+                        // Parse the HTML
+                        htmlDoc = new HtmlDocument();
+                        htmlDoc.LoadHtml(htmlContent);
+                        textContent = htmlDoc.DocumentNode.InnerText;
+                    }
+                }
+
+                // Classify the content
+                var classification = _contentClassifier.ClassifyContent(url, textContent, htmlDoc);
+                return classification.IsRegulatoryContent;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error determining if document is regulatory: {ex.Message}");
+                return false;
+            }
+        }
+
+        public string GetExtractedText(byte[] officeDocBytes)
+        {
+            try
+            {
+                // Create a temporary file to save the bytes
+                string tempPath = Path.Combine(Path.GetTempPath(), $"tempoffice_{Guid.NewGuid()}.docx");
+                File.WriteAllBytes(tempPath, officeDocBytes);
+                
+                // Process the file
+                var result = _officeDocumentHandler.ExtractTextFromDocument(tempPath).GetAwaiter().GetResult();
+                
+                // Clean up the temp file
+                try { File.Delete(tempPath); } catch { }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error extracting text from office document bytes: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        // Fix type conversion issues in method calls
+        public async Task<DocumentMetadata> ProcessDocumentContent(string contentData)
+        {
+            try
+            {
+                // Fix parameter type - convert Action<string> to string
+                return await ProcessHtmlDocument(contentData);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error processing document content: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<DocumentMetadata> ProcessDocumentFile(byte[] fileData)
+        {
+            try
+            {
+                // Fix parameter type - convert byte[] to string
+                string contentAsString = System.Text.Encoding.UTF8.GetString(fileData);
+                return await ProcessHtmlDocument(contentAsString);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error processing document file: {ex.Message}");
+                return null;
+            }
+        }
+
+        // Method to handle HtmlDocument parameter type
+        public async Task<DocumentMetadata> ProcessHtmlDocument(HtmlDocument htmlDoc)
+        {
+            try
+            {
+                // Extract basic metadata
+                var metadata = new DocumentMetadata
+                {
+                    Title = htmlDoc.DocumentNode.SelectSingleNode("//title")?.InnerText ?? "Unknown Title",
+                    ContentHash = ComputeContentHash(htmlDoc.DocumentNode.OuterHtml)
+                };
+
+                // Extract text content
+                metadata.TextContent = htmlDoc.DocumentNode.InnerText;
+
+                // Classify the content
+                var classification = _contentClassifier.ClassifyContent("file://document", metadata.TextContent, htmlDoc);
+                metadata.Classification = new ClassificationResult 
+                {
+                    IsRegulatoryContent = classification.IsRegulatoryContent,
+                    ConfidenceScore = classification.ConfidenceScore,
+                    Impact = classification.Impact,
+                    PrimaryCategory = classification.PrimaryCategory
+                };
+
+                // Find publication date if available
+                var dateNodes = htmlDoc.DocumentNode.SelectNodes("//meta[@name='date' or @property='article:published_time']");
+                if (dateNodes != null && dateNodes.Count > 0)
+                {
+                    var dateString = dateNodes[0].GetAttributeValue("content", null);
+                    if (!string.IsNullOrEmpty(dateString) && DateTime.TryParse(dateString, out var pubDate))
+                    {
+                        metadata.PublishDate = pubDate;
+                        metadata.PublicationDate = pubDate;
+                    }
+                }
+
+                return metadata;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error processing HTML document: {ex.Message}");
+                return null;
+            }
+        }
+
+        // Helper method to compute content hash
+        private string ComputeContentHash(string content)
+        {
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                var contentBytes = System.Text.Encoding.UTF8.GetBytes(content);
+                var hashBytes = sha256.ComputeHash(contentBytes);
+                return Convert.ToBase64String(hashBytes);
+            }
+        }
+
+        // Add IsRegulatoryContent property to ClassificationResult
+        public bool IsRegulatoryContent(RegulatoryDocumentClassifier.ClassificationResult result)
+        {
+            return result?.ConfidenceScore > 0.7 || (result?.Impact >= RegulatoryImpact.Medium);
+        }
+
+        // Add the missing method to OfficeDocumentHandler
+        public Task<string> ExtractTextFromDocumentFile(string filePath)
+        {
+            // Forward the call to the correct method
+            if (_officeDocumentHandler != null)
+            {
+                return _officeDocumentHandler.ExtractTextFromDocument(filePath);
+            }
+            
+            return Task.FromResult<string>(null);
         }
     }
     

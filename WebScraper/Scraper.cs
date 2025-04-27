@@ -427,19 +427,42 @@ namespace WebScraper
             }
         }
 
+        // Fix for method to properly serialize the dictionary
         private async Task SaveVersionHistoryAsync()
         {
             try
             {
-                var history = _changeDetector.GetVersionHistory();
-                var versionHistoryPath = Path.Combine(_config.OutputDirectory, "version_history.json");
-
-                await File.WriteAllTextAsync(
-                    versionHistoryPath,
-                    JsonConvert.SerializeObject(history, Newtonsoft.Json.Formatting.Indented)
-                );
-
-                _logger($"Saved version history for {history.Count} pages.");
+                string filePath = Path.Combine(_outputDirectory, "version_history.json");
+                
+                // Convert PageVersion objects to serializable format (get version history from change detector)
+                var versionHistory = _changeDetector.GetVersionHistory();
+                var serializableVersions = new Dictionary<string, List<Dictionary<string, object>>>();
+                
+                foreach (var urlEntry in versionHistory)
+                {
+                    var versionList = new List<Dictionary<string, object>>();
+                    
+                    foreach (var version in urlEntry.Value)
+                    {
+                        versionList.Add(new Dictionary<string, object>
+                        {
+                            ["url"] = version.Url,
+                            ["contentHash"] = version.ContentHash,
+                            ["versionDate"] = version.VersionDate,
+                            ["changeFromPrevious"] = version.ChangeFromPrevious.ToString()
+                        });
+                    }
+                    
+                    serializableVersions[urlEntry.Key] = versionList;
+                }
+                
+                // Serialize to JSON
+                string json = System.Text.Json.JsonSerializer.Serialize(serializableVersions);
+                
+                // Write to file
+                await File.WriteAllTextAsync(filePath, json);
+                
+                _logger($"Version history saved to {filePath}");
             }
             catch (Exception ex)
             {

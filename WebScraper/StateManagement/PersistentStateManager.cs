@@ -134,28 +134,10 @@ namespace WebScraper.StateManagement
         /// <summary>
         /// Saves a content item
         /// </summary>
-        public async Task SaveContentVersionAsync(ContentItem content, int maxVersions)
+        public async Task<bool> SaveContentVersionAsync(ContentItem item)
         {
-            if (content == null) throw new ArgumentNullException(nameof(content));
-            
-            // Convert to our PageVersion format
-            var version = new RegulatoryFramework.Interfaces.PageVersion
-            {
-                Url = content.Url,
-                Hash = content.ContentHash,
-                CapturedAt = DateTime.Now,
-                FullContent = content.RawContent,
-                TextContent = content.RawContent, // Fallback to raw content as text content
-                ContentSummary = content.Title ?? "",
-                Metadata = new Dictionary<string, object>
-                {
-                    ["title"] = content.Title ?? "",
-                    ["scraperId"] = content.ScraperId ?? "unknown",
-                    ["status"] = content.LastStatusCode
-                }
-            };
-            
-            await SaveVersionAsync(version);
+            // Call the version with maxVersions parameter, using a default value of 10
+            return await SaveContentVersionAsync(item, 10);
         }
 
         /// <summary>
@@ -358,6 +340,101 @@ namespace WebScraper.StateManagement
                     .Replace("+", "-")
                     .Replace("=", "");
             }
+        }
+        
+        /// <summary>
+        /// Add CapturedAt property check and conversion
+        /// </summary>
+        private DateTime GetCapturedAt(ContentItem item)
+        {
+            // Handle legacy ContentItem vs Processing.ContentItem
+            if (item is Processing.ContentItem processingItem)
+            {
+                return processingItem.CapturedAt;
+            }
+            
+            // Use reflection to check for property
+            var capturedAtProperty = item.GetType().GetProperty("CapturedAt");
+            if (capturedAtProperty != null)
+            {
+                return (DateTime)capturedAtProperty.GetValue(item);
+            }
+            
+            // Fallback to current time
+            return DateTime.Now;
+        }
+        
+        /// <summary>
+        /// Saves a content item to the storage
+        /// </summary>
+        public async Task<bool> SaveContentItemAsync(WebScraper.Interfaces.ContentItem item)
+        {
+            try
+            {
+                if (item == null)
+                {
+                    _logAction($"Cannot save null content item");
+                    return false;
+                }
+                
+                // Convert to our internal ContentItem type
+                var contentItem = new ContentItem
+                {
+                    Url = item.Url,
+                    Title = item.Title,
+                    ScraperId = item.ScraperId,
+                    LastStatusCode = item.LastStatusCode,
+                    ContentType = item.ContentType,
+                    IsReachable = item.IsReachable,
+                    RawContent = item.RawContent,
+                    ContentHash = item.ContentHash,
+                    IsRegulatoryContent = item.IsRegulatoryContent,
+                    CapturedAt = GetCapturedAt(item)
+                };
+                
+                // Use the existing method to save the content
+                return await SaveContentVersionAsync(contentItem) != null;
+            }
+            catch (Exception ex)
+            {
+                _logAction($"Error saving content item: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Saves a content version with max versions parameter
+        /// </summary>
+        public async Task SaveContentVersionAsync(ContentItem contentItem, int maxVersions = 10)
+        {
+            string versionFolder = GetVersionFolder(contentItem.Url);
+            Directory.CreateDirectory(versionFolder);
+
+            // Create a PageVersion object
+            PageVersion version = new PageVersion
+            {
+                Url = contentItem.Url,
+                ContentHash = contentItem.ContentHash,
+                Timestamp = DateTime.Now,
+                Content = contentItem.RawContent,
+                TextContent = contentItem.TextContent
+            };
+
+            // Maintain a history of versions
+            await SaveVersionHistoryAsync(contentItem.Url, version, maxVersions);
+
+            // Store version to disk
+            string versionFilePath = GetVersionFilePath(version);
+            string versionFileName = Path.GetFileName(versionFilePath);
+            string metaFilePath = Path.Combine(versionFolder, $"{versionFileName}.meta.json");
+            
+            File.WriteAllText(versionFilePath, contentItem.RawContent);
+            
+            // Save metadata
+            string json = System.Text.Json.JsonSerializer.Serialize(version);
+            File.WriteAllText(metaFilePath, json);
+            
+            _logAction?.Invoke($"Saved version {versionFilePath}");
         }
     }
 

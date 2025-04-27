@@ -36,7 +36,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
     /// </summary>
     public interface IDocumentProcessor
     {
-        Task<DocumentMetadata> ProcessDocumentAsync(string url, string title, byte[] content);
+        Task<WebScraper.RegulatoryFramework.Implementation.DocumentMetadata> ProcessDocumentAsync(string url, string title, byte[] content);
         Task ProcessLinkedDocumentsAsync(string pageUrl, HtmlDocument document);
     }
     

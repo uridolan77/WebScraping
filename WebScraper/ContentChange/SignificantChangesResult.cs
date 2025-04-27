@@ -9,9 +9,24 @@ namespace WebScraper.ContentChange
     public class SignificantChangesResult
     {
         /// <summary>
+        /// Gets or sets whether significant changes were detected
+        /// </summary>
+        public bool HasSignificantChanges { get; set; }
+        
+        /// <summary>
         /// Gets or sets the type of change detected
         /// </summary>
-        public ContentChangeType ChangeType { get; set; }
+        public ChangeType ChangeType { get; set; }
+        
+        /// <summary>
+        /// Gets or sets a summary of the changes
+        /// </summary>
+        public string Summary { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the dictionary of changed sections
+        /// </summary>
+        public Dictionary<string, string> ChangedSections { get; set; } = new Dictionary<string, string>();
         
         /// <summary>
         /// Gets or sets the dictionary of significant changes with section name as key and change description as value
@@ -22,6 +37,11 @@ namespace WebScraper.ContentChange
         /// Gets or sets the importance of the detected changes
         /// </summary>
         public RegulatoryChangeImportance Importance { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the date when the changes were detected
+        /// </summary>
+        public DateTime DetectedAt { get; set; } = DateTime.Now;
         
         /// <summary>
         /// Gets or sets the date of the previous version
@@ -47,42 +67,11 @@ namespace WebScraper.ContentChange
         /// Gets or sets any regulatory implications of the changes
         /// </summary>
         public List<string> RegulatoryImplications { get; set; } = new List<string>();
-    }
-    
-    /// <summary>
-    /// Represents the type of change detected in content
-    /// </summary>
-    public enum ContentChangeType
-    {
-        /// <summary>
-        /// No changes detected
-        /// </summary>
-        NoChange,
         
         /// <summary>
-        /// Minor changes detected
+        /// Gets or sets key terms added in the new version
         /// </summary>
-        Minor,
-        
-        /// <summary>
-        /// Significant changes detected
-        /// </summary>
-        Significant,
-        
-        /// <summary>
-        /// Major changes detected
-        /// </summary>
-        Major,
-        
-        /// <summary>
-        /// The document has been removed
-        /// </summary>
-        Removed,
-        
-        /// <summary>
-        /// The document is a new one
-        /// </summary>
-        New
+        public List<string> AddedTerms { get; set; } = new List<string>();
     }
     
     /// <summary>

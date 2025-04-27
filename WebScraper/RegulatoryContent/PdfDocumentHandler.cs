@@ -239,6 +239,47 @@ namespace WebScraper.RegulatoryContent
             return await ExtractPdfText(pdfUrl);
         }
 
+        public async Task<string> ExtractTextAsync(byte[] document)
+        {
+            try
+            {
+                // Create a temporary file to process the PDF
+                string tempFilePath = Path.Combine(_storageDirectory, $"temp_pdf_{Guid.NewGuid()}.pdf");
+                
+                try
+                {
+                    // Write the PDF bytes to a temp file
+                    await File.WriteAllBytesAsync(tempFilePath, document);
+                    
+                    // Extract the text from the temp file
+                    string extractedText = await ExtractTextFromPdfFile(tempFilePath);
+                    
+                    _logger($"Successfully extracted {extractedText.Length} characters from PDF");
+                    return extractedText;
+                }
+                finally
+                {
+                    // Clean up the temp file
+                    if (File.Exists(tempFilePath))
+                    {
+                        try
+                        {
+                            File.Delete(tempFilePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger($"Warning: Failed to delete temporary PDF file: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error extracting text from PDF: {ex.Message}");
+                return $"[PDF EXTRACTION ERROR: {ex.Message}]";
+            }
+        }
+
         public async Task SavePdfMetadata(string pdfUrl, string title, DateTime? publishDate = null, string category = null, Dictionary<string, string> additionalMetadata = null)
         {
             try

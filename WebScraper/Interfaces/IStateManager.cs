@@ -18,12 +18,12 @@ namespace WebScraper.Interfaces
         /// <summary>
         /// Save the state of the scraper
         /// </summary>
-        Task SaveScraperStateAsync(ScraperState state);
+        Task SaveScraperStateAsync(WebScraper.StateManagement.ScraperState state);
         
         /// <summary>
         /// Get the state of the scraper
         /// </summary>
-        Task<ScraperState> GetScraperStateAsync(string scraperId);
+        Task<WebScraper.StateManagement.ScraperState> GetScraperStateAsync(string scraperId);
 
         /// <summary>
         /// Check if a URL has been visited

@@ -56,71 +56,48 @@ namespace WebScraper.RegulatoryFramework.Implementation
         {
             try
             {
-                string extension = Path.GetExtension(url);
+                _logger?.LogInformation($"Processing document from {url}: {title}");
                 
-                // Ensure this is a supported document type
-                if (!_config.DocumentTypes.Contains(extension, StringComparer.OrdinalIgnoreCase))
-                {
-                    _logger.LogWarning("Unsupported document type: {Extension} for {Url}", extension, url);
-                    return null;
-                }
-                
-                // Create document metadata
+                // Create metadata
                 var metadata = new DocumentMetadata
                 {
                     Url = url,
-                    Title = title ?? Path.GetFileNameWithoutExtension(url),
-                    DocumentType = extension.TrimStart('.').ToUpper(),
+                    Title = title,
                     ProcessedDate = DateTime.Now
                 };
                 
-                // Save document to disk if enabled
-                if (_config.DownloadDocuments)
+                // Determine document type
+                metadata.DocumentType = DetermineDocumentType(url, content);
+                
+                // Process based on document type
+                switch (metadata.DocumentType)
                 {
-                    var localPath = await SaveDocumentAsync(url, content);
-                    metadata.LocalFilePath = localPath;
+                    case "PDF":
+                        await ProcessPdfDocumentAsync(content, metadata);
+                        break;
+                    case "Word":
+                        await ProcessWordDocumentAsync(content, metadata);
+                        break;
+                    case "Excel":
+                        await ProcessExcelDocumentAsync(content, metadata);
+                        break;
+                    default:
+                        _logger?.LogWarning($"Unsupported document type: {metadata.DocumentType}");
+                        break;
                 }
                 
-                // Extract metadata if enabled
-                if (_config.ExtractMetadata)
+                // Save document locally if configured
+                if (_config.StoreDocumentsLocally)
                 {
-                    await ExtractDocumentMetadataAsync(metadata, content);
+                    metadata.LocalFilePath = await StoreDocumentAsync(url, title, content, metadata.DocumentType);
                 }
-                
-                // Extract full text if enabled
-                if (_config.ExtractFullText && _extractors.TryGetValue(extension, out var extractor))
-                {
-                    var text = await extractor(content);
-                    metadata.ExtractedMetadata["FullText"] = text;
-                    
-                    // Apply metadata extraction patterns
-                    foreach (var pattern in _config.MetadataPatterns)
-                    {
-                        var matches = Regex.Matches(text, pattern.Value);
-                        if (matches.Count > 0 && matches[0].Groups.Count > 1)
-                        {
-                            metadata.ExtractedMetadata[pattern.Key] = matches[0].Groups[1].Value.Trim();
-                        }
-                    }
-                    
-                    // Try to extract effective date from patterns
-                    if (metadata.ExtractedMetadata.TryGetValue("EffectiveDate", out var effectiveDateStr))
-                    {
-                        if (DateTime.TryParse(effectiveDateStr, out var effectiveDate))
-                        {
-                            metadata.PublishDate = effectiveDate;
-                        }
-                    }
-                }
-                
-                _logger.LogInformation("Processed document: {Url}, Type: {DocumentType}", url, metadata.DocumentType);
                 
                 return metadata;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing document: {Url}", url);
-                return null;
+                _logger?.LogError(ex, $"Error processing document: {url}");
+                throw;
             }
         }
         
@@ -441,6 +418,199 @@ namespace WebScraper.RegulatoryFramework.Implementation
             {
                 return href;
             }
+        }
+
+        /// <summary>
+        /// Determines the document type based on the file extension or content
+        /// </summary>
+        private string DetermineDocumentType(string url, byte[] content)
+        {
+            // Try to determine by file extension first
+            string extension = Path.GetExtension(url).ToLowerInvariant();
+            switch (extension)
+            {
+                case ".pdf":
+                    return "PDF";
+                case ".docx":
+                case ".doc":
+                    return "Word";
+                case ".xlsx":
+                case ".xls":
+                    return "Excel";
+                case ".pptx":
+                case ".ppt":
+                    return "PowerPoint";
+                default:
+                    // Could implement content-based detection here
+                    // For example, check for PDF magic numbers for files without an extension
+                    return "Unknown";
+            }
+        }
+
+        /// <summary>
+        /// Processes a PDF document
+        /// </summary>
+        private async Task ProcessPdfDocumentAsync(byte[] content, DocumentMetadata metadata)
+        {
+            try
+            {
+                // Extract text content
+                metadata.TextContent = await ExtractPdfTextAsync(content);
+                    
+                // Extract metadata
+                await ExtractPdfMetadataAsync(metadata, content);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error processing PDF document");
+            }
+        }
+
+        /// <summary>
+        /// Processes a Word document
+        /// </summary>
+        private async Task ProcessWordDocumentAsync(byte[] content, DocumentMetadata metadata)
+        {
+            try
+            {
+                // Extract text content (placeholder)
+                metadata.TextContent = await ExtractDocxTextAsync(content);
+                    
+                // Extract metadata (placeholder)
+                ExtractDocxMetadata(metadata, content);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error processing Word document");
+            }
+        }
+
+        /// <summary>
+        /// Processes an Excel document
+        /// </summary>
+        private async Task ProcessExcelDocumentAsync(byte[] content, DocumentMetadata metadata)
+        {
+            try
+            {
+                // Extract text content (placeholder)
+                metadata.TextContent = await ExtractXlsxTextAsync(content);
+                    
+                // Extract metadata (placeholder)
+                ExtractXlsxMetadata(metadata, content);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error processing Excel document");
+            }
+        }
+
+        /// <summary>
+        /// Stores a document to disk
+        /// </summary>
+        private async Task<string> StoreDocumentAsync(string url, string title, byte[] content, string documentType)
+        {
+            try
+            {
+                string folderPath = Path.Combine(_config.DocumentStoragePath, documentType);
+                if (!Directory.Exists(folderPath))
+                {
+                    Directory.CreateDirectory(folderPath);
+                }
+                    
+                string fileName = GetSafeFilename(title, url, documentType);
+                string filePath = Path.Combine(folderPath, fileName);
+                    
+                await File.WriteAllBytesAsync(filePath, content);
+                    
+                _logger.LogInformation("Document stored at: {FilePath}", filePath);
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error storing document: {Url}", url);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Creates a safe filename from the document title and URL
+        /// </summary>
+        private string GetSafeFilename(string title, string url, string documentType)
+        {
+            string extension;
+            switch (documentType.ToLowerInvariant())
+            {
+                case "pdf":
+                    extension = ".pdf";
+                    break;
+                case "word":
+                    extension = ".docx";
+                    break;
+                case "excel":
+                    extension = ".xlsx";
+                    break;
+                default:
+                    extension = Path.GetExtension(url);
+                    if (string.IsNullOrEmpty(extension))
+                    {
+                        extension = ".bin";
+                    }
+                    break;
+            }
+                
+            // Use the title if available, otherwise use the URL
+            string baseFileName = !string.IsNullOrEmpty(title) ? title : Path.GetFileNameWithoutExtension(url);
+                
+            // If still no filename, use a hash of the URL
+            if (string.IsNullOrEmpty(baseFileName))
+            {
+                baseFileName = $"doc_{url.GetHashCode():X8}";
+            }
+                
+            // Replace invalid characters
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                baseFileName = baseFileName.Replace(c, '_');
+            }
+                
+            // Limit length
+            if (baseFileName.Length > 50)
+            {
+                baseFileName = baseFileName.Substring(0, 50);
+            }
+                
+            return $"{baseFileName}_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
+        }
+    }
+
+    // Add DocumentMetadata class definition for type compatibility
+    public class DocumentMetadata
+    {
+        public string Url { get; set; }
+        public string Title { get; set; }
+        public string DocumentType { get; set; }
+        public DateTime? PublishDate { get; set; }
+        public string Author { get; set; }
+        public int PageCount { get; set; }
+        public string LocalFilePath { get; set; }
+        public DateTime ProcessedDate { get; set; } = DateTime.Now;
+        public Dictionary<string, object> ExtractedMetadata { get; set; } = new Dictionary<string, object>();
+        
+        // Conversion operator to WebScraper.DocumentMetadata
+        public static implicit operator WebScraper.DocumentMetadata(DocumentMetadata metadata)
+        {
+            return new WebScraper.DocumentMetadata
+            {
+                Url = metadata.Url,
+                Title = metadata.Title,
+                DocumentType = metadata.DocumentType,
+                PublicationDate = metadata.PublishDate,
+                Author = metadata.Author,
+                PageCount = metadata.PageCount,
+                LocalFilePath = metadata.LocalFilePath,
+                ProcessedDate = metadata.ProcessedDate,
+                ExtractedMetadata = metadata.ExtractedMetadata
+            };
         }
     }
 }

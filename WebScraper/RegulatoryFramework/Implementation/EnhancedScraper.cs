@@ -116,16 +116,10 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     currentVersion = await _changeDetector.TrackPageVersionAsync(url, content, textContent);
                     
                     // Check for significant changes
-                    if (previousVersion != null && currentVersion.ChangeFromPrevious != ChangeType.None)
+                    if ((int)currentVersion.ChangeFromPrevious != (int)ChangeType.None)
                     {
-                        var significantChanges = _changeDetector.DetectSignificantChanges(
-                            previousVersion.TextContent, textContent);
-                        
-                        // Send alerts if needed
-                        if (_alertService != null && significantChanges.HasSignificantChanges)
-                        {
-                            await _alertService.ProcessAlertAsync(url, significantChanges);
-                        }
+                        // Handle change detection
+                        await HandlePageChangeAsync(url, previousVersion, currentVersion);
                     }
                     
                     // Save version to state store
@@ -196,6 +190,107 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
             
             return state;
+        }
+
+        private async Task HandlePageChangeAsync(string url, PageVersion previousVersion, PageVersion currentVersion)
+        {
+            var significantChanges = _changeDetector.DetectSignificantChanges(
+                previousVersion.TextContent, currentVersion.TextContent);
+            
+            // Send alerts if needed
+            if (_alertService != null && significantChanges.HasSignificantChanges)
+            {
+                await _alertService.ProcessAlertAsync(url, significantChanges);
+            }
+        }
+        
+        // Fix ContentNode conversion in ProcessStructuredContent method
+        public async Task<List<ContentNode>> ProcessStructuredContent(string url, List<WebScraper.ContentNode> structuredContent)
+        {
+            try
+            {
+                LogInfo($"Processing structured content for {url}");
+                
+                // Convert WebScraper.ContentNode to RegulatoryFramework.Interfaces.ContentNode
+                List<ContentNode> convertedNodes = new List<ContentNode>();
+                
+                foreach (var node in structuredContent)
+                {
+                    convertedNodes.Add(ConvertContentNode(node));
+                }
+                
+                return convertedNodes;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, $"Error processing structured content for {url}");
+                return new List<ContentNode>();
+            }
+        }
+
+        // Helper method to convert between ContentNode types
+        private ContentNode ConvertContentNode(WebScraper.ContentNode node)
+        {
+            if (node == null)
+                return null;
+                
+            var convertedNode = new ContentNode
+            {
+                NodeType = node.NodeType,
+                Content = node.Content,
+                Depth = node.Depth,
+                Title = node.Title,
+                RelevanceScore = node.RelevanceScore
+            };
+            
+            // Copy attributes
+            foreach (var kvp in node.Attributes)
+            {
+                convertedNode.Attributes[kvp.Key] = kvp.Value;
+            }
+            
+            // Convert children recursively
+            foreach (var child in node.Children)
+            {
+                convertedNode.Children.Add(ConvertContentNode(child));
+            }
+            
+            // Copy metadata
+            foreach (var kvp in node.Metadata)
+            {
+                convertedNode.Metadata[kvp.Key] = kvp.Value;
+            }
+            
+            return convertedNode;
+        }
+
+        // Helper logging methods
+        private void LogInfo(string message)
+        {
+            _logger?.LogInformation(message);
+        }
+
+        private void LogError(Exception ex, string message)
+        {
+            _logger?.LogError(ex, message);
+        }
+        
+        // Fix conversion of ClassificationResult type by adding a helper method
+        private string GetPrimaryCategoryFromClassification(ClassificationResult classification)
+        {
+            // Use the Category property if PrimaryCategory is missing
+            return classification?.PrimaryCategory ?? classification?.Category ?? "Uncategorized";
+        }
+
+        // Add this method to handle the difference between ClassificationResult implementations
+        private bool HasCriticalRegulatoryImpact(ClassificationResult classification)
+        {
+            if (classification == null)
+                return false;
+                
+            // Check for high or critical impact
+            return classification.Impact == RegulatoryImpact.High || 
+                   classification.Impact == RegulatoryImpact.Critical;
         }
     }
     

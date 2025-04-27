@@ -90,59 +90,52 @@ namespace WebScraper.RegulatoryFramework.Configuration
     /// <summary>
     /// Configuration for hierarchical content extraction
     /// </summary>
-    public class HierarchicalExtractionConfig : FeatureConfigBase
+    public class HierarchicalExtractionConfig
     {
+        /// <summary>
+        /// CSS selector for content elements
+        /// </summary>
+        public string ContentSelector { get; set; } = "p, .content";
+        
         /// <summary>
         /// CSS selector for parent container elements
         /// </summary>
-        public string ParentSelector { get; set; } = "section, article, div.content";
+        public string ParentSelector { get; set; } = "section, article, div.section";
         
         /// <summary>
         /// CSS selector for title elements
         /// </summary>
-        public string TitleSelector { get; set; } = "h1, h2, h3, h4";
+        public string TitleSelector { get; set; } = "h1, h2, h3, .title";
         
         /// <summary>
-        /// CSS selector for content elements
+        /// CSS selector for elements to exclude
         /// </summary>
-        public string ContentSelector { get; set; } = "p, li, table";
+        public string ExcludeSelector { get; set; } = "nav, footer, header, .ads";
         
         /// <summary>
-        /// Elements to exclude from extraction
-        /// </summary>
-        public string ExcludeSelector { get; set; } = "nav, footer, header, aside";
-        
-        /// <summary>
-        /// Maximum depth for hierarchical extraction
+        /// Maximum depth for the content hierarchy
         /// </summary>
         public int MaxHierarchyDepth { get; set; } = 5;
         
         /// <summary>
-        /// Preserve HTML in content
+        /// Keywords to look for in content to determine relevance
         /// </summary>
-        public bool PreserveHtml { get; set; } = false;
+        public List<string> KeywordPatterns { get; set; } = new List<string>();
         
-        public override List<string> Validate()
-        {
-            var errors = new List<string>();
-            
-            if (string.IsNullOrEmpty(ParentSelector))
-            {
-                errors.Add("ParentSelector is required");
-            }
-            
-            if (string.IsNullOrEmpty(TitleSelector))
-            {
-                errors.Add("TitleSelector is required");
-            }
-            
-            if (string.IsNullOrEmpty(ContentSelector))
-            {
-                errors.Add("ContentSelector is required");
-            }
-            
-            return errors;
-        }
+        /// <summary>
+        /// CSS classes that indicate relevant content
+        /// </summary>
+        public List<string> RelevantClasses { get; set; } = new List<string>();
+        
+        /// <summary>
+        /// Whether to extract links from content
+        /// </summary>
+        public bool ExtractLinks { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to extract metadata from content
+        /// </summary>
+        public bool ExtractMetadata { get; set; } = true;
     }
     
     /// <summary>

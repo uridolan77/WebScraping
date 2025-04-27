@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using WebScraper.Interfaces;
 using WebScraper.Processing;
-using WebScraper.RegulatoryFramework.Interfaces;
+using WebScraper.StateManagement;
 
 namespace WebScraper.StateManagement
 {
@@ -38,31 +39,29 @@ namespace WebScraper.StateManagement
             }
         }
         
-        public async Task SaveScraperStateAsync(ScraperState state)
+        public Task SaveScraperStateAsync(WebScraper.StateManagement.ScraperState state)
         {
             try
             {
-                // The WebScraperApi.Models.ScraperState is already the correct type
-                // since we're passing in a WebScraper.StateManagement.ScraperState
-                await _stateManager.SaveScraperStateAsync(state);
+                return _stateManager.SaveScraperStateAsync(state);
             }
             catch (Exception ex)
             {
                 _logAction($"Error saving scraper state: {ex.Message}");
+                return Task.CompletedTask;
             }
         }
         
-        public async Task<ScraperState> GetScraperStateAsync(string scraperId)
+        public Task<WebScraper.StateManagement.ScraperState> GetScraperStateAsync(string scraperId)
         {
             try
             {
-                var state = await _stateManager.GetScraperStateAsync(scraperId);
-                return state;
+                return _stateManager.GetScraperStateAsync(scraperId);
             }
             catch (Exception ex)
             {
                 _logAction($"Error getting scraper state: {ex.Message}");
-                return new ScraperState { ScraperId = scraperId, Status = "Error" };
+                return Task.FromResult(new WebScraper.StateManagement.ScraperState { ScraperId = scraperId, Status = "Error" });
             }
         }
         
@@ -91,23 +90,65 @@ namespace WebScraper.StateManagement
             }
         }
         
-        public async Task SaveContentVersionAsync(ContentItem content, int maxVersions)
+        public async Task<bool> SaveContentItemAsync(Processing.ContentItem item)
         {
-            try
+            if (_stateManager != null)
             {
-                await _stateManager.SaveContentVersionAsync(content, maxVersions);
+                try
+                {
+                    // Convert the Processing.ContentItem to WebScraper.Interfaces.ContentItem for compatibility
+                    var convertedItem = new WebScraper.Interfaces.ContentItem
+                    {
+                        Url = item.Url,
+                        Title = item.Title,
+                        ScraperId = item.ScraperId,
+                        LastStatusCode = item.LastStatusCode,
+                        ContentType = item.ContentType,
+                        IsReachable = item.IsReachable,
+                        RawContent = item.RawContent,
+                        ContentHash = item.ContentHash,
+                        IsRegulatoryContent = item.IsRegulatoryContent
+                        // Note: CapturedAt is handled implicitly by the interface implementation
+                    };
+                    
+                    return await _stateManager.SaveContentItemAsync(convertedItem);
+                }
+                catch (Exception ex)
+                {
+                    _logAction($"Error saving content item: {ex.Message}");
+                    return false;
+                }
             }
-            catch (Exception ex)
-            {
-                _logAction($"Error saving content version: {ex.Message}");
-            }
+            
+            return false;
         }
         
-        public async Task<(bool Found, ContentItem Version)> GetLatestContentVersionAsync(string url)
+        public async Task<(bool Found, WebScraper.Interfaces.ContentItem Version)> GetLatestContentVersionAsync(string url)
         {
             try
             {
-                return await _stateManager.GetLatestContentVersionAsync(url);
+                var result = await _stateManager.GetLatestContentVersionAsync(url);
+                
+                if (!result.Found || result.Version == null)
+                {
+                    return (false, null);
+                }
+                
+                // Convert from implementation type to interface type
+                var interfaceContentItem = new WebScraper.Interfaces.ContentItem
+                {
+                    Url = result.Version.Url,
+                    Title = result.Version.Title,
+                    ScraperId = result.Version.ScraperId,
+                    LastStatusCode = result.Version.LastStatusCode,
+                    ContentType = result.Version.ContentType,
+                    IsReachable = result.Version.IsReachable,
+                    RawContent = result.Version.RawContent,
+                    ContentHash = result.Version.ContentHash,
+                    IsRegulatoryContent = result.Version.IsRegulatoryContent
+                };
+                
+                return (true, interfaceContentItem);
             }
             catch (Exception ex)
             {
@@ -169,6 +210,40 @@ namespace WebScraper.StateManagement
                     ["error"] = ex.Message
                 };
             }
+        }
+
+        // Fix for method signature - Changing return type to Task instead of Task<bool>
+        public Task SaveContentVersionAsync(WebScraper.Interfaces.ContentItem item, int maxVersions = 10)
+        {
+            if (_stateManager != null)
+            {
+                try
+                {
+                    // Convert interface ContentItem to concrete ContentItem
+                    var contentItem = new WebScraper.ContentItem
+                    {
+                        Url = item.Url,
+                        Title = item.Title,
+                        ScraperId = item.ScraperId,
+                        LastStatusCode = item.LastStatusCode,
+                        ContentType = item.ContentType,
+                        IsReachable = item.IsReachable,
+                        RawContent = item.RawContent,
+                        ContentHash = item.ContentHash,
+                        IsRegulatoryContent = item.IsRegulatoryContent,
+                        CapturedAt = DateTime.Now // Set current time as capture time
+                    };
+                    
+                    return _stateManager.SaveContentVersionAsync(contentItem, maxVersions);
+                }
+                catch (Exception ex)
+                {
+                    _logAction($"Error saving content version: {ex.Message}");
+                    return Task.CompletedTask;
+                }
+            }
+            
+            return Task.CompletedTask;
         }
     }
 }

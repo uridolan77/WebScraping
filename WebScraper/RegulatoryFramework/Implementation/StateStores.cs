@@ -18,7 +18,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
     public class InMemoryStateStore : IStateStore
     {
         private readonly ConcurrentDictionary<string, string> _store = new ConcurrentDictionary<string, string>();
-        private readonly ConcurrentDictionary<string, List<PageVersion>> _versionHistory = new ConcurrentDictionary<string, List<PageVersion>>();
+        private readonly ConcurrentDictionary<string, List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> _versionHistory = new ConcurrentDictionary<string, List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>>();
         
         public Task<T> GetAsync<T>(string key)
         {
@@ -37,21 +37,21 @@ namespace WebScraper.RegulatoryFramework.Implementation
             return Task.CompletedTask;
         }
         
-        public Task<PageVersion> GetLatestVersionAsync(string url)
+        public Task<WebScraper.RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             if (_versionHistory.TryGetValue(url, out var versions) && versions.Count > 0)
             {
                 return Task.FromResult(versions.OrderByDescending(v => v.CapturedAt).First());
             }
             
-            return Task.FromResult<PageVersion>(null);
+            return Task.FromResult<WebScraper.RegulatoryFramework.Interfaces.PageVersion>(null);
         }
         
-        public Task SaveVersionAsync(PageVersion version)
+        public Task SaveVersionAsync(WebScraper.RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
             
-            var versions = _versionHistory.GetOrAdd(version.Url, _ => new List<PageVersion>());
+            var versions = _versionHistory.GetOrAdd(version.Url, _ => new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>());
             
             // Add new version
             versions.Add(version);
@@ -66,14 +66,14 @@ namespace WebScraper.RegulatoryFramework.Implementation
             return Task.CompletedTask;
         }
         
-        public Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
+        public Task<List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
             if (_versionHistory.TryGetValue(url, out var versions))
             {
                 return Task.FromResult(versions.OrderByDescending(v => v.CapturedAt).Take(maxVersions).ToList());
             }
             
-            return Task.FromResult(new List<PageVersion>());
+            return Task.FromResult(new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>());
         }
     }
     
@@ -136,13 +136,13 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
         
-        public async Task<PageVersion> GetLatestVersionAsync(string url)
+        public async Task<WebScraper.RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             var versions = await GetVersionHistoryAsync(url, 1);
             return versions.FirstOrDefault();
         }
         
-        public async Task SaveVersionAsync(PageVersion version)
+        public async Task SaveVersionAsync(WebScraper.RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
             
@@ -159,7 +159,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
             try
             {
                 // Create a copy without the full content for storage
-                var storageVersion = new PageVersion
+                var storageVersion = new WebScraper.RegulatoryFramework.Interfaces.PageVersion
                 {
                     Url = version.Url,
                     Hash = version.Hash,
@@ -195,14 +195,14 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
         
-        public async Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
+        public async Task<List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
             var urlHash = GetSafeFilename(url);
             var versionPath = Path.Combine(_versionsPath, urlHash);
             
             if (!Directory.Exists(versionPath))
             {
-                return new List<PageVersion>();
+                return new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
             }
             
             try
@@ -211,12 +211,12 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     .OrderByDescending(f => f)
                     .Take(maxVersions);
                 
-                var versions = new List<PageVersion>();
+                var versions = new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
                 
                 foreach (var file in versionFiles)
                 {
                     var json = await File.ReadAllTextAsync(file);
-                    var version = JsonConvert.DeserializeObject<PageVersion>(json);
+                    var version = JsonConvert.DeserializeObject<WebScraper.RegulatoryFramework.Interfaces.PageVersion>(json);
                     
                     // Try to load full content if it exists
                     var fileName = Path.GetFileNameWithoutExtension(file);
@@ -241,7 +241,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting version history for URL {Url}", url);
-                return new List<PageVersion>();
+                return new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
             }
         }
         
@@ -374,7 +374,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
         
-        public async Task<PageVersion> GetLatestVersionAsync(string url)
+        public async Task<WebScraper.RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             try
             {
@@ -395,7 +395,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 if (reader.Read())
                 {
                     var metadata = reader.GetString(0);
-                    var version = JsonConvert.DeserializeObject<PageVersion>(metadata);
+                    var version = JsonConvert.DeserializeObject<WebScraper.RegulatoryFramework.Interfaces.PageVersion>(metadata);
                     
                     // Load content only if needed
                     if (!reader.IsDBNull(1))
@@ -420,14 +420,14 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
         
-        public async Task SaveVersionAsync(PageVersion version)
+        public async Task SaveVersionAsync(WebScraper.RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
             
             try
             {
                 // Prepare metadata without full content
-                var storageVersion = new PageVersion
+                var storageVersion = new WebScraper.RegulatoryFramework.Interfaces.PageVersion
                 {
                     Url = version.Url,
                     Hash = version.Hash,
@@ -465,7 +465,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
         
-        public async Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
+        public async Task<List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
             try
             {
@@ -484,12 +484,12 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 
                 using var reader = await command.ExecuteReaderAsync();
                 
-                var versions = new List<PageVersion>();
+                var versions = new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
                 
                 while (reader.Read())
                 {
                     var metadata = reader.GetString(0);
-                    var version = JsonConvert.DeserializeObject<PageVersion>(metadata);
+                    var version = JsonConvert.DeserializeObject<WebScraper.RegulatoryFramework.Interfaces.PageVersion>(metadata);
                     
                     // Load content only if needed
                     if (!reader.IsDBNull(1))
@@ -510,7 +510,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting version history for URL {Url}", url);
-                return new List<PageVersion>();
+                return new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
             }
         }
         

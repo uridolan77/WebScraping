@@ -499,7 +499,7 @@ namespace WebScraper
                 pageId = await _headlessBrowser.CreatePageAsync(contextId);
                 
                 // Navigate to URL
-                var navResult = await _headlessBrowser.NavigateToUrlAsync(contextId, pageId, url, NavigationWaitUntil.NetworkIdle);
+                var navResult = await _headlessBrowser.NavigateToUrlAsync(contextId, pageId, url, HeadlessBrowser.NavigationWaitUntil.NetworkIdle);
                 
                 if (!navResult.Success)
                 {
@@ -619,13 +619,14 @@ namespace WebScraper
                         var changeResult = await _regulationMonitor.MonitorForChanges(
                             url, previousVersion.RawContent, htmlContent);
                             
-                        if (changeResult != null && changeResult.RegulatoryImpact > RegulatoryImpact.None)
+                        // Fix for using explicit integer comparison for RegulatoryImpact enum
+                        if (changeResult != null && (int)changeResult.RegulatoryImpact > (int)RegulatoryImpact.None)
                         {
                             LogInfo($"Detected {changeResult.RegulatoryImpact} impact change at {url}");
                             
                             // Process high impact changes
                             if (_config.MonitorHighImpactChanges && 
-                                changeResult.RegulatoryImpact >= RegulatoryImpact.Medium)
+                                (int)changeResult.RegulatoryImpact >= (int)RegulatoryImpact.Medium)
                             {
                                 LogWarning("High-impact regulatory change detected!");
                                 LogWarning(changeResult.ImpactSummary);
@@ -892,29 +893,56 @@ namespace WebScraper
         /// <summary>
         /// Update the scraper state in persistent storage
         /// </summary>
-        private async Task UpdateScraperStateAsync(string status)
+        public async Task UpdateScraperStateAsync(string status)
         {
             try
             {
                 if (_persistentStateManager != null)
                 {
-                    var state = new ScraperState
+                    var pipelineStatus = _processingPipeline?.GetStatus();
+                    int processedItems = 0;
+                    int failedItems = 0;
+                    
+                    if (pipelineStatus != null)
+                    {
+                        // Use the extension method to convert between PipelineStatus types
+                        if (pipelineStatus is Processing.PipelineStatus processingStatus)
+                        {
+                            var converted = Processing.PipelineStatusExtensions.ToLegacyPipelineStatus(processingStatus);
+                            processedItems = converted.ProcessedItems;
+                            failedItems = converted.FailedItems;
+                        }
+                        else if (pipelineStatus is PipelineStatus legacyStatus)
+                        {
+                            processedItems = legacyStatus.ProcessedItems;
+                            failedItems = legacyStatus.FailedItems;
+                        }
+                    }
+                    
+                    var state = new StateManagement.ScraperState
                     {
                         ScraperId = _config.Name,
                         Status = status,
-                        LastRunStartTime = DateTime.Now,
-                        LastRunEndTime = DateTime.Now,
-                        ProgressData = System.Text.Json.JsonSerializer.Serialize(new 
-                        { 
-                            TotalUrlsProcessed = _urlsProcessed,
-                            ProcessedItems = _processingPipeline?.GetStatus()?.ProcessedItems ?? 0,
-                            FailedItems = _processingPipeline?.GetStatus()?.FailedItems ?? 0
+                        LastRunEndTime = status == "Completed" ? DateTime.Now : DateTime.MinValue,
+                        LastSuccessfulRunTime = status == "Completed" ? DateTime.Now : (DateTime?)null,
+                        ProgressData = System.Text.Json.JsonSerializer.Serialize(new {
+                            TotalUrls = _urlsProcessed.Count,
+                            ProcessedItems = processedItems,
+                            FailedItems = failedItems
                         }),
-                        ConfigSnapshot = System.Text.Json.JsonSerializer.Serialize(_config)
+                        ConfigSnapshot = System.Text.Json.JsonSerializer.Serialize(_config),
+                        ConfiguredDomain = _config.BaseUrl,
+                        EnabledFeatures = new List<string>
+                        {
+                            _config.EnableRegulatoryContentAnalysis ? "RegulatoryAnalysis" : null,
+                            _config.EnableChangeDetection ? "ChangeDetection" : null,
+                            _config.ProcessPdfDocuments ? "PdfProcessing" : null,
+                            _config.ProcessOfficeDocuments ? "OfficeDocumentsProcessing" : null,
+                            _config.ProcessJsHeavyPages ? "JavascriptProcessing" : null
+                        }.Where(f => f != null).ToList()
                     };
-
+                    
                     await _persistentStateManager.SaveScraperStateAsync(state);
-                    LogInfo($"Scraper state updated: {status}");
                 }
             }
             catch (Exception ex)
@@ -960,14 +988,28 @@ namespace WebScraper
         /// <summary>
         /// Get current state information about the scraper
         /// </summary>
-        public async Task<ScraperState> GetStateAsync()
+        public async Task<WebScraper.ScraperState> GetStateAsync()
         {
             if (_persistentStateManager != null)
             {
                 try
                 {
                     // Get state from persistent store
-                    return await _persistentStateManager.GetScraperStateAsync(_config.Name);
+                    StateManagement.ScraperState managementState = await _persistentStateManager.GetScraperStateAsync(_config.Name);
+                    
+                    // Convert to WebScraper.ScraperState
+                    return new WebScraper.ScraperState
+                    {
+                        ScraperId = managementState.ScraperId,
+                        Status = managementState.Status,
+                        LastRunStartTime = managementState.LastRunStartTime,
+                        LastRunEndTime = managementState.LastRunEndTime,
+                        LastSuccessfulRunTime = managementState.LastSuccessfulRunTime,
+                        ProgressData = managementState.ProgressData,
+                        ConfigSnapshot = managementState.ConfigSnapshot,
+                        ConfiguredDomain = managementState.ConfiguredDomain,
+                        EnabledFeatures = managementState.EnabledFeatures
+                    };
                 }
                 catch (Exception ex)
                 {
@@ -976,12 +1018,11 @@ namespace WebScraper
             }
             
             // Fallback to basic state
-            var state = new StateManagement.ScraperState
+            var state = new WebScraper.ScraperState
             {
                 ScraperId = _config.Name,
                 ConfigSnapshot = System.Text.Json.JsonSerializer.Serialize(_config),
-                Status = "Unknown",
-                UpdatedAt = DateTime.UtcNow
+                Status = "Unknown"
             };
             
             return state;
@@ -990,9 +1031,40 @@ namespace WebScraper
         /// <summary>
         /// Get pipeline processing metrics
         /// </summary>
-        public PipelineStatus GetPipelineStatus()
+        public async Task<PipelineStatus> GetPipelineStatusAsync()
         {
-            return _processingPipeline?.GetStatus();
+            var status = new PipelineStatus();
+            
+            try
+            {
+                if (_processingPipeline != null)
+                {
+                    var pipelineStatus = _processingPipeline.GetStatus();
+                    if (pipelineStatus != null)
+                    {
+                        // Use the extension method to convert between PipelineStatus types
+                        if (pipelineStatus is Processing.PipelineStatus processingStatus)
+                        {
+                            status = Processing.PipelineStatusExtensions.ToLegacyPipelineStatus(processingStatus);
+                        }
+                        else if (pipelineStatus is PipelineStatus legacyStatus)
+                        {
+                            status = legacyStatus;
+                        }
+                    }
+                }
+                
+                return status;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, "Failed to get pipeline status");
+                return new PipelineStatus
+                {
+                    IsRunning = false,
+                    CurrentOperation = $"Error: {ex.Message}"
+                };
+            }
         }
         
         /// <summary>
@@ -1296,7 +1368,7 @@ namespace WebScraper
             try
             {
                 // Stop any continuous scraping
-                _continuousScrapingCts?.Cancel();
+                StopContinuousScraping(); // Use the base class method instead of direct field access
                 
                 // Dispose headless browser
                 _headlessBrowser?.Dispose();

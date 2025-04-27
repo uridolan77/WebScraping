@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using HtmlAgilityPack;
 
 namespace WebScraper.RegulatoryContent
@@ -151,6 +152,30 @@ namespace WebScraper.RegulatoryContent
             
             _keywordMap[documentType].AddRange(keywords);
             _logger($"Added {keywords.Count()} custom keywords for {documentType}");
+        }
+
+        /// <summary>
+        /// Determines whether a document is regulatory in nature based on its content
+        /// </summary>
+        /// <param name="url">URL of the document</param>
+        /// <param name="content">Document content</param>
+        /// <returns>True if the document is regulatory, false otherwise</returns>
+        public async Task<bool> IsRegulatoryDocument(string url, string content)
+        {
+            // Use the classification engine to determine if this is regulatory
+            var result = ClassifyContent(url, content);
+            
+            // Consider it regulatory if it's classified as a regulation or has high confidence
+            // in being guidance, enforcement action, or licensing info
+            bool isRegulatory = result.PrimaryType == DocumentType.Regulation ||
+                              (result.Confidence > 0.7 && 
+                               (result.PrimaryType == DocumentType.Guidance ||
+                                result.PrimaryType == DocumentType.EnforcementAction ||
+                                result.PrimaryType == DocumentType.LicensingInfo));
+                                
+            _logger($"Document at {url} is {(isRegulatory ? "regulatory" : "non-regulatory")} with confidence {result.Confidence:P0}");
+            
+            return await Task.FromResult(isRegulatory);
         }
 
         private void AnalyzeUrl(string url, Dictionary<DocumentType, double> scores)

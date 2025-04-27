@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
 using WebScraper.RegulatoryFramework.Interfaces;
-using PageVersion = WebScraper.RegulatoryFramework.Interfaces.PageVersion;
 
 namespace WebScraper.StateManagement
 {
@@ -29,7 +28,7 @@ namespace WebScraper.StateManagement
             return _stateManager.SetAsync<T>(key, value);
         }
         
-        public async Task<PageVersion> GetLatestVersionAsync(string url)
+        public async Task<WebScraper.RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             // Convert from internal to interface type
             var internalVersion = await _stateManager.GetLatestContentVersionAsync(url);
@@ -39,7 +38,7 @@ namespace WebScraper.StateManagement
             }
             
             // Convert from ContentItem to PageVersion
-            return new PageVersion
+            return new WebScraper.RegulatoryFramework.Interfaces.PageVersion
             {
                 Url = internalVersion.Version.Url,
                 Hash = internalVersion.Version.ContentHash,
@@ -55,7 +54,7 @@ namespace WebScraper.StateManagement
             };
         }
         
-        public Task SaveVersionAsync(PageVersion version)
+        public Task SaveVersionAsync(WebScraper.RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
             
@@ -76,10 +75,10 @@ namespace WebScraper.StateManagement
             return _stateManager.SaveContentVersionAsync(contentItem, 10);
         }
         
-        public async Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
+        public async Task<List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
             // Get the history of content versions
-            var results = new List<PageVersion>();
+            var results = new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
             
             // We don't have a direct equivalent, so we need to fake this
             var latestVersion = await GetLatestVersionAsync(url);

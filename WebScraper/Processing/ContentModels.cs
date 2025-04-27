@@ -131,6 +131,16 @@ namespace WebScraper.Processing
         public DateTime? ModifiedDate { get; set; }
         
         /// <summary>
+        /// When the document was published
+        /// </summary>
+        public DateTime? PublishDate { get; set; }
+        
+        /// <summary>
+        /// When the document was processed
+        /// </summary>
+        public DateTime ProcessedDate { get; set; } = DateTime.Now;
+        
+        /// <summary>
         /// Document type
         /// </summary>
         public string DocumentType { get; set; }
@@ -151,9 +161,19 @@ namespace WebScraper.Processing
         public string TextContent { get; set; }
         
         /// <summary>
+        /// Path to the local file (if downloaded)
+        /// </summary>
+        public string LocalFilePath { get; set; }
+        
+        /// <summary>
         /// Additional metadata
         /// </summary>
         public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+        
+        /// <summary>
+        /// Extracted metadata from document properties
+        /// </summary>
+        public Dictionary<string, object> ExtractedMetadata { get; set; } = new Dictionary<string, object>();
     }
     
     /// <summary>

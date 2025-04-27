@@ -1,168 +1,83 @@
+using HtmlAgilityPack;
 using System;
-using System.Diagnostics;
-using System.Linq;
 using System.Threading.Tasks;
-using WebScraper.ContentChange;
 using WebScraper.Interfaces;
 using WebScraper.RegulatoryContent;
-using WebScraper.RegulatoryFramework.Interfaces;
-// Explicitly use the ContentChange namespace versions to resolve ambiguity
-using SignificantChangesResult = WebScraper.ContentChange.SignificantChangesResult;
-using ChangeType = WebScraper.ContentChange.ChangeType;
 
 namespace WebScraper.Processing
 {
     /// <summary>
-    /// Implementation of content processor that handles regulatory content
+    /// Processes content from various sources
     /// </summary>
-    public class RegulatoryContentProcessor : IContentProcessor
+    public class ContentProcessor
     {
-        private readonly ContentChangeDetector _changeDetector;
-        private readonly RegulatoryDocumentClassifier _documentClassifier;
-        private readonly Action<string> _logAction;
-        private readonly string[] _keyTerms;
+        private readonly Action<string> _logger;
+        private readonly RegulatoryDocumentHandler _documentHandler;
+        private readonly RegulatoryDocumentClassifier _classifier;
 
-        public RegulatoryContentProcessor(Action<string> logAction, string[] keyTerms = null)
+        // Fix constructor parameter types
+        public ContentProcessor(Action<string> logger = null)
         {
-            _logAction = logAction ?? (msg => { });
-            _changeDetector = new ContentChangeDetector(logAction);
-            _documentClassifier = new RegulatoryDocumentClassifier(logAction);
-            _keyTerms = keyTerms ?? new[] { "regulation", "compliance", "gambling", "license", "requirement" };
+            _logger = logger ?? (msg => { });
+            _documentHandler = new RegulatoryDocumentHandler(_logger);
+            _classifier = new RegulatoryDocumentClassifier(_logger);
         }
 
-        public async Task<ProcessedContentResult> ProcessContentAsync(string url, PageContent content)
+        // Fix ProcessHtmlAsync parameter types
+        public async Task<ProcessingResult<ContentItem>> ProcessHtmlAsync(HtmlDocument htmlDoc, string url)
         {
-            var stopwatch = Stopwatch.StartNew();
-            var result = new ProcessedContentResult
+            try
             {
-                ContentItem = new ContentItem
+                _logger($"Processing HTML content from URL: {url}");
+
+                // Extract text content
+                string textContent = htmlDoc.DocumentNode.InnerText;
+                
+                // Create content item
+                var contentItem = new ContentItem
                 {
                     Url = url,
-                    Title = content.Title,
-                    ScraperId = null, // Will be set by caller if needed
-                    LastStatusCode = 200, // Assume success
+                    Title = htmlDoc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim() ?? "Untitled",
+                    ScraperId = "contentprocessor",
                     ContentType = "text/html",
                     IsReachable = true,
-                    RawContent = content.Content,
-                    ContentHash = ComputeHash(content.Content)
-                }
-            };
-
-            try
-            {
-                // Check if content is regulatory in nature
-                bool isRegulatory = await _documentClassifier.IsRegulatoryDocument(url, content.Content);
-                
-                // Check if content contains key terms
-                int keyTermsFound = _keyTerms.Count(term => 
-                    content.Content.Contains(term, StringComparison.OrdinalIgnoreCase));
-                
-                result.IsRelevant = isRegulatory || keyTermsFound > 0;
-                result.Metrics = new ContentProcessingMetrics
-                {
-                    TextLength = content.Content.Length,
-                    ProcessingTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                    KeyTermsFound = keyTermsFound
+                    RawContent = htmlDoc.DocumentNode.OuterHtml,
+                    ContentHash = ComputeHash(htmlDoc.DocumentNode.OuterHtml),
+                    CapturedAt = DateTime.Now
                 };
 
-                if (result.IsRelevant)
+                // Determine if this is regulatory content
+                var isRegulatory = await _documentHandler.IsRegulatoryDocument(url, htmlDoc);
+                contentItem.IsRegulatoryContent = isRegulatory;
+                
+                return new ProcessingResult<ContentItem> 
                 {
-                    // Extract any additional structured information if content is relevant
-                    var extractor = new StructuredContentExtractor(_logAction);
-                    var structuredContent = await extractor.ExtractStructuredContent(url, content.Content);
-                    
-                    // Since we're using ContentItem from Models.cs (not ContentItem from ContentModels.cs), 
-                    // we need to handle the metadata differently as it doesn't have the same structure
-                    result.ContentItem.IsRegulatoryContent = isRegulatory;
-                }
+                    ContentItem = contentItem,
+                    Success = true
+                };
             }
             catch (Exception ex)
             {
-                _logAction($"Error processing content from {url}: {ex.Message}");
-                result.IsRelevant = false;
+                _logger($"Error processing HTML content: {ex.Message}");
+                return new ProcessingResult<ContentItem> { Success = false };
             }
-
-            return result;
         }
 
-        public async Task<SignificantChangesResult> DetectChangesAsync(ContentItem previousVersion, ContentItem currentVersion)
+        // Fix ProcessStringHtmlAsync to use correct parameter types
+        public async Task<ProcessingResult<ContentItem>> ProcessHtmlStringAsync(string htmlContent, string url)
         {
-            if (previousVersion == null || currentVersion == null)
-            {
-                return new SignificantChangesResult
-                {
-                    HasSignificantChanges = false,
-                    ChangeType = ChangeType.None,
-                    Summary = "Unable to compare versions - one or both versions are missing."
-                };
-            }
-
             try
             {
-                // Detect changes using the content change detector
-                var changeType = _changeDetector.AnalyzeChanges(previousVersion.RawContent, currentVersion.RawContent);
+                var htmlDoc = new HtmlDocument();
+                htmlDoc.LoadHtml(htmlContent);
                 
-                // Create a significantChanges result based on the change type
-                var result = new SignificantChangesResult
-                {
-                    HasSignificantChanges = changeType != ChangeType.None,
-                    ChangeType = changeType,
-                    DetectedAt = DateTime.UtcNow
-                };
-
-                if (result.HasSignificantChanges)
-                {
-                    // Extract changed sections
-                    var changedSections = _changeDetector.ExtractChangedSections(
-                        previousVersion.RawContent, 
-                        currentVersion.RawContent);
-
-                    // Build a summary of changes
-                    result.ChangedSections = changedSections;
-                    result.Summary = BuildChangeSummary(changeType, changedSections);
-
-                    // Look for important regulatory terms in added content
-                    if (changedSections.TryGetValue("Added", out var addedContent))
-                    {
-                        foreach (var term in _keyTerms)
-                        {
-                            if (addedContent.Contains(term, StringComparison.OrdinalIgnoreCase))
-                            {
-                                result.AddedTerms.Add(term);
-                            }
-                        }
-                    }
-                }
-
-                return result;
+                return await ProcessHtmlAsync(htmlDoc, url);
             }
             catch (Exception ex)
             {
-                _logAction($"Error detecting changes: {ex.Message}");
-                return new SignificantChangesResult
-                {
-                    HasSignificantChanges = false,
-                    ChangeType = ChangeType.None,
-                    Summary = $"Error during change detection: {ex.Message}"
-                };
+                _logger($"Error processing HTML string: {ex.Message}");
+                return new ProcessingResult<ContentItem> { Success = false };
             }
-        }
-
-        private string BuildChangeSummary(ChangeType changeType, Dictionary<string, string> changedSections)
-        {
-            var summary = $"Change type: {changeType}\n\n";
-
-            if (changedSections.TryGetValue("Added", out var added) && !string.IsNullOrEmpty(added))
-            {
-                summary += $"Content added ({added.Length} chars)\n";
-            }
-
-            if (changedSections.TryGetValue("Removed", out var removed) && !string.IsNullOrEmpty(removed))
-            {
-                summary += $"Content removed ({removed.Length} chars)\n";
-            }
-
-            return summary;
         }
 
         private string ComputeHash(string content)
@@ -177,5 +92,13 @@ namespace WebScraper.Processing
                 return Convert.ToBase64String(hash);
             }
         }
+    }
+
+    public class ProcessingResult<T>
+    {
+        public T ContentItem { get; set; }
+        public bool Success { get; set; }
+        public string ErrorMessage { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new Dictionary<string, object>();
     }
 }

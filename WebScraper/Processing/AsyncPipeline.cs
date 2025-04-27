@@ -645,4 +645,48 @@ namespace WebScraper.Processing
             Success = success;
         }
     }
+    
+    /// <summary>
+    /// Helper methods to convert between different PipelineStatus types
+    /// </summary>
+    public static class PipelineStatusExtensions
+    {
+        /// <summary>
+        /// Convert from Processing namespace PipelineStatus to the WebScraper namespace version
+        /// </summary>
+        public static WebScraper.PipelineStatus ToLegacyPipelineStatus(this PipelineStatus status)
+        {
+            if (status == null) return null;
+            
+            return new WebScraper.PipelineStatus
+            {
+                IsRunning = status.IsRunning,
+                TotalItems = status.TotalItems,
+                ProcessedItems = status.ProcessedItems,
+                FailedItems = status.FailedItems,
+                CurrentOperation = status.CurrentOperation,
+                StartTime = status.StartTime,
+                EndTime = status.EndTime
+            };
+        }
+        
+        /// <summary>
+        /// Convert from WebScraper namespace PipelineStatus to the Processing namespace version
+        /// </summary>
+        public static PipelineStatus ToProcessingPipelineStatus(this WebScraper.PipelineStatus status)
+        {
+            if (status == null) return null;
+            
+            return new PipelineStatus
+            {
+                IsRunning = status.IsRunning,
+                TotalItems = status.TotalItems,
+                ProcessedItems = status.ProcessedItems,
+                FailedItems = status.FailedItems,
+                CurrentOperation = status.CurrentOperation,
+                StartTime = status.StartTime,
+                EndTime = status.EndTime
+            };
+        }
+    }
 }
