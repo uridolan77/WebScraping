@@ -5,6 +5,7 @@ using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using WebScraper.RegulatoryFramework.Configuration;
 using WebScraper.RegulatoryFramework.Interfaces;
+using ContentNode = WebScraper.RegulatoryFramework.Interfaces.ContentNode;
 
 namespace WebScraper.RegulatoryFramework.Implementation
 {

@@ -13,6 +13,7 @@ using WebScraper.HeadlessBrowser;
 using WebScraper.StateManagement;
 using WebScraper.Processing;
 using WebScraper.Validation;
+using WebScraper.Interfaces; // Add IStateManager reference
 
 namespace WebScraper
 {

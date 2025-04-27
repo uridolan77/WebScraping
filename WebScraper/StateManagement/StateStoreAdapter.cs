@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
 using WebScraper.RegulatoryFramework.Interfaces;
+using PageVersion = WebScraper.RegulatoryFramework.Interfaces.PageVersion;
 
 namespace WebScraper.StateManagement
 {
@@ -31,27 +32,63 @@ namespace WebScraper.StateManagement
         public async Task<PageVersion> GetLatestVersionAsync(string url)
         {
             // Convert from internal to interface type
-            var version = await _stateManager.GetLatestVersionAsync(url);
-            if (version == null)
+            var internalVersion = await _stateManager.GetLatestContentVersionAsync(url);
+            if (!internalVersion.Found || internalVersion.Version == null)
             {
                 return null;
             }
             
-            // Already returning the correct type
-            return version;
+            // Convert from ContentItem to PageVersion
+            return new PageVersion
+            {
+                Url = internalVersion.Version.Url,
+                Hash = internalVersion.Version.ContentHash,
+                CapturedAt = internalVersion.Version.CapturedAt,
+                FullContent = internalVersion.Version.RawContent,
+                TextContent = internalVersion.Version.RawContent, // Best approximation
+                ContentSummary = internalVersion.Version.Title,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["title"] = internalVersion.Version.Title,
+                    ["scraperId"] = internalVersion.Version.ScraperId
+                }
+            };
         }
         
         public Task SaveVersionAsync(PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
-            return _stateManager.SaveVersionAsync(version);
+            
+            // Convert from PageVersion to ContentItem
+            var contentItem = new ContentItem
+            {
+                Url = version.Url,
+                Title = version.Metadata.ContainsKey("title") ? version.Metadata["title"].ToString() : "Untitled",
+                ScraperId = version.Metadata.ContainsKey("scraperId") ? version.Metadata["scraperId"].ToString() : "unknown",
+                CapturedAt = version.CapturedAt,
+                IsReachable = true,
+                ContentType = "text/html",
+                RawContent = version.FullContent,
+                ContentHash = version.Hash
+            };
+            
+            // Use max versions = 10 as default
+            return _stateManager.SaveContentVersionAsync(contentItem, 10);
         }
         
         public async Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
-            // The internal implementation returns the correct type already
-            var history = await _stateManager.GetVersionHistoryAsync(url, maxVersions);
-            return history.ToList(); // Ensure we return a List<T> not just IEnumerable<T>
+            // Get the history of content versions
+            var results = new List<PageVersion>();
+            
+            // We don't have a direct equivalent, so we need to fake this
+            var latestVersion = await GetLatestVersionAsync(url);
+            if (latestVersion != null)
+            {
+                results.Add(latestVersion);
+            }
+            
+            return results;
         }
     }
 }

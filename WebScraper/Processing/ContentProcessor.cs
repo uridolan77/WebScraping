@@ -6,6 +6,9 @@ using WebScraper.ContentChange;
 using WebScraper.Interfaces;
 using WebScraper.RegulatoryContent;
 using WebScraper.RegulatoryFramework.Interfaces;
+// Explicitly use the ContentChange namespace versions to resolve ambiguity
+using SignificantChangesResult = WebScraper.ContentChange.SignificantChangesResult;
+using ChangeType = WebScraper.ContentChange.ChangeType;
 
 namespace WebScraper.Processing
 {
