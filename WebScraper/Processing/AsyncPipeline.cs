@@ -160,6 +160,23 @@ namespace WebScraper.Processing
 
             try
             {
+                // Consider system load for more intelligent backpressure
+                double systemLoad = GetSystemLoad();
+                
+                // Under high system load and significant buffer usage, add delay to naturally 
+                // throttle the pipeline to prevent system overload
+                if (systemLoad > 0.8 && _inputBuffer.Count > _boundedCapacity * 0.7)
+                {
+                    int delayMs = CalculateAdaptiveDelay(systemLoad, _inputBuffer.Count);
+                    await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                    
+                    // After delay, check if we should still proceed (cancellation or disposal)
+                    if (_disposed || cancellationToken.IsCancellationRequested || _cancellationTokenSource.IsCancellationRequested)
+                    {
+                        return false;
+                    }
+                }
+                
                 // Use a linked token to respect both the pipeline token and the caller's token
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                     _cancellationTokenSource.Token, cancellationToken);
@@ -177,6 +194,97 @@ namespace WebScraper.Processing
             catch (OperationCanceledException)
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Calculate how much delay to add based on system load and queue state
+        /// </summary>
+        /// <param name="systemLoad">Current system load (0.0-1.0)</param>
+        /// <param name="currentQueueSize">Current queue size</param>
+        /// <returns>Delay in milliseconds</returns>
+        private int CalculateAdaptiveDelay(double systemLoad, int currentQueueSize)
+        {
+            // Base delay proportional to system load
+            double loadFactor = Math.Pow(systemLoad, 2); // Non-linear increase with load
+            
+            // Queue pressure (how close we are to capacity)
+            double queuePressure = (double)currentQueueSize / _boundedCapacity;
+            
+            // Calculate delay - minimum 50ms, maximum 2000ms (2 seconds)
+            int delayMs = (int)(50 + (1950 * loadFactor * queuePressure));
+            
+            // Log significant delays for monitoring
+            if (delayMs > 500)
+            {
+                _logger($"Backpressure activated: {delayMs}ms delay (load: {systemLoad:F2}, queue: {currentQueueSize}/{_boundedCapacity})");
+            }
+            
+            return delayMs;
+        }
+        
+        /// <summary>
+        /// Gets the current system load as a value between 0.0 and 1.0
+        /// </summary>
+        /// <returns>System load factor</returns>
+        private double GetSystemLoad()
+        {
+            try
+            {
+                // Use processor time as indicator of system load
+                var process = Process.GetCurrentProcess();
+                
+                // Refresh to get current values
+                process.Refresh();
+                
+                // CPU usage calculation - using total processor time instead of UpTime
+                // Process.TotalProcessorTime divided by time since process start
+                double cpuLoad = 0.5; // Default to medium load
+                
+                try {
+                    var startTime = process.StartTime;
+                    var totalProcessorTime = process.TotalProcessorTime.TotalMilliseconds;
+                    var processLifetime = (DateTime.Now - startTime).TotalMilliseconds;
+                    
+                    if (processLifetime > 0)
+                    {
+                        cpuLoad = totalProcessorTime / (Environment.ProcessorCount * processLifetime);
+                        cpuLoad = Math.Min(1.0, Math.Max(0.0, cpuLoad));
+                    }
+                }
+                catch (Exception) {
+                    // If we can't calculate CPU time (e.g. permissions issue), use default value
+                }
+                
+                // Memory pressure is another factor - if we're using more than 80% of allocated memory
+                double memoryUsage = 0.5; // Default to medium load
+                try {
+                    // Calculate memory usage as percentage of working set versus available memory
+                    // Use Environment.WorkingSet instead of ComputerInfo which requires extra references
+                    var currentProcess = Process.GetCurrentProcess();
+                    long workingSet = currentProcess.WorkingSet64;
+                    long availableMemory = Environment.SystemPageSize * Environment.ProcessorCount * 1024; // Rough estimate
+                    
+                    // For a more accurate but rougher calculation, use percentage of physical memory used
+                    memoryUsage = currentProcess.WorkingSet64 / (double)(1024 * 1024 * 1024); // As GB
+                    memoryUsage = Math.Min(1.0, memoryUsage / 4.0); // Assume 4GB as a reference point
+                    
+                    memoryUsage = Math.Min(1.0, Math.Max(0.0, memoryUsage));
+                }
+                catch (Exception) {
+                    // If we can't calculate memory usage, use default value
+                }
+                
+                // Combine factors, weighted toward CPU (70% CPU, 30% memory)
+                double load = (cpuLoad * 0.7) + (memoryUsage * 0.3);
+                
+                // Ensure result is between 0.0 and 1.0
+                return Math.Min(1.0, Math.Max(0.0, load));
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error calculating system load: {ex.Message}. Assuming medium load.");
+                return 0.5; // Default to medium load if calculation fails
             }
         }
 

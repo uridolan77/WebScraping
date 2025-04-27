@@ -104,8 +104,13 @@ namespace WebScraper.HeadlessBrowser
             var contextOptions = new BrowserNewContextOptions
             {
                 UserAgent = _options.UserAgent,
-                Viewport = _options.Viewport != null 
-                    ? new ViewportSize { Width = _options.Viewport.Width, Height = _options.Viewport.Height }
+                // Convert from our custom ViewportSize to Playwright's ViewportSize
+                ViewportSize = _options.Viewport != null 
+                    ? new Microsoft.Playwright.ViewportSize 
+                    { 
+                        Width = _options.Viewport.Width, 
+                        Height = _options.Viewport.Height 
+                    }
                     : null,
                 BypassCSP = _options.BypassCSP,
                 JavaScriptEnabled = _options.JavaScriptEnabled
@@ -203,7 +208,7 @@ namespace WebScraper.HeadlessBrowser
                 var waitUntilOption = waitUntil switch
                 {
                     NavigationWaitUntil.Load => WaitUntilState.Load,
-                    NavigationWaitUntil.DOMContentLoaded => WaitUntilState.DomContentLoaded,
+                    NavigationWaitUntil.DOMContentLoaded => WaitUntilState.DOMContentLoaded, // Fix: Correct case to match the API
                     NavigationWaitUntil.NetworkIdle => WaitUntilState.NetworkIdle,
                     _ => WaitUntilState.Load
                 };

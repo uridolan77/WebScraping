@@ -19,6 +19,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         IEnumerable<string> PrioritizeUrls(List<string> urls, int maxUrls = 10);
         void UpdatePageMetadata(string url, HtmlDocument document, string textContent);
         Dictionary<string, object> GetPageMetadata();
+        bool ShouldCrawl(string url);
     }
     
     /// <summary>

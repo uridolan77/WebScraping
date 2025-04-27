@@ -233,6 +233,12 @@ namespace WebScraper.RegulatoryContent
             }
         }
 
+        public async Task<string> ExtractTextFromPdfUrl(string pdfUrl)
+        {
+            // This is an alias to match the method being called from EnhancedScraper
+            return await ExtractPdfText(pdfUrl);
+        }
+
         public async Task SavePdfMetadata(string pdfUrl, string title, DateTime? publishDate = null, string category = null, Dictionary<string, string> additionalMetadata = null)
         {
             try

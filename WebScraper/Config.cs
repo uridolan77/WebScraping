@@ -5,6 +5,10 @@
         // Multi-scraper support
         public string ScraperId { get; set; }
         public string ScraperName { get; set; } = "Default Scraper";
+        public string Name { get; set; } = "Default Scraper"; // For backward compatibility
+        
+        // Creation metadata
+        public System.DateTime CreatedAt { get; set; } = System.DateTime.Now;
         
         public string StartUrl { get; set; }
         public string BaseUrl { get; set; }
@@ -18,6 +22,11 @@
         public string UserAgent { get; set; } = "Mozilla/5.0 WebScraper/1.0";
         public bool AppendToExistingData { get; set; } = false;
 
+        // Browser automation
+        public bool ProcessJsHeavyPages { get; set; } = false;
+        public int BrowserTimeout { get; set; } = 60000; // milliseconds
+        public bool UseHeadlessBrowser { get; set; } = true;
+        
         // Header/footer pattern learning
         public bool AutoLearnHeaderFooter { get; set; } = true;
         public int LearningPagesCount { get; set; } = 5;
@@ -31,6 +40,10 @@
         public bool NotifyOnChanges { get; set; } = false;
         public string NotificationEmail { get; set; }
 
+        // Continuous monitoring options
+        public bool EnableContinuousMonitoring { get; set; } = false;
+        public int MonitoringIntervalMinutes { get; set; } = 60;
+        
         // Adaptive Crawling options
         public bool EnableAdaptiveCrawling { get; set; } = true;
         public int PriorityQueueSize { get; set; } = 100;

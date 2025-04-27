@@ -655,6 +655,16 @@ namespace WebScraper.StateManagement
         /// Error message if the scraper failed
         /// </summary>
         public string ErrorMessage { get; set; }
+        
+        /// <summary>
+        /// The domain configured for the scraper
+        /// </summary>
+        public string ConfiguredDomain { get; set; }
+        
+        /// <summary>
+        /// Dictionary of enabled features and their status
+        /// </summary>
+        public Dictionary<string, bool> EnabledFeatures { get; set; } = new Dictionary<string, bool>();
     }
     
     /// <summary>

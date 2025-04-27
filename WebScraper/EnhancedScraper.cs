@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using HtmlAgilityPack;
 using WebScraper.ContentChange;
 using WebScraper.RegulatoryContent;
 using WebScraper.RegulatoryFramework.Interfaces;
@@ -39,6 +43,9 @@ namespace WebScraper
         private int _maxConcurrentProcessing;
         private int _processingTimeoutMs;
         private string _dbConnectionString;
+        
+        // Crawl depth tracking
+        private ThreadLocal<int> _currentDepth = new ThreadLocal<int>(() => 0);
         
         /// <summary>
         /// Initializes a new instance of the EnhancedScraper class with full dependency injection
@@ -517,7 +524,7 @@ namespace WebScraper
                 }
                 
                 // Process links if we should continue crawling
-                if (_currentDepth < _config.MaxDepth)
+                if (_currentDepth.Value < _config.MaxDepth)
                 {
                     foreach (var link in content.Links)
                     {
@@ -965,6 +972,90 @@ namespace WebScraper
         public PipelineStatus GetPipelineStatus()
         {
             return _processingPipeline?.GetStatus();
+        }
+        
+        /// <summary>
+        /// Determines whether a URL should be crawled based on configuration and crawl strategy
+        /// </summary>
+        private bool ShouldCrawlUrl(string url)
+        {
+            try
+            {
+                // Skip if URL is null or empty
+                if (string.IsNullOrEmpty(url))
+                    return false;
+
+                // Parse URL to make sure it's valid
+                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                    return false;
+                
+                // Check if scheme is HTTP or HTTPS
+                if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+                    return false;
+                
+                // Check if external URL and if we should follow external links
+                bool isExternal = !url.StartsWith(_config.BaseUrl);
+                if (isExternal && !_config.FollowExternalLinks)
+                    return false;
+                
+                // If using custom crawl strategy, use its logic
+                if (_customCrawlStrategy != null)
+                {
+                    return _customCrawlStrategy.ShouldCrawl(url);
+                }
+                
+                // Skip URLs that are likely to be non-content pages
+                if (url.Contains("logout") || 
+                    url.Contains("login") || 
+                    url.Contains("signin") || 
+                    url.Contains("register") ||
+                    url.EndsWith(".jpg") || 
+                    url.EndsWith(".jpeg") || 
+                    url.EndsWith(".png") || 
+                    url.EndsWith(".gif") ||
+                    url.EndsWith(".css") || 
+                    url.EndsWith(".js"))
+                {
+                    return false;
+                }
+                
+                // If it's a UKGC website and we have regulatory monitoring enabled,
+                // use more specific crawling rules
+                if (_config.IsUKGCWebsite && _config.EnableRegulatoryContentAnalysis)
+                {
+                    // Prioritize regulatory content
+                    if (url.Contains("regulations") || 
+                        url.Contains("guidance") || 
+                        url.Contains("compliance") || 
+                        url.Contains("rules") ||
+                        url.Contains("laws") || 
+                        url.Contains("policies"))
+                    {
+                        return true;
+                    }
+                    
+                    // Prioritize based on config options
+                    if (_config.PrioritizeEnforcementActions && url.Contains("enforcement"))
+                        return true;
+                        
+                    if (_config.PrioritizeLCCP && (url.Contains("lccp") || 
+                        url.Contains("license-conditions") || 
+                        url.Contains("code-of-practice")))
+                        return true;
+                        
+                    if (_config.PrioritizeAML && (url.Contains("aml") || 
+                        url.Contains("money-laundering")))
+                        return true;
+                }
+                
+                // By default, allow crawling
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, $"Error evaluating URL for crawling: {url}");
+                return false;
+            }
         }
     }
     

@@ -47,7 +47,7 @@ namespace WebScraper.RegulatoryContent
             
             try
             {
-                string json = JsonConvert.SerializeObject(_docMetadata, Formatting.Indented);
+                string json = JsonConvert.SerializeObject(_docMetadata, Newtonsoft.Json.Formatting.Indented);
                 File.WriteAllText(metadataPath, json);
             }
             catch (Exception ex)
@@ -232,7 +232,7 @@ namespace WebScraper.RegulatoryContent
                         }
                         
                         // Extract tables
-                        foreach (var table in body.Descendants<Table>())
+                        foreach (var table in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Table>())
                         {
                             foreach (var row in table.Descendants<TableRow>())
                             {

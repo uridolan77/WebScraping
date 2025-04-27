@@ -1,6 +1,4 @@
-﻿using HtmlAgilityPack;
-using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +7,8 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using HtmlAgilityPack;
+using Newtonsoft.Json;
 using WebScraper.AdaptiveCrawling;
 using WebScraper.ContentChange;
 using WebScraper.PatternLearning;
@@ -16,7 +16,7 @@ using WebScraper.RateLimiting;
 
 namespace WebScraper
 {
-    public class Scraper
+    public class Scraper : IDisposable
     {
         // Configuration and state
         protected readonly ScraperConfig _config;
@@ -38,6 +38,9 @@ namespace WebScraper
         private bool _isRunning = false;
         private readonly object _lock = new object();
         private CancellationTokenSource _continuousScrapingCts;
+
+        // Add a disposal flag
+        private bool _disposed = false;
 
         public Scraper(ScraperConfig config, Action<string> logger = null)
             : this(config, logger, config?.OutputDirectory ?? "ScrapedData")
@@ -96,7 +99,7 @@ namespace WebScraper
             _logger("Scraper initialized");
         }
 
-        public async Task InitializeAsync()
+        public virtual async Task InitializeAsync()
         {
             _logger("Initializing scraper...");
 
@@ -172,7 +175,7 @@ namespace WebScraper
             _continuousScrapingCts?.Cancel();
         }
 
-        public async Task StartScrapingAsync()
+        public virtual async Task StartScrapingAsync()
         {
             _isRunning = true;
 
@@ -529,6 +532,26 @@ namespace WebScraper
             catch (Exception ex)
             {
                 _logger($"Error saving site profiles: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Disposes resources used by the scraper
+        /// </summary>
+        public virtual void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                
+                // Cancel any ongoing operations
+                _continuousScrapingCts?.Cancel();
+                _continuousScrapingCts?.Dispose();
+                
+                // Dispose the HTTP client
+                _httpClient?.Dispose();
+                
+                _logger("Scraper disposed");
             }
         }
     }
