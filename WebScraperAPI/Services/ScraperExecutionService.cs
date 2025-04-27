@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using WebScraper;
 using WebScraper.Validation;
 using WebScraperApi.Models;
+using WebScraper.RegulatoryFramework.Configuration;
+using WebScraperApi.Services.Factories;
 
 namespace WebScraperApi.Services
 {
@@ -17,11 +19,13 @@ namespace WebScraperApi.Services
     {
         private readonly ILogger _logger;
         private readonly ILoggerFactory _loggerFactory;
+        private readonly ScraperComponentFactory _componentFactory;
         
         public ScraperExecutionService(ILogger logger, ILoggerFactory loggerFactory)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
+            _componentFactory = new ScraperComponentFactory(loggerFactory);
         }
         
         /// <summary>
@@ -43,32 +47,10 @@ namespace WebScraperApi.Services
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
                 
-                // Create an HttpClient for validation
-                var httpClient = new System.Net.Http.HttpClient();
-                
-                // First validate the configuration using our validator
-                var validator = new ConfigurationValidator(httpClient, logAction);
-                var validationResult = await validator.ValidateConfigurationAsync(scraperConfig);
-                
-                if (!validationResult.IsValid && !validationResult.CanRunWithWarnings)
+                // Validate the configuration
+                if (!await ValidateConfigurationAsync(scraperConfig, logAction))
                 {
-                    logAction("Configuration validation failed");
-                    foreach (var error in validationResult.Errors)
-                    {
-                        logAction($"Error: {error}");
-                    }
-                    
-                    logAction("Scraping aborted due to configuration errors");
                     return false;
-                }
-                else if (validationResult.Warnings.Any())
-                {
-                    logAction("Configuration has warnings:");
-                    foreach (var warning in validationResult.Warnings)
-                    {
-                        logAction($"Warning: {warning}");
-                    }
-                    logAction("Continuing with warnings...");
                 }
                 
                 // Check if enhanced features are needed
@@ -78,21 +60,8 @@ namespace WebScraperApi.Services
                 Scraper scraper;
                 if (useEnhancedScraper)
                 {
-                    logAction("Using enhanced scraper with advanced capabilities");
-                    
-                    // Create the logger for the enhanced scraper
-                    var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
-                    
-                    // Create document processor if needed
-                    var documentProcessor = CreateDocumentProcessor(scraperConfig, logAction);
-                    
-                    // Create the enhanced scraper with our components
-                    scraper = new EnhancedScraper(
-                        scraperConfig, 
-                        scraperLogger,
-                        crawlStrategy: null!, // Using null-forgiving operator
-                        contentExtractor: null!, // Using null-forgiving operator
-                        documentProcessor: documentProcessor!); // Using null-forgiving operator
+                    // Create enhanced scraper with components from the factory
+                    scraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
                 }
                 else
                 {
@@ -126,6 +95,98 @@ namespace WebScraperApi.Services
                 logAction($"Error during scraping: {ex.Message}");
                 return false;
             }
+        }
+        
+        /// <summary>
+        /// Validate the scraper configuration
+        /// </summary>
+        private async Task<bool> ValidateConfigurationAsync(ScraperConfig config, Action<string> logAction)
+        {
+            // Create an HttpClient for validation
+            using var httpClient = new System.Net.Http.HttpClient();
+                
+            // First validate the configuration using our validator
+            var validator = new ConfigurationValidator(httpClient, logAction);
+            var validationResult = await validator.ValidateConfigurationAsync(config);
+            
+            if (!validationResult.IsValid && !validationResult.CanRunWithWarnings)
+            {
+                logAction("Configuration validation failed");
+                foreach (var error in validationResult.Errors)
+                {
+                    logAction($"Error: {error}");
+                }
+                
+                logAction("Scraping aborted due to configuration errors");
+                return false;
+            }
+            else if (validationResult.Warnings.Any())
+            {
+                logAction("Configuration has warnings:");
+                foreach (var warning in validationResult.Warnings)
+                {
+                    logAction($"Warning: {warning}");
+                }
+                logAction("Continuing with warnings...");
+            }
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Create an enhanced scraper with components from factories
+        /// </summary>
+        private async Task<EnhancedScraper> CreateEnhancedScraperAsync(ScraperConfig config, Action<string> logAction)
+        {
+            logAction("Using enhanced scraper with advanced capabilities");
+            
+            // Create the logger for the enhanced scraper
+            var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
+            
+            // Create all required components for the enhanced scraper using the factory
+            var crawlStrategy = _componentFactory.CreateCrawlStrategy(config, logAction);
+            var contentExtractor = _componentFactory.CreateContentExtractor(config, logAction);
+            var documentProcessor = _componentFactory.CreateDocumentProcessor(config, logAction);
+            var changeDetector = _componentFactory.CreateChangeDetector(config, logAction);
+            var contentClassifier = _componentFactory.CreateContentClassifier(config, logAction);
+            var dynamicRenderer = _componentFactory.CreateDynamicContentRenderer(config, logAction);
+            var stateStore = _componentFactory.CreateStateStore(config, logAction);
+            var alertService = _componentFactory.CreateAlertService(config, logAction);
+            
+            // Create the enhanced scraper with all components
+            var enhancedScraper = new EnhancedScraper(
+                config, 
+                scraperLogger,
+                crawlStrategy,
+                contentExtractor,
+                documentProcessor);
+            
+            // Configure additional components if available
+            if (changeDetector != null && stateStore != null)
+            {
+                logAction("Configuring change detection capabilities");
+                enhancedScraper.ConfigureChangeDetection(changeDetector, stateStore);
+            }
+            
+            if (contentClassifier != null)
+            {
+                logAction("Configuring content classification capabilities");
+                enhancedScraper.ConfigureContentClassification(contentClassifier);
+            }
+            
+            if (dynamicRenderer != null)
+            {
+                logAction("Configuring dynamic content rendering capabilities");
+                enhancedScraper.ConfigureDynamicRendering(dynamicRenderer);
+            }
+            
+            if (alertService != null)
+            {
+                logAction("Configuring regulatory alerts");
+                enhancedScraper.ConfigureAlertService(alertService);
+            }
+            
+            return enhancedScraper;
         }
         
         /// <summary>
@@ -166,7 +227,6 @@ namespace WebScraperApi.Services
                                 config.ProcessPdfDocuments || 
                                 config.ProcessJsHeavyPages;
                                 
-
             return useEnhancedScraper;
         }
         
@@ -185,132 +245,6 @@ namespace WebScraperApi.Services
                    config.ProcessPdfDocuments ||
                    config.MonitorHighImpactChanges ||
                    config.IsUKGCWebsite;
-        }
-        
-        /// <summary>
-        /// Creates a document processor based on the provided configuration
-        /// </summary>
-        /// <param name="config">The scraper configuration</param>
-        /// <param name="logAction">Action for logging messages</param>
-        /// <returns>A document processor implementation or null if not needed</returns>
-        private WebScraper.RegulatoryFramework.Interfaces.IDocumentProcessor? CreateDocumentProcessor(ScraperConfig config, Action<string> logAction)
-        {
-            // Create properly configured HttpClient
-            var httpClient = new System.Net.Http.HttpClient
-            {
-                Timeout = TimeSpan.FromMinutes(2)
-            };
-
-            // Prepare the document storage directory
-            string documentStoragePath = Path.Combine(config.OutputDirectory, "Documents");
-            if (!Directory.Exists(documentStoragePath))
-            {
-                Directory.CreateDirectory(documentStoragePath);
-            }
-            
-            // Create document handlers based on configuration
-            if (config.ProcessPdfDocuments || IsOfficeDocumentsProcessingEnabled(config))
-            {
-                logAction("Initializing document processing capabilities...");
-                
-                // Create an adapter that implements IDocumentProcessor interface
-                var adapter = new DocumentProcessorAdapter();
-                
-                // Add PDF handler if enabled
-                if (config.ProcessPdfDocuments)
-                {
-                    logAction("Setting up PDF document handler");
-                    var pdfHandler = new WebScraper.RegulatoryContent.PdfDocumentHandler(
-                        documentStoragePath,
-                        httpClient,
-                        logAction);
-                    
-                    adapter.RegisterPdfHandler(pdfHandler);
-                }
-                
-                // Add Office documents handler if enabled
-                if (IsOfficeDocumentsProcessingEnabled(config))
-                {
-                    logAction("Setting up Office document handler");
-                    var officeHandler = new WebScraper.RegulatoryContent.OfficeDocumentHandler(
-                        documentStoragePath,
-                        httpClient,
-                        logAction);
-                    
-                    adapter.RegisterOfficeHandler(officeHandler);
-                }
-                
-                return adapter;
-            }
-            
-            return null;
-        }
-        
-        /// <summary>
-        /// Determines if Office document processing is enabled in the configuration
-        /// </summary>
-        /// <param name="config">The scraper configuration</param>
-        /// <returns>True if Office document processing is enabled, otherwise false</returns>
-        private bool IsOfficeDocumentsProcessingEnabled(ScraperConfig config)
-        {
-            // Check if Office document processing is explicitly enabled
-            return config.ProcessOfficeDocuments || 
-                  (config.EnableRegulatoryContentAnalysis && config.ClassifyRegulatoryDocuments);
-        }
-    }
-    
-    /// <summary>
-    /// Represents the current execution state of a scraper
-    /// </summary>
-    public class ScraperState
-    {
-        public bool IsRunning { get; set; }
-        public DateTime? StartTime { get; set; }
-        public DateTime? EndTime { get; set; }
-        public string ElapsedTime { get; set; } = string.Empty; // Initialize with empty string
-        public int UrlsProcessed { get; set; }
-        public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
-        public DateTime? LastMonitorCheck { get; set; }
-        public List<LogEntry> LogMessages { get; set; } = new List<LogEntry>();
-        
-        /// <summary>
-        /// Update elapsed time based on start time
-        /// </summary>
-        public void UpdateElapsedTime()
-        {
-            if (IsRunning && StartTime.HasValue)
-            {
-                var elapsed = DateTime.Now - StartTime.Value;
-                ElapsedTime = elapsed.ToString(@"hh\:mm\:ss");
-            }
-        }
-        
-        /// <summary>
-        /// Add a log message
-        /// </summary>
-        public void AddLogMessage(string message)
-        {
-            LogMessages.Add(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = message
-            });
-            
-            // Keep only the last 1000 messages
-            if (LogMessages.Count > 1000)
-            {
-                LogMessages.RemoveAt(0);
-            }
-        }
-        
-        /// <summary>
-        /// Get recent log messages
-        /// </summary>
-        public IEnumerable<LogEntry> GetRecentLogs(int limit = 100)
-        {
-            return LogMessages.Count <= limit
-                ? LogMessages.ToList()
-                : LogMessages.Skip(LogMessages.Count - limit).ToList();
         }
     }
 }

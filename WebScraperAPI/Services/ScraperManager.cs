@@ -451,7 +451,7 @@ namespace WebScraperApi.Services
                         var config = scraperInstance.Config;
                         await _executionService.StartScraperAsync(
                             config,
-                            new ScraperState(),
+                            new WebScraperApi.Models.ScraperState(),
                             logAction);
                         
                         // Update status once complete

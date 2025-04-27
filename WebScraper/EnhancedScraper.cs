@@ -25,8 +25,10 @@ namespace WebScraper
         private readonly ICrawlStrategy _customCrawlStrategy;
         private readonly IContentExtractor _customContentExtractor;
         private readonly IDocumentProcessor _documentProcessor;
-        private readonly IChangeDetector _customChangeDetector;
-        private readonly IStateStore _stateStore;
+        
+        // Changed from readonly to allow reconfiguration
+        private IChangeDetector _customChangeDetector;
+        private IStateStore _stateStore;
         
         // New components
         private HeadlessBrowserHandler _headlessBrowser;
@@ -46,6 +48,11 @@ namespace WebScraper
         
         // Crawl depth tracking
         private ThreadLocal<int> _currentDepth = new ThreadLocal<int>(() => 0);
+        
+        // New fields for RegulatoryFramework components
+        private IContentClassifier _contentClassifier;
+        private IDynamicContentRenderer _dynamicRenderer;
+        private IAlertService _alertService;
         
         /// <summary>
         /// Initializes a new instance of the EnhancedScraper class with full dependency injection
@@ -1056,6 +1063,58 @@ namespace WebScraper
                 LogError(ex, $"Error evaluating URL for crawling: {url}");
                 return false;
             }
+        }
+        
+        /// <summary>
+        /// Configure content classification with a classifier
+        /// </summary>
+        public void ConfigureContentClassification(IContentClassifier classifier)
+        {
+            if (classifier == null)
+                throw new ArgumentNullException(nameof(classifier));
+                
+            _contentClassifier = classifier;
+            LogInfo("Content classification configured");
+        }
+        
+        /// <summary>
+        /// Configure change detection with a detector and state store
+        /// </summary>
+        public void ConfigureChangeDetection(IChangeDetector changeDetector, IStateStore stateStore)
+        {
+            if (changeDetector == null)
+                throw new ArgumentNullException(nameof(changeDetector));
+                
+            if (stateStore == null)
+                throw new ArgumentNullException(nameof(stateStore));
+                
+            _customChangeDetector = changeDetector;
+            _stateStore = stateStore;
+            LogInfo("Change detection configured");
+        }
+        
+        /// <summary>
+        /// Configure dynamic content rendering with a renderer
+        /// </summary>
+        public void ConfigureDynamicRendering(IDynamicContentRenderer renderer)
+        {
+            if (renderer == null)
+                throw new ArgumentNullException(nameof(renderer));
+                
+            _dynamicRenderer = renderer;
+            LogInfo("Dynamic content rendering configured");
+        }
+        
+        /// <summary>
+        /// Configure alert service for regulatory changes
+        /// </summary>
+        public void ConfigureAlertService(IAlertService alertService)
+        {
+            if (alertService == null)
+                throw new ArgumentNullException(nameof(alertService));
+                
+            _alertService = alertService;
+            LogInfo("Alert service configured");
         }
     }
     
