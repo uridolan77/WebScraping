@@ -733,6 +733,23 @@ namespace WebScraperApi.Services
             }
         }
         
+        /// <summary>
+        /// Determines if regulatory features are enabled in the scraper configuration
+        /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        /// <returns>True if regulatory features are enabled, otherwise false</returns>
+        private bool IsRegulatoryFeaturesEnabled(ScraperConfig config)
+        {
+            // Check if any regulatory-specific features are enabled
+            return config.EnableRegulatoryContentAnalysis ||
+                   config.TrackRegulatoryChanges ||
+                   config.ClassifyRegulatoryDocuments ||
+                   config.ExtractStructuredContent ||
+                   config.ProcessPdfDocuments ||
+                   config.MonitorHighImpactChanges ||
+                   config.IsUKGCWebsite;
+        }
+        
         #endregion
         
         #region Mapping Methods
