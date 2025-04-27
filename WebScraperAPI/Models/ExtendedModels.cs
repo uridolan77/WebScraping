@@ -1,205 +1,378 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace WebScraperApi.Models
 {
-    #region Content Change Detection Models
-
     /// <summary>
-    /// Represents a version of a webpage's content
+    /// Represents rules for extracting content from web pages
     /// </summary>
-    public class PageVersion
+    public class ContentExtractionRules
     {
         /// <summary>
-        /// When this version was created
+        /// CSS selectors to include in content extraction
         /// </summary>
-        public DateTime Timestamp { get; set; }
+        public List<string> IncludeSelectors { get; set; } = new List<string>();
         
         /// <summary>
-        /// Type of change compared to previous version
+        /// CSS selectors to exclude from content extraction
         /// </summary>
-        public ChangeType ChangeType { get; set; }
+        public List<string> ExcludeSelectors { get; set; } = new List<string>();
         
         /// <summary>
-        /// Summary of what changed
+        /// Whether to extract metadata
         /// </summary>
-        public string ChangeSummary { get; set; }
+        public bool ExtractMetadata { get; set; } = true;
         
         /// <summary>
-        /// Level of impact this change represents
+        /// Whether to extract structured data
         /// </summary>
-        public ImpactLevel ImpactLevel { get; set; }
+        public bool ExtractStructuredData { get; set; } = false;
         
         /// <summary>
-        /// Hash of the content for quick comparison
+        /// Custom JavaScript extractor code
         /// </summary>
-        public string ContentHash { get; set; }
+        public string CustomJsExtractor { get; set; }
+    }
+
+    /// <summary>
+    /// Represents regulatory monitoring configuration
+    /// </summary>
+    public class RegulatoryConfigModel
+    {
+        /// <summary>
+        /// Whether regulatory content analysis is enabled
+        /// </summary>
+        public bool EnableRegulatoryContentAnalysis { get; set; } = false;
         
         /// <summary>
-        /// Reference to the stored content
+        /// Whether to track regulatory changes
         /// </summary>
-        public string ContentReference { get; set; }
+        public bool TrackRegulatoryChanges { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to classify regulatory documents
+        /// </summary>
+        public bool ClassifyRegulatoryDocuments { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to extract structured content from documents
+        /// </summary>
+        public bool ExtractStructuredContent { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to process PDF documents
+        /// </summary>
+        public bool ProcessPdfDocuments { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to monitor high impact changes
+        /// </summary>
+        public bool MonitorHighImpactChanges { get; set; } = false;
+        
+        /// <summary>
+        /// Whether this is a UKGC website
+        /// </summary>
+        public bool IsUKGCWebsite { get; set; } = false;
+        
+        /// <summary>
+        /// List of keywords to alert on
+        /// </summary>
+        public List<string> KeywordAlertList { get; set; } = new List<string>();
+        
+        /// <summary>
+        /// Notification endpoint for regulatory alerts
+        /// </summary>
+        public string NotificationEndpoint { get; set; }
     }
 
     /// <summary>
-    /// Type of change detected between versions
+    /// Represents webhook configuration for a scraper
     /// </summary>
-    public enum ChangeType
+    public class WebhookConfig
     {
-        Initial,
-        Minor,
-        Moderate,
-        Major,
-        Structure,
-        Format,
-        Removed
+        /// <summary>
+        /// Whether webhooks are enabled
+        /// </summary>
+        public bool Enabled { get; set; } = false;
+        
+        /// <summary>
+        /// URL to send webhooks to
+        /// </summary>
+        [Url]
+        public string WebhookUrl { get; set; }
+        
+        /// <summary>
+        /// Whether to notify on content changes
+        /// </summary>
+        public bool NotifyOnContentChanges { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to notify when a document is processed
+        /// </summary>
+        public bool NotifyOnDocumentProcessed { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to notify on scraper status changes
+        /// </summary>
+        public bool NotifyOnScraperStatusChange { get; set; } = true;
     }
 
     /// <summary>
-    /// Impact level of a detected change
+    /// Options for exporting scraped data
     /// </summary>
-    public enum ImpactLevel
+    public class ExportOptions
     {
-        None,
-        Low,
-        Medium,
-        High,
-        Critical
+        /// <summary>
+        /// Format to export data in (json, csv)
+        /// </summary>
+        [Required]
+        public string Format { get; set; } = "json";
+        
+        /// <summary>
+        /// Path to output the exported data
+        /// </summary>
+        public string OutputPath { get; set; }
+        
+        /// <summary>
+        /// Whether to include raw HTML in the export
+        /// </summary>
+        public bool IncludeRawHtml { get; set; } = false;
+        
+        /// <summary>
+        /// Whether to include processed content in the export
+        /// </summary>
+        public bool IncludeProcessedContent { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to include metadata in the export
+        /// </summary>
+        public bool IncludeMetadata { get; set; } = true;
+        
+        /// <summary>
+        /// Start date for filtering data to export
+        /// </summary>
+        public DateTime? StartDate { get; set; }
+        
+        /// <summary>
+        /// End date for filtering data to export
+        /// </summary>
+        public DateTime? EndDate { get; set; }
     }
 
     /// <summary>
-    /// Model for a detected content change
+    /// Options for scheduling scrapers
     /// </summary>
-    public class ContentChangeModel
+    public class ScheduleOptions
     {
-        public string Url { get; set; }
-        public DateTime PreviousVersion { get; set; }
-        public DateTime CurrentVersion { get; set; }
-        public string ChangeType { get; set; }
-        public string ChangeSummary { get; set; }
-        public string ImpactLevel { get; set; }
-        public bool ContentHashChanged { get; set; }
-    }
-
-    #endregion
-
-    #region Analytics Models
-
-    /// <summary>
-    /// Model for scraper analytics data
-    /// </summary>
-    public class ScraperAnalyticsModel
-    {
-        public int TotalRuns { get; set; }
-        public string LastRunDuration { get; set; }
-        public int TotalUrlsProcessed { get; set; }
-        public Dictionary<string, int> DocumentTypes { get; set; } = new Dictionary<string, int>();
-        public Dictionary<string, object> AdvancedMetrics { get; set; } = new Dictionary<string, object>();
-    }
-
-    #endregion
-
-    #region Document Processing Models
-
-    /// <summary>
-    /// Model for processed document information
-    /// </summary>
-    public class ProcessedDocumentModel
-    {
-        public string FileName { get; set; }
-        public string FilePath { get; set; }
-        public long FileSize { get; set; }
-        public DateTime LastModified { get; set; }
-        public string FileType { get; set; }
-    }
-
-    /// <summary>
-    /// Model for document processing results
-    /// </summary>
-    public class DocumentProcessingResultsModel
-    {
-        public List<ProcessedDocumentModel> Documents { get; set; } = new List<ProcessedDocumentModel>();
-        public int TotalCount { get; set; }
-        public int Page { get; set; }
-        public int PageSize { get; set; }
-        public int TotalPages { get; set; }
-    }
-
-    #endregion
-
-    #region Pattern Learning Models
-
-    /// <summary>
-    /// Model for pattern learning data
-    /// </summary>
-    public class PatternModel
-    {
-        public string PatternType { get; set; }
-        public string PatternValue { get; set; }
-        public double Confidence { get; set; }
-        public int OccurrenceCount { get; set; }
-        public DateTime LastUpdated { get; set; }
-    }
-
-    #endregion
-
-    #region Regulatory Content Models
-    
-    /// <summary>
-    /// Model for regulatory alerts
-    /// </summary>
-    public class RegulatoryAlertModel
-    {
-        public string Url { get; set; }
-        public DateTime Timestamp { get; set; }
-        public string AlertType { get; set; }
+        /// <summary>
+        /// Name of the schedule
+        /// </summary>
+        public string Name { get; set; }
+        
+        /// <summary>
+        /// Description of the schedule
+        /// </summary>
         public string Description { get; set; }
-        public string Importance { get; set; }
-        public List<string> Keywords { get; set; } = new List<string>();
-        public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+        
+        /// <summary>
+        /// Whether this is a recurring schedule
+        /// </summary>
+        public bool IsRecurring { get; set; } = false;
+        
+        /// <summary>
+        /// Cron expression for recurring schedules
+        /// </summary>
+        public string CronExpression { get; set; }
+        
+        /// <summary>
+        /// Execution date for one-time schedules
+        /// </summary>
+        public DateTime? OneTimeExecutionDate { get; set; }
+        
+        /// <summary>
+        /// Expiry date for recurring schedules
+        /// </summary>
+        public DateTime? ExpiryDate { get; set; }
     }
 
-    #endregion
-
-    #region Export Models
-    
     /// <summary>
-    /// Model for export result
+    /// Configuration for rate limiting
     /// </summary>
-    public class ExportResultModel
-    {
-        public string Message { get; set; }
-        public string FilePath { get; set; }
-        public int RecordCount { get; set; }
-        public string Format { get; set; }
-    }
-
-    #endregion
-
-    #region PersistentStateManager Extension
-
-    /// <summary>
-    /// Extension methods for PersistentStateManager
-    /// </summary>
-    public static class PersistentStateManagerExtensions
+    public class RateLimitingConfig
     {
         /// <summary>
-        /// Gets analytics data from the state manager
+        /// Whether to use adaptive rate limiting
         /// </summary>
-        public static async System.Threading.Tasks.Task<Dictionary<string, object>> GetAnalyticsAsync(
-            this WebScraper.StateManagement.PersistentStateManager manager)
-        {
-            // This would be implemented to actually query the database
-            // For now, we'll return a mock implementation
-            return new Dictionary<string, object>
-            {
-                ["TotalPagesProcessed"] = 0,
-                ["TotalErrors"] = 0,
-                ["AverageProcessingTimeMs"] = 0,
-                ["CrawlRatePerMinute"] = 0
-            };
-        }
+        public bool EnableAdaptiveRateLimiting { get; set; } = true;
+        
+        /// <summary>
+        /// Maximum requests per minute
+        /// </summary>
+        public int MaxRequestsPerMinute { get; set; } = 60;
+        
+        /// <summary>
+        /// Minimum delay between requests in milliseconds
+        /// </summary>
+        public int MinDelayBetweenRequests { get; set; } = 500;
+        
+        /// <summary>
+        /// Maximum delay between requests in milliseconds
+        /// </summary>
+        public int MaxDelayBetweenRequests { get; set; } = 5000;
+        
+        /// <summary>
+        /// Whether to respect robots.txt
+        /// </summary>
+        public bool RespectRobotsTxt { get; set; } = true;
+        
+        /// <summary>
+        /// User agent string
+        /// </summary>
+        public string UserAgent { get; set; } = "Mozilla/5.0 WebScraper Bot";
+        
+        /// <summary>
+        /// Whether to back off on errors
+        /// </summary>
+        public bool BackOffOnErrors { get; set; } = true;
+        
+        /// <summary>
+        /// Domain-specific rate limits
+        /// </summary>
+        public Dictionary<string, DomainRateLimit> DomainRateLimits { get; set; } = new Dictionary<string, DomainRateLimit>();
     }
 
-    #endregion
+    /// <summary>
+    /// Rate limiting configuration for a specific domain
+    /// </summary>
+    public class DomainRateLimit
+    {
+        /// <summary>
+        /// Maximum requests per minute for this domain
+        /// </summary>
+        public int MaxRequestsPerMinute { get; set; } = 30;
+        
+        /// <summary>
+        /// Minimum delay between requests in milliseconds for this domain
+        /// </summary>
+        public int MinDelayBetweenRequests { get; set; } = 1000;
+    }
+
+    /// <summary>
+    /// Information about a proxy server
+    /// </summary>
+    public class ProxyInfo
+    {
+        /// <summary>
+        /// Host address of the proxy
+        /// </summary>
+        [Required]
+        public string Host { get; set; }
+        
+        /// <summary>
+        /// Port number
+        /// </summary>
+        [Required]
+        public int Port { get; set; }
+        
+        /// <summary>
+        /// Username for authentication
+        /// </summary>
+        public string Username { get; set; }
+        
+        /// <summary>
+        /// Password for authentication
+        /// </summary>
+        public string Password { get; set; }
+        
+        /// <summary>
+        /// Protocol (http, https, socks5)
+        /// </summary>
+        public string Protocol { get; set; } = "http";
+        
+        /// <summary>
+        /// Country code for geo-targeting
+        /// </summary>
+        public string CountryCode { get; set; }
+    }
+
+    /// <summary>
+    /// Proxy configuration for a scraper
+    /// </summary>
+    public class ProxyConfig
+    {
+        /// <summary>
+        /// Whether to use proxies
+        /// </summary>
+        public bool UseProxies { get; set; } = false;
+        
+        /// <summary>
+        /// Rotation strategy (RoundRobin, Random, Sequential)
+        /// </summary>
+        public string RotationStrategy { get; set; } = "RoundRobin";
+        
+        /// <summary>
+        /// Whether to test proxies before using them
+        /// </summary>
+        public bool TestProxiesBeforeUse { get; set; } = true;
+        
+        /// <summary>
+        /// Maximum failures before removing a proxy
+        /// </summary>
+        public int MaxFailuresBeforeRemoval { get; set; } = 3;
+        
+        /// <summary>
+        /// List of proxy servers
+        /// </summary>
+        public List<ProxyInfo> Proxies { get; set; } = new List<ProxyInfo>();
+    }
+
+    /// <summary>
+    /// Options for test running a scraper
+    /// </summary>
+    public class TestRunOptions
+    {
+        /// <summary>
+        /// URLs to test
+        /// </summary>
+        public List<string> TestUrls { get; set; } = new List<string>();
+        
+        /// <summary>
+        /// Maximum depth for the test run
+        /// </summary>
+        public int MaxDepth { get; set; } = 2;
+        
+        /// <summary>
+        /// Maximum pages for the test run
+        /// </summary>
+        public int MaxPages { get; set; } = 10;
+        
+        /// <summary>
+        /// Whether to follow links during the test
+        /// </summary>
+        public bool FollowLinks { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to validate extraction rules
+        /// </summary>
+        public bool ValidateExtractionRules { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Request for a batch operation on multiple scrapers
+    /// </summary>
+    public class BatchOperationRequest
+    {
+        /// <summary>
+        /// Operation to perform (start, stop, delete, compress)
+        /// </summary>
+        [Required]
+        public string Operation { get; set; }
+        
+        /// <summary>
+        /// IDs of scrapers to operate on
+        /// </summary>
+        [Required]
+        public List<string> ScraperIds { get; set; } = new List<string>();
+    }
 }

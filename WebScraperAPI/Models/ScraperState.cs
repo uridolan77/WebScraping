@@ -19,6 +19,16 @@ namespace WebScraperApi.Models
         public List<LogEntry> LogMessages { get; set; } = new List<LogEntry>();
         
         /// <summary>
+        /// Indicates whether this is a test run
+        /// </summary>
+        public bool IsTestRun { get; set; } = false;
+        
+        /// <summary>
+        /// Maximum number of pages to process in this run
+        /// </summary>
+        public int MaxPages { get; set; } = 0;
+        
+        /// <summary>
         /// Update elapsed time based on start time
         /// </summary>
         public void UpdateElapsedTime()

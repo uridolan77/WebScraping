@@ -357,6 +357,145 @@ namespace WebScraperApi.Controllers
             return Ok(metrics);
         }
         
+        [HttpPost("{id}/schedule")]
+        public async Task<IActionResult> ScheduleScraper(string id, [FromBody] Models.ScheduleOptions options)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var result = await _scraperManager.ScheduleScraper(id, options);
+            if (!result.Success)
+            {
+                return BadRequest(result.Message);
+            }
+            
+            return Ok(new { 
+                Message = $"Scraper '{config.Name}' scheduled successfully", 
+                ScheduleId = result.ScheduleId,
+                NextRunTime = result.NextRunTime
+            });
+        }
+        
+        [HttpGet("{id}/schedules")]
+        public async Task<IActionResult> GetScraperSchedules(string id)
+        {
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var schedules = await _scraperManager.GetScraperSchedules(id);
+            return Ok(new { Schedules = schedules });
+        }
+        
+        [HttpDelete("{id}/schedules/{scheduleId}")]
+        public async Task<IActionResult> DeleteSchedule(string id, string scheduleId)
+        {
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var success = await _scraperManager.DeleteSchedule(id, scheduleId);
+            if (!success)
+            {
+                return NotFound($"Schedule with ID {scheduleId} not found");
+            }
+            
+            return NoContent();
+        }
+        
+        [HttpPut("{id}/rate-limiting")]
+        public async Task<IActionResult> UpdateRateLimitingConfig(string id, [FromBody] Models.RateLimitingConfig config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var scraperConfig = await _scraperManager.GetScraperConfig(id);
+            if (scraperConfig == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var success = await _scraperManager.UpdateRateLimitingConfig(id, config);
+            if (!success)
+            {
+                return BadRequest("Failed to update rate limiting configuration");
+            }
+            
+            return Ok(new { Message = "Rate limiting configuration updated successfully" });
+        }
+        
+        [HttpPut("{id}/proxy-config")]
+        public async Task<IActionResult> UpdateProxyConfig(string id, [FromBody] Models.ProxyConfig config)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var scraperConfig = await _scraperManager.GetScraperConfig(id);
+            if (scraperConfig == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var success = await _scraperManager.UpdateProxyConfig(id, config);
+            if (!success)
+            {
+                return BadRequest("Failed to update proxy configuration");
+            }
+            
+            return Ok(new { Message = "Proxy configuration updated successfully" });
+        }
+        
+        [HttpPost("{id}/test-run")]
+        public async Task<IActionResult> RunScraperTest(string id, [FromBody] Models.TestRunOptions options)
+        {
+            var config = await _scraperManager.GetScraperConfig(id);
+            if (config == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            var result = await _scraperManager.RunScraperTest(id, options);
+            if (result == null)
+            {
+                return BadRequest("Test run failed to start");
+            }
+            
+            return Ok(result);
+        }
+        
+        [HttpPost("batch-operation")]
+        public async Task<IActionResult> BatchOperation([FromBody] Models.BatchOperationRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            
+            var result = await _scraperManager.PerformBatchOperation(request);
+            
+            return Ok(new { 
+                SuccessCount = result.SuccessCount,
+                FailureCount = result.FailureCount,
+                Results = result.Results
+            });
+        }
+        
         #endregion
     }
 }

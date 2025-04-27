@@ -23,6 +23,9 @@ namespace WebScraperApi.Models
         [Required]
         public string StartUrl { get; set; }
         
+        // List of start URLs for more complex configurations
+        public List<string> StartUrls { get; set; } = new List<string>();
+        
         [Required]
         public string BaseUrl { get; set; }
         
@@ -33,6 +36,12 @@ namespace WebScraperApi.Models
         public int MaxConcurrentRequests { get; set; } = 5;
         
         public int MaxDepth { get; set; } = 5;
+        
+        // Maximum number of pages to scrape
+        public int MaxPages { get; set; } = 1000;
+        
+        // Whether to follow links at all
+        public bool FollowLinks { get; set; } = true;
         
         public bool FollowExternalLinks { get; set; } = false;
         
@@ -65,6 +74,27 @@ namespace WebScraperApi.Models
         public int MaxDelayBetweenRequests { get; set; } = 5000;
         
         public bool MonitorResponseTimes { get; set; } = true;
+        
+        // Rate limiting configuration
+        public int MaxRequestsPerMinute { get; set; } = 60;
+        
+        public string UserAgent { get; set; } = "Mozilla/5.0 WebScraper Bot";
+        
+        public bool BackOffOnErrors { get; set; } = true;
+        
+        // Domain-specific rate limiting
+        public Dictionary<string, Dictionary<string, object>> DomainRateLimits { get; set; } = new Dictionary<string, Dictionary<string, object>>();
+        
+        // Proxy configuration
+        public bool UseProxies { get; set; } = false;
+        
+        public string ProxyRotationStrategy { get; set; } = "RoundRobin";
+        
+        public bool TestProxiesBeforeUse { get; set; } = true;
+        
+        public int MaxProxyFailuresBeforeRemoval { get; set; } = 3;
+        
+        public List<Dictionary<string, object>> Proxies { get; set; } = new List<Dictionary<string, object>>();
         
         // Continuous monitoring settings
         public bool EnableContinuousMonitoring { get; set; } = false;
@@ -101,6 +131,9 @@ namespace WebScraperApi.Models
         
         public string CustomJsExtractor { get; set; }
         
+        // Page processing options
+        public string WaitForSelector { get; set; }
+        
         // UKGC specific options
         public bool IsUKGCWebsite { get; set; } = false;
         
@@ -130,6 +163,9 @@ namespace WebScraperApi.Models
         public bool CollectDetailedMetrics { get; set; } = true;
         public int MetricsReportingIntervalSeconds { get; set; } = 60;
         public bool TrackDomainMetrics { get; set; } = true;
+        
+        // Schedule configuration
+        public List<Dictionary<string, object>> Schedules { get; set; } = new List<Dictionary<string, object>>();
         
         // Get the monitoring interval as TimeSpan
         public TimeSpan GetMonitoringInterval() => TimeSpan.FromMinutes(MonitoringIntervalMinutes);
