@@ -437,57 +437,79 @@ namespace WebScraper.ContentChange
             return summary.ToString();
         }
         
-        private List<ChangedSentence> ExtractChangedSentences(string oldContent, string newContent)
+        private string TruncateContent(string content, int maxLength)
         {
-            var result = new List<ChangedSentence>();
-            
-            // Split content into sentences
-            var oldSentences = SplitIntoSentences(oldContent);
-            var newSentences = SplitIntoSentences(newContent);
-            
-            // Find added sentences
-            foreach (var sentence in newSentences)
+            if (content.Length <= maxLength)
+                return content;
+                
+            return content.Substring(0, maxLength) + "...";
+        }
+
+        public ChangeType AnalyzeChanges(string oldContent, string newContent)
+        {
+            if (string.IsNullOrEmpty(oldContent) || string.IsNullOrEmpty(newContent))
+                return ChangeType.Major;
+
+            // Simple analysis based on text differences
+            var oldParagraphs = SplitIntoParagraphs(oldContent);
+            var newParagraphs = SplitIntoParagraphs(newContent);
+
+            // Calculate similarity ratio
+            int commonParagraphs = 0;
+            foreach (var oldPara in oldParagraphs)
             {
-                if (!oldSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
+                if (newParagraphs.Any(p => p.Equals(oldPara, StringComparison.OrdinalIgnoreCase)))
                 {
-                    result.Add(new ChangedSentence
-                    {
-                        After = sentence,
-                        ChangeType = SentenceChangeType.Added,
-                        Importance = 0.7
-                    });
+                    commonParagraphs++;
                 }
             }
-            
-            // Find removed sentences
-            foreach (var sentence in oldSentences)
+
+            double similarityRatio = 0;
+            if (oldParagraphs.Count > 0 && newParagraphs.Count > 0)
             {
-                if (!newSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
-                {
-                    result.Add(new ChangedSentence
-                    {
-                        Before = sentence,
-                        ChangeType = SentenceChangeType.Removed,
-                        Importance = 0.8
-                    });
-                }
+                similarityRatio = (double)commonParagraphs / Math.Max(oldParagraphs.Count, newParagraphs.Count);
             }
-            
+
+            // Determine change type based on similarity
+            if (similarityRatio > 0.9) return ChangeType.Minor;
+            if (similarityRatio > 0.7) return ChangeType.Moderate;
+            return ChangeType.Major;
+        }
+
+        public Dictionary<string, string> ExtractChangedSections(string oldContent, string newContent)
+        {
+            var result = new Dictionary<string, string>();
+
+            var oldParagraphs = SplitIntoParagraphs(oldContent);
+            var newParagraphs = SplitIntoParagraphs(newContent);
+
+            // Find new paragraphs
+            var addedParagraphs = newParagraphs.Where(p =>
+                !oldParagraphs.Contains(p, StringComparer.OrdinalIgnoreCase)).ToList();
+
+            // Find removed paragraphs
+            var removedParagraphs = oldParagraphs.Where(p =>
+                !newParagraphs.Contains(p, StringComparer.OrdinalIgnoreCase)).ToList();
+
+            if (addedParagraphs.Any())
+            {
+                result["Added"] = string.Join("\n\n", addedParagraphs);
+            }
+
+            if (removedParagraphs.Any())
+            {
+                result["Removed"] = string.Join("\n\n", removedParagraphs);
+            }
+
             return result;
         }
-        
-        private List<string> SplitIntoSentences(string text)
+
+        private List<string> SplitIntoParagraphs(string content)
         {
-            if (string.IsNullOrEmpty(text))
-                return new List<string>();
-                
-            // Simple sentence splitting on common sentence terminators
-            var sentences = text.Split(new[] { ". ", "! ", "? ", ".\r", "!\r", "?\r", ".\n", "!\n", "?\n" }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrEmpty(s) && s.Length > 5)
+            return content.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
                 .ToList();
-                
-            return sentences;
         }
 
         public Dictionary<string, List<PageVersion>> GetVersionHistory(string scraperId = null)
@@ -520,6 +542,55 @@ namespace WebScraper.ContentChange
                 var hashBytes = sha.ComputeHash(contentBytes);
                 return Convert.ToBase64String(hashBytes);
             }
+        }
+
+        private void CreateChangeNotification(PageVersion version, ScraperContentSettings settings)
+        {
+            var notification = new ChangeNotification
+            {
+                Url = version.Url,
+                ScraperId = settings.ScraperId,
+                ScraperName = settings.ScraperName,
+                ChangeType = version.ChangeFromPrevious,
+                DetectedAt = DateTime.Now,
+                ChangedSections = version.ChangedSections,
+                Summary = GenerateChangeSummary(version)
+            };
+            
+            _pendingNotifications.Add(notification);
+            _logger($"Created change notification for {version.Url} ({version.ChangeFromPrevious})");
+        }
+        
+        private string GenerateChangeSummary(PageVersion version)
+        {
+            var summary = new StringBuilder();
+            summary.AppendLine($"Content change detected for: {version.Url}");
+            summary.AppendLine($"Change level: {version.ChangeFromPrevious}");
+            summary.AppendLine($"Detected at: {version.VersionDate}");
+            summary.AppendLine();
+            
+            if (version.ChangedSections.TryGetValue("Added", out var addedContent))
+            {
+                summary.AppendLine("ADDED CONTENT:");
+                summary.AppendLine(TruncateContent(addedContent, 500));
+                summary.AppendLine();
+            }
+            
+            if (version.ChangedSections.TryGetValue("Removed", out var removedContent))
+            {
+                summary.AppendLine("REMOVED CONTENT:");
+                summary.AppendLine(TruncateContent(removedContent, 500));
+            }
+            
+            return summary.ToString();
+        }
+        
+        private string TruncateContent(string content, int maxLength)
+        {
+            if (content.Length <= maxLength)
+                return content;
+                
+            return content.Substring(0, maxLength) + "...";
         }
     }
 }

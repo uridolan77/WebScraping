@@ -331,6 +331,46 @@ namespace WebScraper.Monitoring
         /// Last successful request time
         /// </summary>
         public DateTime LastSuccessfulRequest { get; set; }
+        
+        /// <summary>
+        /// Total number of requests (successful + failed)
+        /// </summary>
+        public int RequestCount => SuccessfulRequests + FailedRequests;
+        
+        /// <summary>
+        /// Total response time in milliseconds
+        /// </summary>
+        public long TotalResponseTimeMs { get; set; }
+        
+        /// <summary>
+        /// Total bytes downloaded
+        /// </summary>
+        public long TotalBytesDownloaded { get; set; }
+        
+        /// <summary>
+        /// Number of client errors (4xx)
+        /// </summary>
+        public int ClientErrors { get; set; }
+        
+        /// <summary>
+        /// Number of server errors (5xx)
+        /// </summary>
+        public int ServerErrors { get; set; }
+        
+        /// <summary>
+        /// Number of rate limit hits (429)
+        /// </summary>
+        public int RateLimitHits { get; set; }
+        
+        /// <summary>
+        /// Number of timeout errors
+        /// </summary>
+        public int Timeouts { get; set; }
+        
+        /// <summary>
+        /// Number of network errors
+        /// </summary>
+        public int NetworkErrors { get; set; }
     }
     
     /// <summary>
