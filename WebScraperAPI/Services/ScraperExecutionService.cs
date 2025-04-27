@@ -53,21 +53,8 @@ namespace WebScraperApi.Services
                     return false;
                 }
                 
-                // Check if enhanced features are needed
-                bool useEnhancedScraper = IsEnhancedScraperRequired(scraperConfig);
-                
-                // Create a scraper instance
-                Scraper scraper;
-                if (useEnhancedScraper)
-                {
-                    // Create enhanced scraper with components from the factory
-                    scraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
-                }
-                else
-                {
-                    // Create and initialize the standard scraper
-                    scraper = new Scraper(scraperConfig, logAction);
-                }
+                // Always use EnhancedScraper for all scrapers
+                Scraper scraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
                 
                 // Initialize the scraper
                 logAction("Initializing scraper...");

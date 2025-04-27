@@ -22,7 +22,7 @@ namespace WebScraper
     public class EnhancedScraper : Scraper
     {
         private readonly ILogger<EnhancedScraper> _enhancedLogger;
-        private readonly ICrawlStrategy _customCrawlStrategy;
+        private ICrawlStrategy _customCrawlStrategy;
         private readonly IContentExtractor _customContentExtractor;
         private readonly IDocumentProcessor _documentProcessor;
         
@@ -54,6 +54,8 @@ namespace WebScraper
         private IDynamicContentRenderer _dynamicRenderer;
         private IAlertService _alertService;
         
+        private System.Collections.Concurrent.ConcurrentDictionary<string, bool> _urlsProcessed = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+
         /// <summary>
         /// Initializes a new instance of the EnhancedScraper class with full dependency injection
         /// </summary>
@@ -755,39 +757,164 @@ namespace WebScraper
         }
         
         /// <summary>
-        /// Update the scraper state in the persistent store
+        /// Compute a hash of the content for comparison
+        /// </summary>
+        private string ComputeHash(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return string.Empty;
+
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                var hash = sha256.ComputeHash(bytes);
+                return Convert.ToBase64String(hash);
+            }
+        }
+
+        /// <summary>
+        /// Check if a URL should be crawled based on configuration and custom strategy
+        /// </summary>
+        private bool ShouldCrawlUrl(string url)
+        {
+            // Check if URL is null or empty
+            if (string.IsNullOrEmpty(url))
+                return false;
+
+            // Use custom crawl strategy if available
+            if (_customCrawlStrategy != null)
+                return _customCrawlStrategy.ShouldCrawl(url);
+
+            // Default implementation
+            try
+            {
+                var uri = new Uri(url);
+
+                // Check if URL is in allowed domain
+                bool inAllowedDomain = _config.AllowedDomains?.Any(domain => 
+                    uri.Host.Equals(domain, StringComparison.OrdinalIgnoreCase) || 
+                    uri.Host.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase)) ?? false;
+
+                // If no allowed domains specified, just use the domain from the start URL
+                if (_config.AllowedDomains == null || _config.AllowedDomains.Count == 0)
+                {
+                    var startUri = new Uri(_config.StartUrl);
+                    inAllowedDomain = uri.Host.Equals(startUri.Host, StringComparison.OrdinalIgnoreCase);
+                }
+
+                // Check if URL matches any exclude patterns
+                bool isExcluded = _config.ExcludeUrlPatterns?.Any(pattern => 
+                    url.Contains(pattern, StringComparison.OrdinalIgnoreCase)) ?? false;
+
+                // Check if URL matches the document types we're looking for
+                bool isTargetDocumentType = false;
+                if (_config.ProcessPdfDocuments && url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                    isTargetDocumentType = true;
+                else if (_config.ProcessOfficeDocuments && IsOfficeDocument(url))
+                    isTargetDocumentType = true;
+
+                return inAllowedDomain && !isExcluded || isTargetDocumentType;
+            }
+            catch
+            {
+                // If we can't parse the URL, don't crawl it
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Check if a URL points to an Office document
+        /// </summary>
+        private bool IsOfficeDocument(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return false;
+
+            string lowerUrl = url.ToLowerInvariant();
+            return lowerUrl.EndsWith(".doc") || lowerUrl.EndsWith(".docx") || 
+                   lowerUrl.EndsWith(".xls") || lowerUrl.EndsWith(".xlsx") || 
+                   lowerUrl.EndsWith(".ppt") || lowerUrl.EndsWith(".pptx") ||
+                   lowerUrl.EndsWith(".odt") || lowerUrl.EndsWith(".ods") ||
+                   lowerUrl.EndsWith(".odp");
+        }
+
+        /// <summary>
+        /// Get the file name from a URL
+        /// </summary>
+        private string GetFileNameFromUrl(string url)
+        {
+            try
+            {
+                Uri uri = new Uri(url);
+                string path = uri.AbsolutePath;
+                return System.IO.Path.GetFileName(path);
+            }
+            catch
+            {
+                // If parsing fails, return a default name
+                return "document";
+            }
+        }
+
+        /// <summary>
+        /// Get content type based on file extension
+        /// </summary>
+        private string GetContentTypeFromUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return "application/octet-stream";
+
+            string lowerUrl = url.ToLowerInvariant();
+            
+            if (lowerUrl.EndsWith(".pdf"))
+                return "application/pdf";
+            else if (lowerUrl.EndsWith(".doc") || lowerUrl.EndsWith(".docx"))
+                return "application/msword";
+            else if (lowerUrl.EndsWith(".xls") || lowerUrl.EndsWith(".xlsx"))
+                return "application/vnd.ms-excel";
+            else if (lowerUrl.EndsWith(".ppt") || lowerUrl.EndsWith(".pptx"))
+                return "application/vnd.ms-powerpoint";
+            else if (lowerUrl.EndsWith(".odt"))
+                return "application/vnd.oasis.opendocument.text";
+            else if (lowerUrl.EndsWith(".ods"))
+                return "application/vnd.oasis.opendocument.spreadsheet";
+            else if (lowerUrl.EndsWith(".odp"))
+                return "application/vnd.oasis.opendocument.presentation";
+            else if (lowerUrl.EndsWith(".html") || lowerUrl.EndsWith(".htm"))
+                return "text/html";
+            else if (lowerUrl.EndsWith(".txt"))
+                return "text/plain";
+            else
+                return "application/octet-stream";
+        }
+
+        /// <summary>
+        /// Update the scraper state in persistent storage
         /// </summary>
         private async Task UpdateScraperStateAsync(string status)
         {
-            if (_persistentStateManager == null)
-                return;
-            
             try
             {
-                // Get the current state
-                var currentState = await _persistentStateManager.GetScraperStateAsync(_config.Name);
-                
-                if (currentState == null)
+                if (_persistentStateManager != null)
                 {
-                    currentState = new ScraperState
+                    var state = new ScraperState
                     {
                         ScraperId = _config.Name,
+                        Status = status,
                         LastRunStartTime = DateTime.Now,
+                        LastRunEndTime = DateTime.Now,
+                        ProgressData = System.Text.Json.JsonSerializer.Serialize(new 
+                        { 
+                            TotalUrlsProcessed = _urlsProcessed,
+                            ProcessedItems = _processingPipeline?.GetStatus()?.ProcessedItems ?? 0,
+                            FailedItems = _processingPipeline?.GetStatus()?.FailedItems ?? 0
+                        }),
                         ConfigSnapshot = System.Text.Json.JsonSerializer.Serialize(_config)
                     };
+
+                    await _persistentStateManager.SaveScraperStateAsync(state);
+                    LogInfo($"Scraper state updated: {status}");
                 }
-                
-                // Update state properties
-                currentState.Status = status;
-                currentState.LastRunEndTime = DateTime.Now;
-                
-                if (status == "Completed")
-                {
-                    currentState.LastSuccessfulRunTime = DateTime.Now;
-                }
-                
-                // Save the updated state
-                await _persistentStateManager.SaveScraperStateAsync(currentState);
             }
             catch (Exception ex)
             {
@@ -801,120 +928,6 @@ namespace WebScraper
         public async Task ProcessUrl(string url)
         {
             await ProcessUrlAsync(url);
-        }
-        
-        /// <summary>
-        /// Check if a URL points to an Office document
-        /// </summary>
-        private bool IsOfficeDocument(string url)
-        {
-            var lowercaseUrl = url.ToLowerInvariant();
-            return lowercaseUrl.EndsWith(".docx") ||
-                   lowercaseUrl.EndsWith(".xlsx") ||
-                   lowercaseUrl.EndsWith(".pptx") ||
-                   lowercaseUrl.EndsWith(".doc") ||
-                   lowercaseUrl.EndsWith(".xls") ||
-                   lowercaseUrl.EndsWith(".ppt");
-        }
-        
-        /// <summary>
-        /// Get the file name from a URL
-        /// </summary>
-        private string GetFileNameFromUrl(string url)
-        {
-            try
-            {
-                var uri = new Uri(url);
-                return System.IO.Path.GetFileName(uri.LocalPath);
-            }
-            catch
-            {
-                return url.Split('/').Last();
-            }
-        }
-        
-        /// <summary>
-        /// Get the content type from a URL based on its extension
-        /// </summary>
-        private string GetContentTypeFromUrl(string url)
-        {
-            var lowercaseUrl = url.ToLowerInvariant();
-            
-            if (lowercaseUrl.EndsWith(".pdf"))
-                return "application/pdf";
-            else if (lowercaseUrl.EndsWith(".docx") || lowercaseUrl.EndsWith(".doc"))
-                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            else if (lowercaseUrl.EndsWith(".xlsx") || lowercaseUrl.EndsWith(".xls"))
-                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            else if (lowercaseUrl.EndsWith(".pptx") || lowercaseUrl.EndsWith(".ppt"))
-                return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            else
-                return "application/octet-stream";
-        }
-        
-        /// <summary>
-        /// Compute a hash for content
-        /// </summary>
-        private string ComputeHash(string content)
-        {
-            if (string.IsNullOrEmpty(content))
-                return string.Empty;
-            
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            var bytes = System.Text.Encoding.UTF8.GetBytes(content);
-            var hash = sha.ComputeHash(bytes);
-            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        }
-
-        /// <summary>
-        /// Calls Dispose on all disposable resources
-        /// </summary>
-        public override void Dispose()
-        {
-            // Dispose persistent state manager
-            _persistentStateManager?.Dispose();
-            
-            // Dispose headless browser
-            _headlessBrowser?.Dispose();
-            
-            // Dispose pipeline
-            _processingPipeline?.Dispose();
-            
-            // Call base dispose
-            base.Dispose();
-        }
-        
-        /// <summary>
-        /// Log information message using the appropriate logger
-        /// </summary>
-        private void LogInfo(string message)
-        {
-            if (_enhancedLogger != null)
-                _enhancedLogger.LogInformation(message);
-            else
-                _logger(message);
-        }
-        
-        /// <summary>
-        /// Log warning message using the appropriate logger
-        /// </summary>
-        private void LogWarning(string message)
-        {
-            if (_enhancedLogger != null)
-                _enhancedLogger.LogWarning(message);
-            else
-                _logger($"WARNING: {message}");
-        }
-        
-        /// <summary>
-        /// Log error message using the appropriate logger
-        /// </summary>
-        private void LogError(Exception ex, string message)
-        {
-            if (_enhancedLogger != null)
-                _enhancedLogger.LogError(ex, message);
-            else
-                _logger($"ERROR: {message} - {ex.Message}");
         }
         
         /// <summary>
@@ -982,90 +995,6 @@ namespace WebScraper
         }
         
         /// <summary>
-        /// Determines whether a URL should be crawled based on configuration and crawl strategy
-        /// </summary>
-        private bool ShouldCrawlUrl(string url)
-        {
-            try
-            {
-                // Skip if URL is null or empty
-                if (string.IsNullOrEmpty(url))
-                    return false;
-
-                // Parse URL to make sure it's valid
-                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
-                    return false;
-                
-                // Check if scheme is HTTP or HTTPS
-                if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
-                    return false;
-                
-                // Check if external URL and if we should follow external links
-                bool isExternal = !url.StartsWith(_config.BaseUrl);
-                if (isExternal && !_config.FollowExternalLinks)
-                    return false;
-                
-                // If using custom crawl strategy, use its logic
-                if (_customCrawlStrategy != null)
-                {
-                    return _customCrawlStrategy.ShouldCrawl(url);
-                }
-                
-                // Skip URLs that are likely to be non-content pages
-                if (url.Contains("logout") || 
-                    url.Contains("login") || 
-                    url.Contains("signin") || 
-                    url.Contains("register") ||
-                    url.EndsWith(".jpg") || 
-                    url.EndsWith(".jpeg") || 
-                    url.EndsWith(".png") || 
-                    url.EndsWith(".gif") ||
-                    url.EndsWith(".css") || 
-                    url.EndsWith(".js"))
-                {
-                    return false;
-                }
-                
-                // If it's a UKGC website and we have regulatory monitoring enabled,
-                // use more specific crawling rules
-                if (_config.IsUKGCWebsite && _config.EnableRegulatoryContentAnalysis)
-                {
-                    // Prioritize regulatory content
-                    if (url.Contains("regulations") || 
-                        url.Contains("guidance") || 
-                        url.Contains("compliance") || 
-                        url.Contains("rules") ||
-                        url.Contains("laws") || 
-                        url.Contains("policies"))
-                    {
-                        return true;
-                    }
-                    
-                    // Prioritize based on config options
-                    if (_config.PrioritizeEnforcementActions && url.Contains("enforcement"))
-                        return true;
-                        
-                    if (_config.PrioritizeLCCP && (url.Contains("lccp") || 
-                        url.Contains("license-conditions") || 
-                        url.Contains("code-of-practice")))
-                        return true;
-                        
-                    if (_config.PrioritizeAML && (url.Contains("aml") || 
-                        url.Contains("money-laundering")))
-                        return true;
-                }
-                
-                // By default, allow crawling
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogError(ex, $"Error evaluating URL for crawling: {url}");
-                return false;
-            }
-        }
-        
-        /// <summary>
         /// Configure content classification with a classifier
         /// </summary>
         public void ConfigureContentClassification(IContentClassifier classifier)
@@ -1115,6 +1044,283 @@ namespace WebScraper
                 
             _alertService = alertService;
             LogInfo("Alert service configured");
+        }
+
+        /// <summary>
+        /// Set the headless browser handler for this scraper
+        /// </summary>
+        public void SetHeadlessBrowserHandler(HeadlessBrowser.HeadlessBrowserHandler handler)
+        {
+            _headlessBrowser = handler ?? throw new System.ArgumentNullException(nameof(handler));
+            LogInfo("Headless browser handler set");
+        }
+        
+        /// <summary>
+        /// Set the state manager for this scraper
+        /// </summary>
+        public void SetStateManager(IStateManager stateManager)
+        {
+            _persistentStateManager = stateManager as PersistentStateManager 
+                ?? throw new System.ArgumentException("State manager must be a PersistentStateManager", nameof(stateManager));
+            LogInfo("State manager set");
+        }
+        
+        /// <summary>
+        /// Set the crawl strategy for this scraper
+        /// </summary>
+        public void SetCrawlStrategy(ICrawlStrategy crawlStrategy)
+        {
+            if (crawlStrategy == null)
+                throw new System.ArgumentNullException(nameof(crawlStrategy));
+                
+            _customCrawlStrategy = crawlStrategy;
+            LogInfo("Crawl strategy set");
+        }
+        
+        /// <summary>
+        /// Set the change detector for this scraper
+        /// </summary>
+        public void SetChangeDetector(IChangeDetector changeDetector)
+        {
+            if (changeDetector == null)
+                throw new System.ArgumentNullException(nameof(changeDetector));
+                
+            _customChangeDetector = changeDetector;
+            LogInfo("Change detector set");
+        }
+        
+        /// <summary>
+        /// Set the rate limiter for this scraper
+        /// </summary>
+        public void SetRateLimiter(RateLimiting.AdaptiveRateLimiter rateLimiter)
+        {
+            if (rateLimiter == null)
+                throw new System.ArgumentNullException(nameof(rateLimiter));
+                
+            LogInfo("Rate limiter set");
+        }
+        
+        /// <summary>
+        /// Set document handlers for this scraper
+        /// </summary>
+        public void SetDocumentHandlers(
+            RegulatoryContent.PdfDocumentHandler pdfHandler = null,
+            RegulatoryContent.OfficeDocumentHandler officeHandler = null)
+        {
+            if (pdfHandler != null)
+            {
+                _pdfDocumentHandler = pdfHandler;
+                LogInfo("PDF document handler set");
+            }
+            
+            if (officeHandler != null)
+            {
+                _officeDocumentHandler = officeHandler;
+                LogInfo("Office document handler set");
+            }
+        }
+        
+        /// <summary>
+        /// Set the configuration validator for this scraper
+        /// </summary>
+        public void SetConfigurationValidator(Validation.ConfigurationValidator validator)
+        {
+            if (validator == null)
+                throw new System.ArgumentNullException(nameof(validator));
+                
+            _configurationValidator = validator;
+            LogInfo("Configuration validator set");
+        }
+        
+        /// <summary>
+        /// Stops the scraping process
+        /// </summary>
+        public async Task StopScrapingAsync()
+        {
+            try
+            {
+                LogInfo("Stopping scraping process...");
+                
+                // Cancel any running tasks
+                if (_processingPipeline != null)
+                {
+                    await _processingPipeline.CompleteAsync();
+                }
+                
+                // Update scraper state
+                await UpdateScraperStateAsync("Stopped");
+                
+                LogInfo("Scraping process stopped");
+            }
+            catch (System.Exception ex)
+            {
+                LogError(ex, "Error stopping scraper");
+            }
+        }
+
+        /// <summary>
+        /// Save changed content with version tracking
+        /// </summary>
+        /// <param name="url">URL of the content</param>
+        /// <param name="content">HTML content to save</param>
+        /// <param name="textContent">Plain text version of the content</param>
+        /// <param name="title">Title of the page</param>
+        /// <returns>True if content was saved and change was detected</returns>
+        public async Task<bool> SaveChangedContentAsync(string url, string content, string textContent, string title = null)
+        {
+            try
+            {
+                LogInfo($"Saving content for {url}");
+                
+                // Use state store if available
+                if (_stateStore != null)
+                {
+                    // Create a new page version
+                    var pageVersion = new RegulatoryFramework.Interfaces.PageVersion
+                    {
+                        Url = url,
+                        Hash = ComputeHash(content),
+                        CapturedAt = DateTime.Now,
+                        FullContent = content,
+                        TextContent = textContent,
+                        ContentSummary = textContent?.Substring(0, Math.Min(200, textContent?.Length ?? 0)) ?? "",
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["title"] = title ?? GetFileNameFromUrl(url),
+                            ["scraperId"] = _config.ScraperId ?? _config.Name,
+                            ["scraperType"] = _config.ScraperType
+                        }
+                    };
+                    
+                    // Save the version
+                    await _stateStore.SaveVersionAsync(pageVersion);
+                    LogInfo($"Content saved for {url}");
+                    return true;
+                }
+                // Use persistent state manager as fallback
+                else if (_persistentStateManager != null)
+                {
+                    var contentItem = new ContentItem
+                    {
+                        Url = url,
+                        Title = title ?? GetFileNameFromUrl(url),
+                        ScraperId = _config.Name,
+                        LastStatusCode = 200,
+                        ContentType = "text/html",
+                        IsReachable = true,
+                        RawContent = content,
+                        ContentHash = ComputeHash(content)
+                    };
+                    
+                    await _persistentStateManager.SaveContentVersionAsync(contentItem, _config.MaxVersionsToKeep);
+                    LogInfo($"Content saved for {url} using state manager");
+                    return true;
+                }
+                // Use change detector directly as last resort
+                else if (_customChangeDetector != null && _customChangeDetector is ContentChange.ContentChangeDetector changeDetector)
+                {
+                    var version = changeDetector.TrackPageVersion(url, content, textContent, _config.ScraperId);
+                    LogInfo($"Content tracked for {url} using change detector");
+                    return version.ChangeFromPrevious != ContentChange.ChangeType.None;
+                }
+                else
+                {
+                    LogWarning($"No state store available to save content for {url}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, $"Error saving content for {url}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Logs an information message
+        /// </summary>
+        private void LogInfo(string message)
+        {
+            // Use the enhanced logger if available
+            if (_enhancedLogger != null)
+            {
+                _enhancedLogger.LogInformation(message);
+            }
+            else
+            {
+                // Fall back to the action logger from the base class
+                _logger(message);
+            }
+        }
+        
+        /// <summary>
+        /// Logs a warning message
+        /// </summary>
+        private void LogWarning(string message)
+        {
+            // Use the enhanced logger if available
+            if (_enhancedLogger != null)
+            {
+                _enhancedLogger.LogWarning(message);
+            }
+            else
+            {
+                // Fall back to the action logger from the base class
+                _logger($"WARNING: {message}");
+            }
+        }
+        
+        /// <summary>
+        /// Logs an error message
+        /// </summary>
+        private void LogError(Exception ex, string message)
+        {
+            // Use the enhanced logger if available
+            if (_enhancedLogger != null)
+            {
+                _enhancedLogger.LogError(ex, message);
+            }
+            else
+            {
+                // Fall back to the action logger from the base class
+                _logger($"ERROR: {message} - {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Dispose of resources
+        /// </summary>
+        public override void Dispose()
+        {
+            try
+            {
+                // Stop any continuous scraping
+                _continuousScrapingCts?.Cancel();
+                
+                // Dispose headless browser
+                _headlessBrowser?.Dispose();
+                
+                // Dispose processing pipeline
+                _processingPipeline?.Dispose();
+                
+                // Other disposals
+                if (_dynamicRenderer is IDisposable dynamicRendererDisposable)
+                {
+                    dynamicRendererDisposable.Dispose();
+                }
+                
+                // Cleanup
+                _currentDepth?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, "Error during disposal");
+            }
+            finally
+            {
+                // Call base disposal
+                base.Dispose();
+            }
         }
     }
     

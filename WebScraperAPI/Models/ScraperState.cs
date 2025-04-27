@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using WebScraper;
 
 namespace WebScraperApi.Models
 {
@@ -9,6 +10,9 @@ namespace WebScraperApi.Models
     /// </summary>
     public class ScraperState
     {
+        // Added ID property
+        public string Id { get; set; }
+        
         public bool IsRunning { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
@@ -17,6 +21,9 @@ namespace WebScraperApi.Models
         public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
         public DateTime? LastMonitorCheck { get; set; }
         public List<LogEntry> LogMessages { get; set; } = new List<LogEntry>();
+        
+        // Added property for active scraper instance
+        public EnhancedScraper Scraper { get; set; }
         
         /// <summary>
         /// Indicates whether this is a test run

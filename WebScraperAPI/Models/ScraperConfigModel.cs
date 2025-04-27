@@ -16,6 +16,9 @@ namespace WebScraperApi.Models
         
         public DateTime? LastRun { get; set; }
         
+        // Added LastModified property
+        public DateTime LastModified { get; set; } = DateTime.Now;
+        
         // Track run count for analytics
         public int RunCount { get; set; } = 0;
         
@@ -155,6 +158,10 @@ namespace WebScraperApi.Models
         public bool NotifyOnDocumentProcessed { get; set; }
         public bool NotifyOnScraperStatusChange { get; set; }
         
+        // Added missing webhook properties
+        public string[] WebhookTriggers { get; set; } = new string[] { "all" };
+        public string WebhookFormat { get; set; } = "json";
+        
         // Content compression settings
         public bool EnableContentCompression { get; set; } = true;
         public int CompressionThresholdBytes { get; set; } = 1024; // Compress files larger than 1KB by default
@@ -163,6 +170,9 @@ namespace WebScraperApi.Models
         public bool CollectDetailedMetrics { get; set; } = true;
         public int MetricsReportingIntervalSeconds { get; set; } = 60;
         public bool TrackDomainMetrics { get; set; } = true;
+        
+        // Added scraper type property
+        public string ScraperType { get; set; } = "Standard";
         
         // Schedule configuration
         public List<Dictionary<string, object>> Schedules { get; set; } = new List<Dictionary<string, object>>();
@@ -221,7 +231,14 @@ namespace WebScraperApi.Models
                 IsUKGCWebsite = this.IsUKGCWebsite,
                 PrioritizeEnforcementActions = this.PrioritizeEnforcementActions,
                 PrioritizeLCCP = this.PrioritizeLCCP,
-                PrioritizeAML = this.PrioritizeAML
+                PrioritizeAML = this.PrioritizeAML,
+                
+                // Added common configurable flags
+                MaxCrawlDepth = this.MaxDepth,
+                EnableRateLimiting = this.EnableAdaptiveRateLimiting,
+                EnablePersistentState = true,
+                EnableDocumentProcessing = this.ProcessPdfDocuments || this.ExtractStructuredContent,
+                DetectContentChanges = this.EnableChangeDetection
             };
         }
     }

@@ -49,6 +49,8 @@ namespace WebScraper.RegulatoryFramework.Implementation
         
         public Task SaveVersionAsync(PageVersion version)
         {
+            if (version == null) throw new ArgumentNullException(nameof(version));
+            
             var versions = _versionHistory.GetOrAdd(version.Url, _ => new List<PageVersion>());
             
             // Add new version
@@ -142,6 +144,8 @@ namespace WebScraper.RegulatoryFramework.Implementation
         
         public async Task SaveVersionAsync(PageVersion version)
         {
+            if (version == null) throw new ArgumentNullException(nameof(version));
+            
             var urlHash = GetSafeFilename(version.Url);
             var versionPath = Path.Combine(_versionsPath, urlHash);
             
@@ -418,6 +422,8 @@ namespace WebScraper.RegulatoryFramework.Implementation
         
         public async Task SaveVersionAsync(PageVersion version)
         {
+            if (version == null) throw new ArgumentNullException(nameof(version));
+            
             try
             {
                 // Prepare metadata without full content

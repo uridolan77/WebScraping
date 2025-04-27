@@ -2,8 +2,17 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
 using WebScraperApi.Models;
 using WebScraperApi.Services;
+using WebScraperApi.Services.Analytics;
+using WebScraperApi.Services.Common;
+using WebScraperApi.Services.Configuration;
+using WebScraperApi.Services.Execution;
+using WebScraperApi.Services.Monitoring;
+using WebScraperApi.Services.Notifications;
+using WebScraperApi.Services.Scheduling;
+using WebScraperApi.Services.State;
 
 namespace WebScraperApi.Controllers
 {
@@ -12,23 +21,45 @@ namespace WebScraperApi.Controllers
     public class ScraperController : ControllerBase
     {
         private readonly ScraperManager _scraperManager;
+        private readonly IScraperConfigurationService _configService;
+        private readonly IScraperExecutionService _executionService;
+        private readonly IScraperMonitoringService _monitoringService;
+        private readonly IScraperStateService _stateService;
+        private readonly IScraperAnalyticsService _analyticsService;
+        private readonly IScraperSchedulingService _schedulingService;
+        private readonly IWebhookNotificationService _notificationService;
         
-        public ScraperController(ScraperManager scraperManager)
+        public ScraperController(
+            ScraperManager scraperManager,
+            IScraperConfigurationService configService,
+            IScraperExecutionService executionService,
+            IScraperMonitoringService monitoringService,
+            IScraperStateService stateService,
+            IScraperAnalyticsService analyticsService,
+            IScraperSchedulingService schedulingService,
+            IWebhookNotificationService notificationService)
         {
             _scraperManager = scraperManager;
+            _configService = configService;
+            _executionService = executionService;
+            _monitoringService = monitoringService;
+            _stateService = stateService;
+            _analyticsService = analyticsService;
+            _schedulingService = schedulingService;
+            _notificationService = notificationService;
         }
         
         [HttpGet]
         public async Task<IActionResult> GetAllScrapers()
         {
-            var scrapers = await _scraperManager.GetAllScraperConfigsAsync();
+            var scrapers = await _configService.GetAllScraperConfigsAsync();
             return Ok(scrapers);
         }
         
         [HttpGet("{id}")]
         public async Task<IActionResult> GetScraper(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
+            var config = await _configService.GetScraperConfigAsync(id);
             if (config == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
@@ -45,7 +76,7 @@ namespace WebScraperApi.Controllers
                 return BadRequest(ModelState);
             }
             
-            var createdConfig = await _scraperManager.CreateScraperConfig(config);
+            var createdConfig = await _configService.CreateScraperConfigAsync(config);
             return CreatedAtAction(nameof(GetScraper), new { id = createdConfig.Id }, createdConfig);
         }
         
@@ -57,10 +88,18 @@ namespace WebScraperApi.Controllers
                 return BadRequest(ModelState);
             }
             
-            var success = await _scraperManager.UpdateScraperConfig(id, config);
+            var success = await _configService.UpdateScraperConfigAsync(id, config);
             if (!success)
             {
                 return NotFound($"Scraper with ID {id} not found or is currently running");
+            }
+            
+            // Update the state with the new configuration
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance != null)
+            {
+                instance.Config = config;
+                _stateService.AddOrUpdateScraper(id, instance);
             }
             
             return Ok(config);
@@ -69,11 +108,14 @@ namespace WebScraperApi.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteScraper(string id)
         {
-            var success = await _scraperManager.DeleteScraperConfig(id);
+            var success = await _configService.DeleteScraperConfigAsync(id);
             if (!success)
             {
                 return NotFound($"Scraper with ID {id} not found or is currently running");
             }
+            
+            // Also remove from state
+            _stateService.RemoveScraper(id);
             
             return NoContent();
         }
@@ -81,119 +123,165 @@ namespace WebScraperApi.Controllers
         [HttpGet("{id}/status")]
         public async Task<IActionResult> GetScraperStatus(string id)
         {
-            var status = _scraperManager.GetScraperStatus(id);
+            var status = _monitoringService.GetScraperStatus(id);
             if (status == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var config = await _scraperManager.GetScraperConfig(id);
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
             
             return Ok(new
             {
                 ScraperId = id,
-                ScraperName = config.Name,
+                ScraperName = instance.Config.Name,
                 status.IsRunning,
                 status.StartTime,
                 status.EndTime,
                 status.ElapsedTime,
                 status.UrlsProcessed,
                 LastMonitorCheck = status.LastMonitorCheck,
-                IsMonitoring = config.EnableContinuousMonitoring,
-                MonitoringInterval = config.MonitoringIntervalMinutes
+                IsMonitoring = instance.Config.EnableContinuousMonitoring,
+                MonitoringInterval = instance.Config.MonitoringIntervalMinutes
             });
         }
         
         [HttpGet("{id}/logs")]
         public IActionResult GetScraperLogs(string id, [FromQuery] int limit = 100)
         {
-            var logs = _scraperManager.GetScraperLogs(id, limit);
+            var logs = _monitoringService.GetScraperLogs(id, limit);
             return Ok(new { Logs = logs });
         }
         
         [HttpPost("{id}/start")]
         public async Task<IActionResult> StartScraper(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var success = await _scraperManager.StartScraper(id);
-            if (!success)
+            if (instance.Status.IsRunning)
             {
                 return BadRequest("Scraper is already running");
             }
             
-            return Ok(new { Message = $"Scraper '{config.Name}' started successfully" });
+            // Create log action to capture logs
+            void LogAction(string message) => _monitoringService.AddLogMessage(id, message);
+            
+            // Start the scraper using the execution service
+            var success = await _executionService.StartScraperAsync(
+                instance.Config, 
+                new ScraperState { Id = id },
+                LogAction);
+                
+            if (!success)
+            {
+                return BadRequest("Failed to start scraper");
+            }
+            
+            // Update status in the state
+            instance.Status.IsRunning = true;
+            instance.Status.StartTime = DateTime.Now;
+            instance.Status.Message = "Scraper started successfully";
+            _stateService.AddOrUpdateScraper(id, instance);
+            
+            // Send notification about status change
+            await _notificationService.NotifyScraperStatusAsync(id, instance.Status);
+            
+            return Ok(new { Message = $"Scraper '{instance.Config.Name}' started successfully" });
         }
         
         [HttpPost("{id}/stop")]
-        public async Task<IActionResult> StopScraper(string id)
+        public IActionResult StopScraper(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var success = _scraperManager.StopScraperInstance(id);
-            if (!success)
+            if (!instance.Status.IsRunning)
             {
                 return BadRequest("Scraper is not running");
             }
             
-            return Ok(new { Message = $"Scraper '{config.Name}' stopped successfully" });
+            // Create log action
+            void LogAction(string message) => _monitoringService.AddLogMessage(id, message);
+            
+            // Stop the scraper
+            _executionService.StopScraper(instance.Scraper, LogAction);
+            
+            // Update status
+            instance.Status.IsRunning = false;
+            instance.Status.EndTime = DateTime.Now;
+            instance.Status.Message = "Stopped by user";
+            _stateService.AddOrUpdateScraper(id, instance);
+            
+            // Send notification about status change
+            _notificationService.NotifyScraperStatusAsync(id, instance.Status);
+            
+            return Ok(new { Message = $"Scraper '{instance.Config.Name}' stopped successfully" });
         }
         
         [HttpPost("{id}/monitor")]
         public async Task<IActionResult> SetMonitoring(string id, [FromBody] Models.MonitoringSettings settings)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
             // Update monitoring settings
-            config.EnableContinuousMonitoring = settings.Enabled;
-            config.MonitoringIntervalMinutes = settings.IntervalMinutes;
-            config.NotifyOnChanges = settings.NotifyOnChanges;
-            config.NotificationEmail = settings.NotificationEmail;
-            config.TrackChangesHistory = settings.TrackChangesHistory;
+            instance.Config.EnableContinuousMonitoring = settings.Enabled;
+            instance.Config.MonitoringIntervalMinutes = settings.IntervalMinutes;
+            instance.Config.NotifyOnChanges = settings.NotifyOnChanges;
+            instance.Config.NotificationEmail = settings.NotificationEmail;
+            instance.Config.TrackChangesHistory = settings.TrackChangesHistory;
             
             // Update the config
-            var success = await _scraperManager.UpdateScraperConfig(id, config);
+            var success = await _configService.UpdateScraperConfigAsync(id, instance.Config);
             if (!success)
             {
                 return BadRequest("Failed to update monitoring settings");
             }
             
+            _stateService.AddOrUpdateScraper(id, instance);
+            
             return Ok(new 
             { 
                 Message = settings.Enabled 
-                    ? $"Monitoring enabled for '{config.Name}' with {settings.IntervalMinutes} minute interval" 
-                    : $"Monitoring disabled for '{config.Name}'"
+                    ? $"Monitoring enabled for '{instance.Config.Name}' with {settings.IntervalMinutes} minute interval" 
+                    : $"Monitoring disabled for '{instance.Config.Name}'"
             });
         }
         
         [HttpGet("results")]
-        public IActionResult GetResults([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string search = null, [FromQuery] string scraperId = null)
+        public async Task<IActionResult> GetResults([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string search = null, [FromQuery] string scraperId = null)
         {
-            // This is a placeholder - in a real implementation,
-            // we'd query the actual results from disk or database
-            // filtered by the scraper ID
-            
-            return Ok(new
+            if (!string.IsNullOrEmpty(scraperId))
             {
-                Results = new Dictionary<string, object>(),
-                TotalCount = 0,
-                Page = page,
-                PageSize = pageSize,
-                TotalPages = 0,
-                ScraperId = scraperId
-            });
+                var results = await _stateService.GetProcessedDocumentsAsync(scraperId, null, page, pageSize);
+                return Ok(results);
+            }
+            else
+            {
+                // If no specific scraper ID, return a summary list of results
+                return Ok(new
+                {
+                    Results = new Dictionary<string, object>(),
+                    TotalCount = 0,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalPages = 0
+                });
+            }
         }
         
         #region API endpoints for additional functionality
@@ -201,159 +289,67 @@ namespace WebScraperApi.Controllers
         [HttpGet("{id}/changes")]
         public async Task<IActionResult> GetDetectedChanges(string id, [FromQuery] DateTime? since = null, [FromQuery] int limit = 100)
         {
-            var changes = await _scraperManager.GetDetectedChanges(id, since, limit);
-            if (changes == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or has no changes detected");
-            }
-            
+            var changes = await _stateService.GetDetectedChangesAsync(id, since, limit);
             return Ok(new { Changes = changes });
         }
         
         [HttpGet("{id}/documents")]
         public async Task<IActionResult> GetProcessedDocuments(string id, [FromQuery] string documentType = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var documents = await _scraperManager.GetProcessedDocuments(id, documentType, page, pageSize);
-            if (documents == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or has no processed documents");
-            }
-            
+            var documents = await _stateService.GetProcessedDocumentsAsync(id, documentType, page, pageSize);
             return Ok(documents);
         }
         
         [HttpGet("{id}/analytics")]
         public async Task<IActionResult> GetScraperAnalytics(string id)
         {
-            var analytics = await _scraperManager.GetScraperAnalytics(id);
-            if (analytics == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or analytics not available");
-            }
-            
+            var analytics = await _analyticsService.GetScraperAnalyticsAsync(id);
             return Ok(analytics);
         }
         
-        [HttpPut("{id}/content-extraction")]
-        public async Task<IActionResult> UpdateContentExtractionRules(string id, [FromBody] Models.ContentExtractionRules rules)
+        [HttpPost("{id}/webhook-test")]
+        public async Task<IActionResult> TestWebhook(string id)
         {
-            var success = await _scraperManager.UpdateContentExtractionRules(id, rules);
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
+            {
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            
+            // Send a test notification
+            var testData = new
+            {
+                message = "This is a test notification",
+                timestamp = DateTime.Now
+            };
+            
+            var success = await _notificationService.SendCustomNotificationAsync(id, "webhook_test", testData);
+            
             if (!success)
             {
-                return NotFound($"Scraper with ID {id} not found or is currently running");
+                return BadRequest("Failed to send webhook notification. Please check the webhook URL and configuration.");
             }
             
-            return Ok(new { Message = "Content extraction rules updated successfully" });
-        }
-        
-        [HttpGet("{id}/patterns")]
-        public async Task<IActionResult> GetLearnedPatterns(string id)
-        {
-            var patterns = await _scraperManager.GetLearnedPatterns(id);
-            if (patterns == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or has no learned patterns");
-            }
-            
-            return Ok(patterns);
-        }
-        
-        [HttpGet("{id}/regulatory-alerts")]
-        public async Task<IActionResult> GetRegulatoryAlerts(string id, [FromQuery] DateTime? since = null, [FromQuery] string importance = null)
-        {
-            var alerts = await _scraperManager.GetRegulatoryAlerts(id, since, importance);
-            if (alerts == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or has no regulatory alerts");
-            }
-            
-            return Ok(new { Alerts = alerts });
-        }
-        
-        [HttpPut("{id}/regulatory-config")]
-        public async Task<IActionResult> UpdateRegulatoryConfig(string id, [FromBody] Models.RegulatoryConfigModel config)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            var success = await _scraperManager.UpdateRegulatoryConfig(id, config);
-            if (!success)
-            {
-                return NotFound($"Scraper with ID {id} not found or is currently running");
-            }
-            
-            return Ok(new { Message = "Regulatory configuration updated successfully" });
-        }
-        
-        [HttpPost("{id}/export-data")]
-        public async Task<IActionResult> ExportScrapedData(string id, [FromBody] Models.ExportOptions options)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            var result = await _scraperManager.ExportScrapedData(id, options);
-            if (result == null)
-            {
-                return NotFound($"Scraper with ID {id} not found or has no data to export");
-            }
-            
-            return Ok(result);
-        }
-        
-        [HttpPut("{id}/webhook-config")]
-        public async Task<IActionResult> UpdateWebhookConfig(string id, [FromBody] Models.WebhookConfig config)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            var success = await _scraperManager.UpdateWebhookConfig(id, config);
-            if (!success)
-            {
-                return NotFound($"Scraper with ID {id} not found or is currently running");
-            }
-            
-            return Ok(new { Message = "Webhook configuration updated successfully" });
+            return Ok(new { Message = "Test webhook notification sent successfully" });
         }
 
         [HttpPost("{id}/compress")]
         public async Task<IActionResult> CompressStoredContent(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var result = await _scraperManager.CompressStoredContent(id);
-            if (result == null)
-            {
-                return BadRequest("Failed to compress content");
-            }
-            
+            var result = await _stateService.CompressStoredContentAsync(id);
             return Ok(result);
         }
 
         [HttpGet("{id}/metrics")]
         public async Task<IActionResult> GetScraperMetrics(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-            
-            var metrics = await _scraperManager.GetScraperMetrics(id);
-            if (metrics == null)
-            {
-                return NotFound($"Scraper metrics not available for {id}");
-            }
-            
+            var metrics = await _analyticsService.GetScraperMetricsAsync(id);
             return Ok(metrics);
         }
         
@@ -365,48 +361,58 @@ namespace WebScraperApi.Controllers
                 return BadRequest(ModelState);
             }
             
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var result = await _scraperManager.ScheduleScraper(id, options);
-            if (!result.Success)
+            var scheduleConfig = new ScheduleConfig
             {
-                return BadRequest(result.Message);
-            }
+                Name = options.ScheduleName,
+                CronExpression = options.CronExpression,
+                Enabled = true
+            };
             
-            return Ok(new { 
-                Message = $"Scraper '{config.Name}' scheduled successfully", 
-                ScheduleId = result.ScheduleId,
-                NextRunTime = result.NextRunTime
-            });
+            try
+            {
+                var scheduleItem = await _schedulingService.ScheduleScraper(id, scheduleConfig);
+                
+                return Ok(new { 
+                    Message = $"Scraper '{instance.Config.Name}' scheduled successfully", 
+                    ScheduleId = scheduleItem.Id,
+                    NextRunTime = scheduleItem.NextRunTime
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
         
         [HttpGet("{id}/schedules")]
-        public async Task<IActionResult> GetScraperSchedules(string id)
+        public IActionResult GetScraperSchedules(string id)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var schedules = await _scraperManager.GetScraperSchedules(id);
+            var schedules = _schedulingService.GetScheduledItems(id);
             return Ok(new { Schedules = schedules });
         }
         
         [HttpDelete("{id}/schedules/{scheduleId}")]
         public async Task<IActionResult> DeleteSchedule(string id, string scheduleId)
         {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var success = await _scraperManager.DeleteSchedule(id, scheduleId);
+            var success = await _schedulingService.RemoveSchedule(scheduleId);
             if (!success)
             {
                 return NotFound($"Schedule with ID {scheduleId} not found");
@@ -415,88 +421,27 @@ namespace WebScraperApi.Controllers
             return NoContent();
         }
         
-        [HttpPut("{id}/rate-limiting")]
-        public async Task<IActionResult> UpdateRateLimitingConfig(string id, [FromBody] Models.RateLimitingConfig config)
+        [HttpPut("{id}/webhook-config")]
+        public async Task<IActionResult> UpdateWebhookConfig(string id, [FromBody] Models.WebhookConfig config)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
             
-            var scraperConfig = await _scraperManager.GetScraperConfig(id);
-            if (scraperConfig == null)
+            var instance = _stateService.GetScraperInstance(id);
+            if (instance == null)
             {
                 return NotFound($"Scraper with ID {id} not found");
             }
             
-            var success = await _scraperManager.UpdateRateLimitingConfig(id, config);
+            var success = await _stateService.UpdateWebhookConfigAsync(id, config);
             if (!success)
             {
-                return BadRequest("Failed to update rate limiting configuration");
+                return BadRequest("Failed to update webhook configuration");
             }
             
-            return Ok(new { Message = "Rate limiting configuration updated successfully" });
-        }
-        
-        [HttpPut("{id}/proxy-config")]
-        public async Task<IActionResult> UpdateProxyConfig(string id, [FromBody] Models.ProxyConfig config)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            var scraperConfig = await _scraperManager.GetScraperConfig(id);
-            if (scraperConfig == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-            
-            var success = await _scraperManager.UpdateProxyConfig(id, config);
-            if (!success)
-            {
-                return BadRequest("Failed to update proxy configuration");
-            }
-            
-            return Ok(new { Message = "Proxy configuration updated successfully" });
-        }
-        
-        [HttpPost("{id}/test-run")]
-        public async Task<IActionResult> RunScraperTest(string id, [FromBody] Models.TestRunOptions options)
-        {
-            var config = await _scraperManager.GetScraperConfig(id);
-            if (config == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-            
-            var result = await _scraperManager.RunScraperTest(id, options);
-            if (result == null)
-            {
-                return BadRequest("Test run failed to start");
-            }
-            
-            return Ok(result);
-        }
-        
-        [HttpPost("batch-operation")]
-        public async Task<IActionResult> BatchOperation([FromBody] Models.BatchOperationRequest request)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-            
-            var result = await _scraperManager.PerformBatchOperation(request);
-            
-            // Cast the dynamic result to access its properties
-            dynamic dynamicResult = result;
-            
-            return Ok(new { 
-                SuccessCount = dynamicResult.SuccessCount,
-                FailureCount = dynamicResult.FailureCount,
-                Results = dynamicResult.Results
-            });
+            return Ok(new { Message = "Webhook configuration updated successfully" });
         }
         
         #endregion

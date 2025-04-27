@@ -221,9 +221,18 @@ namespace WebScraperApi.Models
         public DateTime? ExpiryDate { get; set; }
         
         /// <summary>
-        /// Optional name for the schedule
+        /// Name for the schedule
         /// </summary>
         public string Name { get; set; }
+        
+        /// <summary>
+        /// Alias for Name to maintain backward compatibility
+        /// </summary>
+        public string ScheduleName 
+        { 
+            get => Name; 
+            set => Name = value; 
+        }
     }
     
     /// <summary>

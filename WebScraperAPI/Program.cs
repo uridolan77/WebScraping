@@ -103,9 +103,8 @@ builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
 builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>();
 builder.Services.AddSingleton<ICacheRepository, CacheRepository>();
 
-// Add the ScraperManager as a singleton hosted service
-builder.Services.AddSingleton<ScraperManager>();
-builder.Services.AddHostedService(provider => provider.GetRequiredService<ScraperManager>());
+// Add all scraper services
+builder.Services.AddScraperServices();
 
 // Add Swagger
 builder.Services.AddSwaggerGen(c =>

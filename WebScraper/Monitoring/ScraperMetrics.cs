@@ -22,6 +22,18 @@ namespace WebScraper.Monitoring
         private readonly string _scraperId;
         private bool _disposed = false;
 
+        // Add missing properties needed by the API
+        public int TotalRequests { get; private set; } = 0;
+        public int SuccessfulRequests { get; private set; } = 0;
+        public int FailedRequests { get; private set; } = 0;
+        public double AverageResponseTimeMs { get; private set; } = 0;
+        public long TotalCrawlTimeMs { get; private set; } = 0;
+        public int RateLimitsEncountered { get; private set; } = 0;
+        public int DocumentsProcessed { get; private set; } = 0;
+        public int DocumentsCrawled { get; private set; } = 0;
+        public int ContentChangesDetected { get; private set; } = 0;
+        public DateTime LastMetricsUpdate { get; private set; } = DateTime.UtcNow;
+
         public ScraperMetrics(ILogger logger, string scraperId, int reportingIntervalSeconds = 60)
         {
             _logger = logger;
@@ -46,6 +58,15 @@ namespace WebScraper.Monitoring
                 string metricName = $"page.processing_time.{(success ? "success" : "failure")}";
                 
                 RecordHistogram(metricName, processingTime.TotalMilliseconds, new[] { $"domain:{domain}" });
+                
+                // Update property values
+                TotalRequests++;
+                if (success) SuccessfulRequests++; else FailedRequests++;
+                TotalCrawlTimeMs += (long)processingTime.TotalMilliseconds;
+                if (TotalRequests > 0) 
+                    AverageResponseTimeMs = TotalCrawlTimeMs / (double)TotalRequests;
+                DocumentsCrawled++;
+                LastMetricsUpdate = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
@@ -85,6 +106,26 @@ namespace WebScraper.Monitoring
         public void RecordDocumentProcessingTime(string documentType, TimeSpan processingTime)
         {
             RecordHistogram($"document.processing_time", processingTime.TotalMilliseconds, new[] { $"type:{documentType}" });
+            DocumentsProcessed++;
+            LastMetricsUpdate = DateTime.UtcNow;
+        }
+        
+        /// <summary>
+        /// Increments the count of content changes detected
+        /// </summary>
+        public void IncrementContentChangesDetected(int count = 1)
+        {
+            ContentChangesDetected += count;
+            LastMetricsUpdate = DateTime.UtcNow;
+        }
+        
+        /// <summary>
+        /// Increments the count of rate limits encountered
+        /// </summary>
+        public void IncrementRateLimitsEncountered()
+        {
+            RateLimitsEncountered++;
+            LastMetricsUpdate = DateTime.UtcNow;
         }
         
         /// <summary>

@@ -18,6 +18,14 @@ namespace WebScraperApi.Models
         public DateTime? LastMonitorCheck { get; set; }
         public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
         
+        // Added properties to fix compilation errors
+        public string Message { get; set; }
+        public bool HasErrors { get; set; }
+        public string LastError { get; set; }
+        public DateTime LastStatusUpdate { get; set; } = DateTime.Now;
+        public int UrlsQueued { get; set; }
+        public int DocumentsProcessed { get; set; }
+        
         /// <summary>
         /// Clone the status (to avoid locking issues)
         /// </summary>
@@ -39,7 +47,14 @@ namespace WebScraperApi.Models
                     CompletedItems = this.PipelineMetrics?.CompletedItems ?? 0,
                     FailedItems = this.PipelineMetrics?.FailedItems ?? 0,
                     AverageProcessingTimeMs = this.PipelineMetrics?.AverageProcessingTimeMs ?? 0
-                }
+                },
+                // Clone the new properties
+                Message = this.Message,
+                HasErrors = this.HasErrors,
+                LastError = this.LastError,
+                LastStatusUpdate = this.LastStatusUpdate,
+                UrlsQueued = this.UrlsQueued,
+                DocumentsProcessed = this.DocumentsProcessed
             };
         }
     }
