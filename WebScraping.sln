@@ -5,9 +5,9 @@ VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraper", "WebScraper\WebScraper.csproj", "{03060623-86C2-4313-9983-C0920C022A83}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraperWeb", "WebScraperWeb\WebScraperWeb.csproj", "{AA866CAD-E5C1-4591-8906-A734AFA5233F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraperAPI", "WebScraperAPI\WebScraperAPI.csproj", "{7445E88C-0231-45BF-BAA6-728B647F243D}"
+EndProject
+Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "webscraperfrontend", "WebScraperFrontend\webscraperfrontend.esproj", "{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,14 +19,16 @@ Global
 		{03060623-86C2-4313-9983-C0920C022A83}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{03060623-86C2-4313-9983-C0920C022A83}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{03060623-86C2-4313-9983-C0920C022A83}.Release|Any CPU.Build.0 = Release|Any CPU
-		{AA866CAD-E5C1-4591-8906-A734AFA5233F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AA866CAD-E5C1-4591-8906-A734AFA5233F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AA866CAD-E5C1-4591-8906-A734AFA5233F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AA866CAD-E5C1-4591-8906-A734AFA5233F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.Deploy.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
