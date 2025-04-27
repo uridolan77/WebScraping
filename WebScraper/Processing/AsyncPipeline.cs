@@ -616,6 +616,41 @@ namespace WebScraper.Processing
         /// Maximum capacity of the pipeline
         /// </summary>
         public int Capacity { get; set; }
+
+        /// <summary>
+        /// Whether the pipeline is currently running
+        /// </summary>
+        public bool IsRunning { get; set; } = true;
+        
+        /// <summary>
+        /// Total number of items processed through the pipeline
+        /// </summary>
+        public int TotalItems { get; set; }
+        
+        /// <summary>
+        /// Number of successfully processed items
+        /// </summary>
+        public int ProcessedItems { get; set; }
+        
+        /// <summary>
+        /// Number of failed items
+        /// </summary>
+        public int FailedItems { get; set; }
+        
+        /// <summary>
+        /// Current operation description
+        /// </summary>
+        public string CurrentOperation { get; set; }
+        
+        /// <summary>
+        /// Time when the pipeline started processing
+        /// </summary>
+        public DateTime StartTime { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// Time when the pipeline finished processing
+        /// </summary>
+        public DateTime? EndTime { get; set; }
     }
 
     /// <summary>

@@ -137,7 +137,8 @@ namespace WebScraper.StateManagement
         public async Task<bool> SaveContentVersionAsync(ContentItem item)
         {
             // Call the version with maxVersions parameter, using a default value of 10
-            return await SaveContentVersionAsync(item, 10);
+            await SaveContentVersionAsync(item, 10);
+            return true;
         }
 
         /// <summary>
@@ -436,6 +437,64 @@ namespace WebScraper.StateManagement
             
             _logAction?.Invoke($"Saved version {versionFilePath}");
         }
+
+        /// <summary>
+        /// Gets version folder path for a URL
+        /// </summary>
+        private string GetVersionFolder(string url)
+        {
+            string urlHash = ComputeHash(url);
+            return Path.Combine(_stateDirectory, urlHash);
+        }
+
+        /// <summary>
+        /// Gets version file path for a page version
+        /// </summary>
+        private string GetVersionFilePath(PageVersion version)
+        {
+            string versionFolder = GetVersionFolder(version.Url);
+            return Path.Combine(versionFolder, $"{version.VersionDate.Ticks}_{version.ContentHash}.html");
+        }
+
+        /// <summary>
+        /// Saves version history, keeping up to maxVersions
+        /// </summary>
+        private async Task SaveVersionHistoryAsync(string url, PageVersion version, int maxVersions)
+        {
+            try
+            {
+                string versionFolder = GetVersionFolder(url);
+                
+                // Get existing versions sorted by date (newest first)
+                var versionFiles = Directory.GetFiles(versionFolder, "*.html")
+                    .OrderByDescending(f => Path.GetFileName(f))
+                    .Skip(maxVersions - 1) // Keep the newest (maxVersions - 1)
+                    .ToList();
+                
+                // Delete old versions beyond the limit
+                foreach (var oldFile in versionFiles)
+                {
+                    try
+                    {
+                        File.Delete(oldFile);
+                        // Also delete the metadata file if it exists
+                        string metaFile = $"{oldFile}.meta.json";
+                        if (File.Exists(metaFile))
+                        {
+                            File.Delete(metaFile);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logAction($"Error cleaning up old version {oldFile}: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logAction($"Error managing version history: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -467,6 +526,7 @@ namespace WebScraper.StateManagement
         public string TextContent { get; set; }
         public string ContentHash { get; set; }
         public DateTime VersionDate { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.Now; // Adding Timestamp property
         public string VersionId { get; set; } = Guid.NewGuid().ToString();
         public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
     }

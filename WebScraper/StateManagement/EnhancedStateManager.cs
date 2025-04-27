@@ -96,8 +96,8 @@ namespace WebScraper.StateManagement
             {
                 try
                 {
-                    // Convert the Processing.ContentItem to WebScraper.Interfaces.ContentItem for compatibility
-                    var convertedItem = new WebScraper.Interfaces.ContentItem
+                    // Convert the Processing.ContentItem to StateManagement.ContentItem for compatibility
+                    var convertedItem = new WebScraper.StateManagement.ContentItem
                     {
                         Url = item.Url,
                         Title = item.Title,
@@ -108,7 +108,7 @@ namespace WebScraper.StateManagement
                         RawContent = item.RawContent,
                         ContentHash = item.ContentHash,
                         IsRegulatoryContent = item.IsRegulatoryContent
-                        // Note: CapturedAt is handled implicitly by the interface implementation
+                        // Note: CapturedAt is handled implicitly by the implementation
                     };
                     
                     return await _stateManager.SaveContentItemAsync(convertedItem);
@@ -134,21 +134,9 @@ namespace WebScraper.StateManagement
                     return (false, null);
                 }
                 
-                // Convert from implementation type to interface type
-                var interfaceContentItem = new WebScraper.Interfaces.ContentItem
-                {
-                    Url = result.Version.Url,
-                    Title = result.Version.Title,
-                    ScraperId = result.Version.ScraperId,
-                    LastStatusCode = result.Version.LastStatusCode,
-                    ContentType = result.Version.ContentType,
-                    IsReachable = result.Version.IsReachable,
-                    RawContent = result.Version.RawContent,
-                    ContentHash = result.Version.ContentHash,
-                    IsRegulatoryContent = result.Version.IsRegulatoryContent
-                };
-                
-                return (true, interfaceContentItem);
+                // StateManagement.ContentItem already implements Interfaces.ContentItem,
+                // so we can just return it directly as the interface type
+                return (true, result.Version);
             }
             catch (Exception ex)
             {
@@ -220,7 +208,7 @@ namespace WebScraper.StateManagement
                 try
                 {
                     // Convert interface ContentItem to concrete ContentItem
-                    var contentItem = new WebScraper.ContentItem
+                    var contentItem = new WebScraper.StateManagement.ContentItem
                     {
                         Url = item.Url,
                         Title = item.Title,

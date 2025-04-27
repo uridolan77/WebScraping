@@ -87,6 +87,12 @@ namespace WebScraper.RegulatoryContent
             public double Confidence { get; set; }
             public Dictionary<DocumentType, double> TypeScores { get; set; } = new Dictionary<DocumentType, double>();
             public List<string> MatchedKeywords { get; set; } = new List<string>();
+            
+            // Additional properties required by RegulatoryDocumentHandler
+            public bool IsRegulatoryContent { get; set; }
+            public double ConfidenceScore { get => Confidence; set => Confidence = value; }
+            public RegulatoryImpact Impact { get; set; } = RegulatoryImpact.None;
+            public string PrimaryCategory { get => PrimaryType.ToString(); }
         }
 
         /// <summary>

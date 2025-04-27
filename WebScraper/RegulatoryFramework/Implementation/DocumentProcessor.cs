@@ -595,7 +595,10 @@ namespace WebScraper.RegulatoryFramework.Implementation
         public string LocalFilePath { get; set; }
         public DateTime ProcessedDate { get; set; } = DateTime.Now;
         public Dictionary<string, object> ExtractedMetadata { get; set; } = new Dictionary<string, object>();
-        
+        public string TextContent { get; set; } // Adding missing TextContent property
+        public WebScraper.ClassificationResult Classification { get; set; } // Adding Classification property
+        public DateTime? PublicationDate { get; set; } // Adding additional date property
+
         // Conversion operator to WebScraper.DocumentMetadata
         public static implicit operator WebScraper.DocumentMetadata(DocumentMetadata metadata)
         {
@@ -609,7 +612,8 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 PageCount = metadata.PageCount,
                 LocalFilePath = metadata.LocalFilePath,
                 ProcessedDate = metadata.ProcessedDate,
-                ExtractedMetadata = metadata.ExtractedMetadata
+                ExtractedMetadata = metadata.ExtractedMetadata,
+                TextContent = metadata.TextContent
             };
         }
     }
