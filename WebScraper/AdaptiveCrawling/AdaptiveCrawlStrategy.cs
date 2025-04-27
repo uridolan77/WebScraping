@@ -25,6 +25,13 @@ namespace WebScraper.AdaptiveCrawling
         private readonly Action<string> _logger;
         private List<string> _priorityQueue = new List<string>();
         
+        // Properties referenced in AdaptiveCrawlingComponent.cs
+        public double LastModifiedWeight { get; set; } = 0.5;
+        public double ContentRelevanceWeight { get; set; } = 0.8;
+        public double DepthWeight { get; set; } = -0.2;
+        public double ChangeFrequencyWeight { get; set; } = 0.3;
+        public double ImportanceLinkWeight { get; set; } = 0.6;
+
         public AdaptiveCrawlStrategy(Action<string> logger = null)
         {
             _logger = logger ?? (_ => {}); // Default no-op logger if none provided
@@ -121,6 +128,105 @@ namespace WebScraper.AdaptiveCrawling
         public Dictionary<string, PageMetadata> GetPageMetadata()
         {
             return _pageMetadata;
+        }
+        
+        public bool ShouldCrawl(string url)
+        {
+            // Basic implementation to avoid revisiting URLs too frequently
+            if (_pageMetadata.ContainsKey(url))
+            {
+                var lastVisit = _pageMetadata[url].LastVisited;
+                var timeSinceLastVisit = DateTime.Now - lastVisit;
+                
+                // Don't crawl if visited in the last 24 hours
+                if (timeSinceLastVisit.TotalHours < 24)
+                {
+                    _logger($"Skipping {url} - visited {timeSinceLastVisit.TotalHours:F1} hours ago");
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        // Method referenced in AdaptiveCrawlingComponent.cs
+        public double CalculateUrlPriority(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return 0;
+                
+            try
+            {
+                double priority = 0.0;
+                Uri uri = new Uri(url);
+                
+                // Check if we have metadata for this URL
+                if (_pageMetadata.ContainsKey(url))
+                {
+                    var metadata = _pageMetadata[url];
+                    
+                    // Prioritize by last modified time (newer = higher priority)
+                    var hoursSinceLastVisit = (DateTime.Now - metadata.LastVisited).TotalHours;
+                    priority += LastModifiedWeight * (24.0 / (hoursSinceLastVisit + 1));
+                    
+                    // Prioritize by content relevance (approximated by importance score)
+                    priority += ContentRelevanceWeight * metadata.ImportanceScore;
+                    
+                    // Apply depth penalty for deep URLs
+                    int depth = url.Count(c => c == '/') - 2; // Rough depth estimation
+                    if (depth > 0)
+                    {
+                        priority += DepthWeight * depth;
+                    }
+                }
+                else
+                {
+                    // For new URLs, give a moderate priority
+                    priority += 0.5;
+                }
+                
+                return priority;
+            }
+            catch (Exception)
+            {
+                return 0.0;
+            }
+        }
+        
+        // Method referenced in AdaptiveCrawlingComponent.cs  
+        public void TrackUrlProcessed(string url, bool successful, bool contentRelevant)
+        {
+            try
+            {
+                if (successful && !_pageMetadata.ContainsKey(url))
+                {
+                    // Initialize metadata if we don't have it yet
+                    _pageMetadata[url] = new PageMetadata
+                    {
+                        Url = url,
+                        LastVisited = DateTime.Now
+                    };
+                }
+                
+                if (_pageMetadata.ContainsKey(url))
+                {
+                    if (contentRelevant)
+                    {
+                        // Boost importance score for relevant content
+                        _pageMetadata[url].ImportanceScore += 0.5;
+                    }
+                    else
+                    {
+                        // Reduce importance score for irrelevant content
+                        _pageMetadata[url].ImportanceScore -= 0.2;
+                        _pageMetadata[url].ImportanceScore = Math.Max(0, _pageMetadata[url].ImportanceScore);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error tracking URL processing: {ex.Message}");
+            }
         }
 
         private double CalculateUrlScore(string url)

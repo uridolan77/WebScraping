@@ -15,6 +15,7 @@ namespace WebScraper.PatternLearning
         public string Pattern { get; set; }
         public int Occurrences { get; set; }
         public Dictionary<string, int> AssociatedTerms { get; set; } = new Dictionary<string, int>();
+        public double Score { get; set; } = 0.0;
     }
 
     public class ContentPattern
@@ -31,11 +32,173 @@ namespace WebScraper.PatternLearning
         private readonly HashSet<string> _commonWords = new HashSet<string>() { "the", "and", "a", "to", "in", "of", "is", "that", "for", "on", "with", "as", "at", "by", "from", "up", "about", "into", "over", "after" };
         private readonly Action<string> _logger;
         private readonly string _dataDirectory;
+        private readonly Dictionary<string, double> _patternScores = new Dictionary<string, double>();
 
         public PatternLearner(Action<string> logger = null, string dataDirectory = "ScrapedData")
         {
             _logger = logger ?? (_ => {});
             _dataDirectory = dataDirectory;
+        }
+
+        // Method referenced in AdaptiveCrawlingComponent.cs
+        public void LearnFromUrl(string url, bool contentRelevant)
+        {
+            if (string.IsNullOrEmpty(url))
+                return;
+
+            try
+            {
+                _logger($"Learning from URL: {url}, relevant: {contentRelevant}");
+                
+                // Parse the URL to find patterns
+                var uri = new Uri(url);
+                var path = uri.AbsolutePath;
+
+                // Extract path segments
+                var segments = path.Trim('/').Split('/');
+                
+                // Learn from each segment
+                foreach (var segment in segments)
+                {
+                    if (!string.IsNullOrEmpty(segment) && !IsCommonWord(segment) && segment.Length > 2)
+                    {
+                        LearnPattern(segment, contentRelevant ? 0.5 : -0.3);
+                    }
+                }
+                
+                // Extract and learn from query parameters
+                if (!string.IsNullOrEmpty(uri.Query))
+                {
+                    var query = uri.Query.TrimStart('?');
+                    var parameters = query.Split('&');
+                    
+                    foreach (var param in parameters)
+                    {
+                        var parts = param.Split('=');
+                        if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                        {
+                            // Learn from query parameter names
+                            LearnPattern(parts[0], contentRelevant ? 0.3 : -0.2);
+                            
+                            // If parameter has a value, also learn from it if it's not numeric or too short
+                            if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]) && 
+                                parts[1].Length > 3 && !Regex.IsMatch(parts[1], @"^\d+$"))
+                            {
+                                LearnPattern(parts[1], contentRelevant ? 0.2 : -0.1);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error learning from URL: {ex.Message}");
+            }
+        }
+        
+        // Method referenced in AdaptiveCrawlingComponent.cs
+        public void LearnPattern(string pattern, double scoreAdjustment)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return;
+                
+            try
+            {
+                // Normalize pattern
+                pattern = pattern.ToLowerInvariant();
+                
+                // Update pattern score
+                if (!_patternScores.ContainsKey(pattern))
+                {
+                    _patternScores[pattern] = 0.0;
+                }
+                
+                // Update score, using a sigmoid-like function to prevent extreme values
+                double currentScore = _patternScores[pattern];
+                double newScore = currentScore + scoreAdjustment;
+                
+                // Cap the score to prevent extreme values (-5 to 5 range)
+                newScore = Math.Max(-5.0, Math.Min(5.0, newScore));
+                
+                _patternScores[pattern] = newScore;
+                
+                // Update URL pattern if it exists
+                var urlPattern = _urlPatterns.FirstOrDefault(p => p.Pattern.Equals(pattern, StringComparison.OrdinalIgnoreCase));
+                if (urlPattern != null)
+                {
+                    urlPattern.Score = newScore;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error learning pattern: {ex.Message}");
+            }
+        }
+        
+        // Method referenced in AdaptiveCrawlingComponent.cs
+        public double EvaluateUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return 0;
+            
+            try
+            {
+                double score = 0.0;
+                var uri = new Uri(url);
+                var path = uri.AbsolutePath;
+                
+                // Extract path segments
+                var segments = path.Trim('/').Split('/');
+                
+                // Evaluate each segment
+                foreach (var segment in segments)
+                {
+                    if (!string.IsNullOrEmpty(segment))
+                    {
+                        string normalizedSegment = segment.ToLowerInvariant();
+                        if (_patternScores.ContainsKey(normalizedSegment))
+                        {
+                            score += _patternScores[normalizedSegment];
+                        }
+                    }
+                }
+                
+                // Evaluate query parameters
+                if (!string.IsNullOrEmpty(uri.Query))
+                {
+                    var query = uri.Query.TrimStart('?');
+                    var parameters = query.Split('&');
+                    
+                    foreach (var param in parameters)
+                    {
+                        var parts = param.Split('=');
+                        if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                        {
+                            string normalizedParam = parts[0].ToLowerInvariant();
+                            if (_patternScores.ContainsKey(normalizedParam))
+                            {
+                                score += _patternScores[normalizedParam] * 0.5; // Query parameters get half weight
+                            }
+                            
+                            if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
+                            {
+                                string normalizedValue = parts[1].ToLowerInvariant();
+                                if (_patternScores.ContainsKey(normalizedValue))
+                                {
+                                    score += _patternScores[normalizedValue] * 0.3; // Query values get even less weight
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return score;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error evaluating URL: {ex.Message}");
+                return 0;
+            }
         }
 
         public async Task LearnFromUrlAsync(string url, string htmlContent)

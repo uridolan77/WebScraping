@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
 using WebScraper.ContentChange;
+using WebScraper.RegulatoryFramework.Implementation;
 
 namespace WebScraper.RegulatoryContent
 {

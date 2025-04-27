@@ -94,7 +94,7 @@ namespace WebScraper
     }
 
     /// <summary>
-    /// Legacy ContentNode implementation for backward compatibility
+    /// Unified ContentNode implementation that consolidates functionality from all versions
     /// </summary>
     public class ContentNode
     {
@@ -102,6 +102,15 @@ namespace WebScraper
         /// Type of the node
         /// </summary>
         public string NodeType { get; set; }
+        
+        /// <summary>
+        /// Type property for backward compatibility
+        /// </summary>
+        public string Type
+        {
+            get { return NodeType; }
+            set { NodeType = value; }
+        }
         
         /// <summary>
         /// Content of the node
@@ -112,6 +121,15 @@ namespace WebScraper
         /// Depth in the hierarchy
         /// </summary>
         public int Depth { get; set; }
+        
+        /// <summary>
+        /// Level property for backward compatibility
+        /// </summary>
+        public int Level
+        {
+            get { return Depth; }
+            set { Depth = value; }
+        }
         
         /// <summary>
         /// Title of the node
@@ -136,7 +154,30 @@ namespace WebScraper
         /// <summary>
         /// Metadata of the node
         /// </summary>
-        public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
+        public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+        
+        /// <summary>
+        /// Additional metadata as string values for backward compatibility
+        /// </summary>
+        public Dictionary<string, string> MetadataStrings
+        {
+            get
+            {
+                var result = new Dictionary<string, string>();
+                foreach (var kvp in Metadata)
+                {
+                    result[kvp.Key] = kvp.Value?.ToString() ?? string.Empty;
+                }
+                return result;
+            }
+            set
+            {
+                foreach (var kvp in value)
+                {
+                    Metadata[kvp.Key] = kvp.Value;
+                }
+            }
+        }
     }
 
     /// <summary>

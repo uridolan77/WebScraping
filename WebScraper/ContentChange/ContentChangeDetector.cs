@@ -288,121 +288,206 @@ namespace WebScraper.ContentChange
                 return newVersion;
             }
         }
-
-        private void CreateChangeNotification(PageVersion version, ScraperContentSettings settings)
-        {
-            var notification = new ChangeNotification
-            {
-                Url = version.Url,
-                ScraperId = settings.ScraperId,
-                ScraperName = settings.ScraperName,
-                ChangeType = version.ChangeFromPrevious,
-                DetectedAt = DateTime.Now,
-                ChangedSections = version.ChangedSections,
-                Summary = GenerateChangeSummary(version)
-            };
-            
-            _pendingNotifications.Add(notification);
-            _logger($"Created change notification for {version.Url} ({version.ChangeFromPrevious})");
-        }
         
-        private string GenerateChangeSummary(PageVersion version)
+        /// <summary>
+        /// Gets the previous version of a URL's content
+        /// </summary>
+        public PageVersion GetPreviousVersion(string url, string scraperId = null)
         {
-            var summary = new StringBuilder();
-            summary.AppendLine($"Content change detected for: {version.Url}");
-            summary.AppendLine($"Change level: {version.ChangeFromPrevious}");
-            summary.AppendLine($"Detected at: {version.VersionDate}");
-            summary.AppendLine();
-            
-            if (version.ChangedSections.TryGetValue("Added", out var addedContent))
+            if (string.IsNullOrEmpty(scraperId))
             {
-                summary.AppendLine("ADDED CONTENT:");
-                summary.AppendLine(TruncateContent(addedContent, 500));
-                summary.AppendLine();
+                scraperId = "default";
             }
             
-            if (version.ChangedSections.TryGetValue("Removed", out var removedContent))
+            if (_scraperPageVersions.TryGetValue(scraperId, out var versions))
             {
-                summary.AppendLine("REMOVED CONTENT:");
-                summary.AppendLine(TruncateContent(removedContent, 500));
+                if (versions.TryGetValue(url, out var urlVersions) && urlVersions.Count > 1)
+                {
+                    return urlVersions.OrderByDescending(v => v.VersionDate).Skip(1).FirstOrDefault();
+                }
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Detects significant changes between two text contents
+        /// </summary>
+        public SignificantChangesResult DetectSignificantChanges(string oldContent, string newContent, string url = null)
+        {
+            if (string.IsNullOrEmpty(oldContent) || string.IsNullOrEmpty(newContent))
+            {
+                _logger("Cannot detect changes with empty content");
+                return new SignificantChangesResult
+                {
+                    HasSignificantChanges = false,
+                    Summary = "Cannot compare empty content"
+                };
+            }
+            
+            try
+            {
+                var result = new SignificantChangesResult();
+                result.DetectedAt = DateTime.Now;
+                result.CurrentVersionDate = DateTime.Now;
+                result.PreviousVersionDate = DateTime.Now.AddDays(-1); // Default assumption
+                
+                // Determine if hash changed
+                var oldHash = ComputeHash(oldContent);
+                var newHash = ComputeHash(newContent);
+                result.HashChanged = oldHash != newHash;
+                
+                if (!result.HashChanged)
+                {
+                    return result; // No changes detected
+                }
+                
+                // Analyze the type of change
+                result.ChangeType = AnalyzeChanges(oldContent, newContent);
+                result.HasSignificantChanges = result.ChangeType >= ChangeType.Moderate;
+                
+                // Extract changed sections
+                result.ChangedSections = ExtractChangedSections(oldContent, newContent);
+                
+                // Calculate change percentage
+                var totalWords = CountWords(newContent);
+                var changedWords = 0;
+                
+                if (result.ChangedSections.TryGetValue("Added", out var added))
+                {
+                    changedWords += CountWords(added);
+                }
+                
+                if (result.ChangedSections.TryGetValue("Removed", out var removed))
+                {
+                    changedWords += CountWords(removed);
+                }
+                
+                result.ChangePercentage = totalWords > 0 ? (changedWords * 100.0 / totalWords) : 0;
+                
+                // Extract changed sentences
+                result.ChangedSentences = ExtractChangedSentences(oldContent, newContent);
+                
+                // Determine importance based on change type
+                switch (result.ChangeType)
+                {
+                    case ChangeType.Major:
+                        result.Importance = RegulatoryChangeImportance.High;
+                        break;
+                    case ChangeType.Moderate:
+                        result.Importance = RegulatoryChangeImportance.Medium;
+                        break;
+                    default:
+                        result.Importance = RegulatoryChangeImportance.Low;
+                        break;
+                }
+                
+                // Generate a summary
+                result.Summary = GenerateChangeSummary(url, result);
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error detecting significant changes: {ex.Message}");
+                return new SignificantChangesResult
+                {
+                    HasSignificantChanges = false,
+                    Summary = $"Error analyzing changes: {ex.Message}"
+                };
+            }
+        }
+        
+        private int CountWords(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+                
+            return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        }
+        
+        private string GenerateChangeSummary(string url, SignificantChangesResult result)
+        {
+            var summary = new StringBuilder();
+            
+            if (string.IsNullOrEmpty(url))
+            {
+                summary.AppendLine($"Content change detected (Change Level: {result.ChangeType})");
+            }
+            else
+            {
+                summary.AppendLine($"Content change detected for {url} (Change Level: {result.ChangeType})");
+            }
+            
+            summary.AppendLine($"Change Percentage: {result.ChangePercentage:F1}%");
+            summary.AppendLine($"Importance: {result.Importance}");
+            summary.AppendLine();
+            
+            if (result.ChangedSentences.Count > 0)
+            {
+                summary.AppendLine($"Found {result.ChangedSentences.Count} changed sentences:");
+                int count = Math.Min(result.ChangedSentences.Count, 3);
+                for (int i = 0; i < count; i++)
+                {
+                    var cs = result.ChangedSentences[i];
+                    summary.AppendLine($"- {cs.ChangeType}: {TruncateContent(cs.After ?? cs.Before, 100)}");
+                }
             }
             
             return summary.ToString();
         }
         
-        private string TruncateContent(string content, int maxLength)
+        private List<ChangedSentence> ExtractChangedSentences(string oldContent, string newContent)
         {
-            if (content.Length <= maxLength)
-                return content;
-                
-            return content.Substring(0, maxLength) + "...";
-        }
-
-        public ChangeType AnalyzeChanges(string oldContent, string newContent)
-        {
-            if (string.IsNullOrEmpty(oldContent) || string.IsNullOrEmpty(newContent))
-                return ChangeType.Major;
-
-            // Simple analysis based on text differences
-            var oldParagraphs = SplitIntoParagraphs(oldContent);
-            var newParagraphs = SplitIntoParagraphs(newContent);
-
-            // Calculate similarity ratio
-            int commonParagraphs = 0;
-            foreach (var oldPara in oldParagraphs)
+            var result = new List<ChangedSentence>();
+            
+            // Split content into sentences
+            var oldSentences = SplitIntoSentences(oldContent);
+            var newSentences = SplitIntoSentences(newContent);
+            
+            // Find added sentences
+            foreach (var sentence in newSentences)
             {
-                if (newParagraphs.Any(p => p.Equals(oldPara, StringComparison.OrdinalIgnoreCase)))
+                if (!oldSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
                 {
-                    commonParagraphs++;
+                    result.Add(new ChangedSentence
+                    {
+                        After = sentence,
+                        ChangeType = SentenceChangeType.Added,
+                        Importance = 0.7
+                    });
                 }
             }
-
-            double similarityRatio = 0;
-            if (oldParagraphs.Count > 0 && newParagraphs.Count > 0)
+            
+            // Find removed sentences
+            foreach (var sentence in oldSentences)
             {
-                similarityRatio = (double)commonParagraphs / Math.Max(oldParagraphs.Count, newParagraphs.Count);
+                if (!newSentences.Contains(sentence, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(new ChangedSentence
+                    {
+                        Before = sentence,
+                        ChangeType = SentenceChangeType.Removed,
+                        Importance = 0.8
+                    });
+                }
             }
-
-            // Determine change type based on similarity
-            if (similarityRatio > 0.9) return ChangeType.Minor;
-            if (similarityRatio > 0.7) return ChangeType.Moderate;
-            return ChangeType.Major;
-        }
-
-        public Dictionary<string, string> ExtractChangedSections(string oldContent, string newContent)
-        {
-            var result = new Dictionary<string, string>();
-
-            var oldParagraphs = SplitIntoParagraphs(oldContent);
-            var newParagraphs = SplitIntoParagraphs(newContent);
-
-            // Find new paragraphs
-            var addedParagraphs = newParagraphs.Where(p =>
-                !oldParagraphs.Contains(p, StringComparer.OrdinalIgnoreCase)).ToList();
-
-            // Find removed paragraphs
-            var removedParagraphs = oldParagraphs.Where(p =>
-                !newParagraphs.Contains(p, StringComparer.OrdinalIgnoreCase)).ToList();
-
-            if (addedParagraphs.Any())
-            {
-                result["Added"] = string.Join("\n\n", addedParagraphs);
-            }
-
-            if (removedParagraphs.Any())
-            {
-                result["Removed"] = string.Join("\n\n", removedParagraphs);
-            }
-
+            
             return result;
         }
-
-        private List<string> SplitIntoParagraphs(string content)
+        
+        private List<string> SplitIntoSentences(string text)
         {
-            return content.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Trim())
-                .Where(p => !string.IsNullOrWhiteSpace(p))
+            if (string.IsNullOrEmpty(text))
+                return new List<string>();
+                
+            // Simple sentence splitting on common sentence terminators
+            var sentences = text.Split(new[] { ". ", "! ", "? ", ".\r", "!\r", "?\r", ".\n", "!\n", "?\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s) && s.Length > 5)
                 .ToList();
+                
+            return sentences;
         }
 
         public Dictionary<string, List<PageVersion>> GetVersionHistory(string scraperId = null)

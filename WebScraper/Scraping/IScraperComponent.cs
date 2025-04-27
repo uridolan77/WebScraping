@@ -31,38 +31,6 @@ namespace WebScraper.Scraping
     }
     
     /// <summary>
-    /// Interface for components that process URLs
-    /// </summary>
-    public interface IUrlProcessor : IScraperComponent
-    {
-        /// <summary>
-        /// Processes a URL
-        /// </summary>
-        /// <param name="url">The URL to process</param>
-        Task ProcessUrlAsync(string url);
-    }
-    
-    /// <summary>
-    /// Interface for components that handle content extraction
-    /// </summary>
-    public interface IContentExtractor : IScraperComponent
-    {
-        /// <summary>
-        /// Extracts text content from HTML
-        /// </summary>
-        /// <param name="html">The HTML content</param>
-        /// <returns>The extracted text</returns>
-        Task<string> ExtractTextContentAsync(string html);
-        
-        /// <summary>
-        /// Extracts structured content from HTML
-        /// </summary>
-        /// <param name="html">The HTML content</param>
-        /// <returns>The extracted structured content</returns>
-        Task<object> ExtractStructuredContentAsync(string html);
-    }
-    
-    /// <summary>
     /// Interface for components that handle document processing
     /// </summary>
     public interface IDocumentProcessor : IScraperComponent
@@ -126,19 +94,6 @@ namespace WebScraper.Scraping
     }
     
     /// <summary>
-    /// Interface for components that handle browser automation
-    /// </summary>
-    public interface IBrowserHandler : IScraperComponent
-    {
-        /// <summary>
-        /// Navigates to a URL
-        /// </summary>
-        /// <param name="url">The URL to navigate to</param>
-        /// <returns>The page content and metadata</returns>
-        Task<BrowserPageResult> NavigateToUrlAsync(string url);
-    }
-    
-    /// <summary>
     /// Result of a browser page navigation
     /// </summary>
     public class BrowserPageResult
@@ -176,7 +131,7 @@ namespace WebScraper.Scraping
         /// <summary>
         /// Links extracted from the page
         /// </summary>
-        public List<PageLink> Links { get; set; } = new List<PageLink>();
+        public System.Collections.Generic.List<PageLink> Links { get; set; } = new System.Collections.Generic.List<PageLink>();
     }
     
     /// <summary>

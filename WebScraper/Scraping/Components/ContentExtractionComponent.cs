@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using HtmlAgilityPack;
 using WebScraper.Processing;
 using WebScraper.RegulatoryFramework.Implementation;
+using WebScraper.RegulatoryContent;
 
 namespace WebScraper.Scraping.Components
 {
