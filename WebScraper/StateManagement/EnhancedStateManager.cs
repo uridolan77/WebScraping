@@ -4,7 +4,6 @@ using System.IO;
 using System.Threading.Tasks;
 using WebScraper.Interfaces;
 using WebScraper.Processing;
-using WebScraperApi.Models;
 using WebScraper.RegulatoryFramework.Interfaces;
 
 namespace WebScraper.StateManagement
@@ -43,6 +42,8 @@ namespace WebScraper.StateManagement
         {
             try
             {
+                // The WebScraperApi.Models.ScraperState is already the correct type
+                // since we're passing in a WebScraper.StateManagement.ScraperState
                 await _stateManager.SaveScraperStateAsync(state);
             }
             catch (Exception ex)

@@ -13,6 +13,7 @@ using WebScraperApi.Services.Monitoring;
 using WebScraperApi.Services.Notifications;
 using WebScraperApi.Services.Scheduling;
 using WebScraperApi.Services.State;
+using WebScraper.StateManagement; // Add this for WebScraper.StateManagement.ScraperState
 
 namespace WebScraperApi.Controllers
 {
@@ -175,9 +176,15 @@ namespace WebScraperApi.Controllers
             void LogAction(string message) => _monitoringService.AddLogMessage(id, message);
             
             // Start the scraper using the execution service
+            // Create a new WebScraper.StateManagement.ScraperState to match what the service expects
+            var scraperState = new WebScraper.StateManagement.ScraperState { 
+                ScraperId = id,
+                Status = "Starting" 
+            };
+            
             var success = await _executionService.StartScraperAsync(
                 instance.Config, 
-                new ScraperState { Id = id },
+                scraperState,
                 LogAction);
                 
             if (!success)

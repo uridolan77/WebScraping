@@ -11,7 +11,7 @@ namespace WebScraper.ContentChange
         /// <summary>
         /// Gets or sets the type of change detected
         /// </summary>
-        public ChangeType ChangeType { get; set; }
+        public ContentChangeType ChangeType { get; set; }
         
         /// <summary>
         /// Gets or sets the dictionary of significant changes with section name as key and change description as value
@@ -47,6 +47,42 @@ namespace WebScraper.ContentChange
         /// Gets or sets any regulatory implications of the changes
         /// </summary>
         public List<string> RegulatoryImplications { get; set; } = new List<string>();
+    }
+    
+    /// <summary>
+    /// Represents the type of change detected in content
+    /// </summary>
+    public enum ContentChangeType
+    {
+        /// <summary>
+        /// No changes detected
+        /// </summary>
+        NoChange,
+        
+        /// <summary>
+        /// Minor changes detected
+        /// </summary>
+        Minor,
+        
+        /// <summary>
+        /// Significant changes detected
+        /// </summary>
+        Significant,
+        
+        /// <summary>
+        /// Major changes detected
+        /// </summary>
+        Major,
+        
+        /// <summary>
+        /// The document has been removed
+        /// </summary>
+        Removed,
+        
+        /// <summary>
+        /// The document is a new one
+        /// </summary>
+        New
     }
     
     /// <summary>

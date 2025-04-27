@@ -27,7 +27,8 @@ namespace WebScraperApi.Services.Factories
         public IStateStore CreateStateStore(ScraperConfig config, Action<string> logAction)
         {
             logAction("Setting up persistent state management");
-            return (IStateStore)new PersistentStateManager(config.OutputDirectory);
+            var stateManager = new PersistentStateManager(config.OutputDirectory, logAction);
+            return new StateStoreAdapter(stateManager);
         }
     }
 }
