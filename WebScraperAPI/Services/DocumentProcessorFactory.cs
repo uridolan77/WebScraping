@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net.Http;
 using WebScraper;
 using WebScraper.RegulatoryContent;
@@ -19,7 +20,8 @@ namespace WebScraperApi.Services
         /// <returns>An IDocumentProcessor implementation or null if not needed</returns>
         public static IDocumentProcessor CreateDocumentProcessor(ScraperConfig config, Action<string> logAction)
         {
-            if (config.ProcessPdfDocuments)
+            // Check if any document processing is needed
+            if (config.ProcessPdfDocuments || config.ProcessOfficeDocuments)
             {
                 // Create a properly configured HttpClient
                 var httpClient = new HttpClient
@@ -27,14 +29,41 @@ namespace WebScraperApi.Services
                     Timeout = TimeSpan.FromMinutes(2)
                 };
                 
-                // Create the PDF document handler with proper parameters
-                var pdfHandler = new PdfDocumentHandler(
-                    config.OutputDirectory, 
-                    httpClient,
-                    logAction);
+                // Prepare the document storage directory
+                string documentStoragePath = Path.Combine(config.OutputDirectory, "Documents");
+                if (!Directory.Exists(documentStoragePath))
+                {
+                    Directory.CreateDirectory(documentStoragePath);
+                }
                 
-                // Create adapter that implements IDocumentProcessor interface
-                return new DocumentProcessorAdapter(pdfHandler);
+                // Create an adapter that implements IDocumentProcessor interface
+                var adapter = new DocumentProcessorAdapter();
+                
+                // Add PDF handler if enabled
+                if (config.ProcessPdfDocuments)
+                {
+                    logAction("Setting up PDF document handler");
+                    var pdfHandler = new PdfDocumentHandler(
+                        documentStoragePath,
+                        httpClient,
+                        logAction);
+                    
+                    adapter.RegisterPdfHandler(pdfHandler);
+                }
+                
+                // Add Office documents handler if enabled
+                if (config.ProcessOfficeDocuments)
+                {
+                    logAction("Setting up Office document handler");
+                    var officeHandler = new OfficeDocumentHandler(
+                        documentStoragePath,
+                        httpClient,
+                        logAction);
+                    
+                    adapter.RegisterOfficeHandler(officeHandler);
+                }
+                
+                return adapter;
             }
             
             return null;

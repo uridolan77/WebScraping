@@ -61,6 +61,7 @@
         public bool ClassifyRegulatoryDocuments { get; set; } = false;
         public bool ExtractStructuredContent { get; set; } = false;
         public bool ProcessPdfDocuments { get; set; } = false;
+        public bool ProcessOfficeDocuments { get; set; } = false;  // Added support for Office documents
         public bool MonitorHighImpactChanges { get; set; } = false;
         
         // UKGC specific options

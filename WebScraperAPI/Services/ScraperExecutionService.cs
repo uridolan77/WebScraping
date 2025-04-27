@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -189,28 +190,72 @@ namespace WebScraperApi.Services
         /// <summary>
         /// Creates a document processor based on the provided configuration
         /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        /// <param name="logAction">Action for logging messages</param>
+        /// <returns>A document processor implementation or null if not needed</returns>
         private WebScraper.RegulatoryFramework.Interfaces.IDocumentProcessor? CreateDocumentProcessor(ScraperConfig config, Action<string> logAction)
         {
-            // Create document processor if needed
-            if (config.ProcessPdfDocuments)
+            // Create properly configured HttpClient
+            var httpClient = new System.Net.Http.HttpClient
             {
-                // Create a properly configured HttpClient
-                var httpClient = new System.Net.Http.HttpClient
+                Timeout = TimeSpan.FromMinutes(2)
+            };
+
+            // Prepare the document storage directory
+            string documentStoragePath = Path.Combine(config.OutputDirectory, "Documents");
+            if (!Directory.Exists(documentStoragePath))
+            {
+                Directory.CreateDirectory(documentStoragePath);
+            }
+            
+            // Create document handlers based on configuration
+            if (config.ProcessPdfDocuments || IsOfficeDocumentsProcessingEnabled(config))
+            {
+                logAction("Initializing document processing capabilities...");
+                
+                // Create an adapter that implements IDocumentProcessor interface
+                var adapter = new DocumentProcessorAdapter();
+                
+                // Add PDF handler if enabled
+                if (config.ProcessPdfDocuments)
                 {
-                    Timeout = TimeSpan.FromMinutes(2)
-                };
+                    logAction("Setting up PDF document handler");
+                    var pdfHandler = new WebScraper.RegulatoryContent.PdfDocumentHandler(
+                        documentStoragePath,
+                        httpClient,
+                        logAction);
+                    
+                    adapter.RegisterPdfHandler(pdfHandler);
+                }
                 
-                // Create the PDF document handler with proper parameters
-                var pdfHandler = new WebScraper.RegulatoryContent.PdfDocumentHandler(
-                    config.OutputDirectory,
-                    httpClient,
-                    logAction);
+                // Add Office documents handler if enabled
+                if (IsOfficeDocumentsProcessingEnabled(config))
+                {
+                    logAction("Setting up Office document handler");
+                    var officeHandler = new WebScraper.RegulatoryContent.OfficeDocumentHandler(
+                        documentStoragePath,
+                        httpClient,
+                        logAction);
+                    
+                    adapter.RegisterOfficeHandler(officeHandler);
+                }
                 
-                // Create adapter that implements IDocumentProcessor interface
-                return new DocumentProcessorAdapter(pdfHandler);
+                return adapter;
             }
             
             return null;
+        }
+        
+        /// <summary>
+        /// Determines if Office document processing is enabled in the configuration
+        /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        /// <returns>True if Office document processing is enabled, otherwise false</returns>
+        private bool IsOfficeDocumentsProcessingEnabled(ScraperConfig config)
+        {
+            // Check if Office document processing is explicitly enabled
+            return config.ProcessOfficeDocuments || 
+                  (config.EnableRegulatoryContentAnalysis && config.ClassifyRegulatoryDocuments);
         }
     }
     
