@@ -1,9 +1,9 @@
 using System;
 
-namespace WebScraper.Processing
+namespace WebScraper.StateManagement
 {
     /// <summary>
-    /// Represents content scraped from a website
+    /// Represents content scraped from a website with state management support
     /// </summary>
     public class ContentItem
     {
@@ -61,5 +61,29 @@ namespace WebScraper.Processing
         /// Gets or sets when this content was captured
         /// </summary>
         public DateTime CapturedAt { get; set; } = DateTime.Now;
+        
+        /// <summary>
+        /// Gets the folder path for versions of this content
+        /// </summary>
+        /// <returns>The folder path</returns>
+        public string GetVersionFolder()
+        {
+            return System.IO.Path.Combine("content", ComputeUrlHash(Url));
+        }
+        
+        /// <summary>
+        /// Compute a hash of the URL for folder names
+        /// </summary>
+        private string ComputeUrlHash(string url)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
+                return Convert.ToBase64String(bytes)
+                    .Replace('/', '_')
+                    .Replace('+', '-')
+                    .Replace('=', '');
+            }
+        }
     }
 }

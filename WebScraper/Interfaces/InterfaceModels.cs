@@ -1,56 +1,55 @@
 using System;
-using System.Collections.Generic;
 
 namespace WebScraper.Interfaces
 {
     /// <summary>
-    /// Content item model for interface usage
+    /// Interface for content scraped from a website
     /// </summary>
-    public class ContentItem
+    public interface ContentItem
     {
         /// <summary>
-        /// URL of the content
+        /// Gets or sets the URL the content was scraped from
         /// </summary>
-        public string Url { get; set; }
+        string Url { get; set; }
         
         /// <summary>
-        /// Title of the content
+        /// Gets or sets the title of the page
         /// </summary>
-        public string Title { get; set; }
+        string Title { get; set; }
         
         /// <summary>
-        /// Type of content (e.g. "text/html", "application/pdf")
+        /// Gets or sets the ID of the scraper that scraped this content
         /// </summary>
-        public string ContentType { get; set; }
+        string ScraperId { get; set; }
         
         /// <summary>
-        /// ID of the scraper that captured the content
+        /// Gets or sets the HTTP status code from the last request
         /// </summary>
-        public string ScraperId { get; set; }
+        int LastStatusCode { get; set; }
         
         /// <summary>
-        /// HTTP status code of the response
+        /// Gets or sets the content type of the response
         /// </summary>
-        public int LastStatusCode { get; set; }
+        string ContentType { get; set; }
         
         /// <summary>
-        /// Raw content data
+        /// Gets or sets whether the URL is reachable
         /// </summary>
-        public string RawContent { get; set; }
+        bool IsReachable { get; set; }
         
         /// <summary>
-        /// Hash of the content for comparison
+        /// Gets or sets the raw content of the page
         /// </summary>
-        public string ContentHash { get; set; }
+        string RawContent { get; set; }
         
         /// <summary>
-        /// Whether the URL was reachable
+        /// Gets or sets the hash of the content
         /// </summary>
-        public bool IsReachable { get; set; }
+        string ContentHash { get; set; }
         
         /// <summary>
-        /// Whether this content is classified as regulatory content
+        /// Gets or sets whether this is regulatory content
         /// </summary>
-        public bool IsRegulatoryContent { get; set; }
+        bool IsRegulatoryContent { get; set; }
     }
 }

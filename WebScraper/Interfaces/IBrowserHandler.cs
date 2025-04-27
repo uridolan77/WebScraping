@@ -3,6 +3,32 @@ using System.Threading.Tasks;
 namespace WebScraper.Interfaces
 {
     /// <summary>
+    /// The condition to wait for before considering navigation complete
+    /// </summary>
+    public enum NavigationWaitUntil
+    {
+        /// <summary>
+        /// Wait until the DOMContentLoaded event is fired
+        /// </summary>
+        DOMContentLoaded,
+        
+        /// <summary>
+        /// Wait until the load event is fired
+        /// </summary>
+        Load,
+        
+        /// <summary>
+        /// Wait until the network is idle (no requests for at least 500ms)
+        /// </summary>
+        NetworkIdle,
+        
+        /// <summary>
+        /// Wait until there are no more than 0 network connections for at least 500ms
+        /// </summary>
+        NetworkAlmostIdle
+    }
+
+    /// <summary>
     /// Interface for headless browser operations
     /// </summary>
     public interface IBrowserHandler
@@ -35,7 +61,7 @@ namespace WebScraper.Interfaces
         /// <summary>
         /// Take a screenshot of a page
         /// </summary>
-        Task<string> TakeScreenshotAsync(string contextId, string pageId, string outputPath = null);
+        Task<string> TakeScreenshotAsync(string contextId, string pageId, string? outputPath = null);
 
         /// <summary>
         /// Close the browser
@@ -49,8 +75,14 @@ namespace WebScraper.Interfaces
     public class NavigationResult
     {
         public bool Success { get; set; }
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
         public int StatusCode { get; set; }
+        
+        public NavigationResult()
+        {
+            Success = false;
+            StatusCode = 0;
+        }
     }
 
     /// <summary>
@@ -58,8 +90,8 @@ namespace WebScraper.Interfaces
     /// </summary>
     public class PageContent
     {
-        public string HtmlContent { get; set; }
-        public string TextContent { get; set; }
-        public string Title { get; set; }
+        public string HtmlContent { get; set; } = string.Empty;
+        public string TextContent { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
     }
 }

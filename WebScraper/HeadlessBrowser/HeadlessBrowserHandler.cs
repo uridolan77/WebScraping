@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using Newtonsoft.Json;
+using NavigationWaitUntil = WebScraper.HeadlessBrowser.NavigationWaitUntil;
 
 namespace WebScraper.HeadlessBrowser
 {
@@ -669,77 +670,6 @@ namespace WebScraper.HeadlessBrowser
     }
 
     /// <summary>
-    /// Options for configuring the headless browser
-    /// </summary>
-    public class HeadlessBrowserOptions
-    {
-        /// <summary>
-        /// The type of browser to use
-        /// </summary>
-        public BrowserType BrowserType { get; set; } = BrowserType.Chromium;
-        
-        /// <summary>
-        /// Whether to run the browser in headless mode
-        /// </summary>
-        public bool Headless { get; set; } = true;
-        
-        /// <summary>
-        /// Directory for saving screenshots
-        /// </summary>
-        public string ScreenshotDirectory { get; set; }
-        
-        /// <summary>
-        /// Whether to take screenshots during navigation and errors
-        /// </summary>
-        public bool TakeScreenshots { get; set; } = false;
-        
-        /// <summary>
-        /// Whether JavaScript is enabled
-        /// </summary>
-        public bool JavaScriptEnabled { get; set; } = true;
-        
-        /// <summary>
-        /// User agent string
-        /// </summary>
-        public string UserAgent { get; set; } = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36";
-        
-        /// <summary>
-        /// Whether to bypass Content Security Policy
-        /// </summary>
-        public bool BypassCSP { get; set; } = false;
-        
-        /// <summary>
-        /// Viewport size
-        /// </summary>
-        public ViewportSize Viewport { get; set; } = new ViewportSize { Width = 1280, Height = 800 };
-        
-        /// <summary>
-        /// Slow down browser operations by the specified number of milliseconds
-        /// </summary>
-        public int SlowMotion { get; set; } = 0;
-        
-        /// <summary>
-        /// Timeout for browser launch in milliseconds
-        /// </summary>
-        public int LaunchTimeout { get; set; } = 30000;
-        
-        /// <summary>
-        /// Timeout for navigation in milliseconds
-        /// </summary>
-        public int NavigationTimeout { get; set; } = 30000;
-        
-        /// <summary>
-        /// Timeout for wait operations in milliseconds
-        /// </summary>
-        public int WaitTimeout { get; set; } = 30000;
-        
-        /// <summary>
-        /// Whether to log JavaScript errors
-        /// </summary>
-        public bool LogJavaScriptErrors { get; set; } = true;
-    }
-
-    /// <summary>
     /// Result of a browser navigation operation
     /// </summary>
     public class BrowserNavigationResult
@@ -846,27 +776,6 @@ namespace WebScraper.HeadlessBrowser
         /// Height in pixels
         /// </summary>
         public int Height { get; set; }
-    }
-
-    /// <summary>
-    /// When to consider navigation complete
-    /// </summary>
-    public enum NavigationWaitUntil
-    {
-        /// <summary>
-        /// Consider navigation complete when the load event is fired
-        /// </summary>
-        Load,
-        
-        /// <summary>
-        /// Consider navigation complete when the DOMContentLoaded event is fired
-        /// </summary>
-        DOMContentLoaded,
-        
-        /// <summary>
-        /// Consider navigation complete when the network is idle
-        /// </summary>
-        NetworkIdle
     }
 
     /// <summary>

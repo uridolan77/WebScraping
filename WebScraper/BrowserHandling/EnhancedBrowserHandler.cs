@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using WebScraper.Interfaces;
+using WebScraper.HeadlessBrowser;
 
 namespace WebScraper.BrowserHandling
 {
