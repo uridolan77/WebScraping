@@ -8,6 +8,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using WebScraper;
+using WebScraper.HeadlessBrowser;
+using WebScraper.RegulatoryContent;
+using WebScraper.StateManagement;
+using WebScraper.Validation;
 using WebScraperApi.Models;
 using WebScraperAPI.Data.Entities;
 using WebScraperAPI.Data.Repositories;
@@ -25,7 +29,9 @@ namespace WebScraperApi.Services
         private readonly ICacheRepository _cacheRepository;
         private readonly string _configFilePath = "scraperConfigs.json";
         private readonly Dictionary<string, ScraperInstance> _scrapers = new();
+        private readonly string _stateDbPath;
         private Timer _monitoringTimer;
+        private readonly ILoggerFactory _loggerFactory;
         
         /// <summary>
         /// Initializes a new instance of the ScraperManager class
@@ -34,16 +40,27 @@ namespace WebScraperApi.Services
         /// <param name="configRepository">The scraper configuration repository</param>
         /// <param name="contentRepository">The scraped content repository</param>
         /// <param name="cacheRepository">The cache repository</param>
+        /// <param name="loggerFactory">The logger factory</param>
         public ScraperManager(
             ILogger<ScraperManager> logger,
             IScraperConfigRepository configRepository,
             IScrapedContentRepository contentRepository,
-            ICacheRepository cacheRepository)
+            ICacheRepository cacheRepository,
+            ILoggerFactory loggerFactory)
         {
             _logger = logger;
             _configRepository = configRepository;
             _contentRepository = contentRepository;
             _cacheRepository = cacheRepository;
+            _loggerFactory = loggerFactory;
+            
+            // Set up path for state database
+            var dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ScraperState");
+            if (!Directory.Exists(dataDir))
+            {
+                Directory.CreateDirectory(dataDir);
+            }
+            _stateDbPath = $"Data Source={Path.Combine(dataDir, "scraper_state.db")}";
         }
         
         /// <summary>
@@ -82,6 +99,29 @@ namespace WebScraperApi.Services
         public void Dispose()
         {
             _monitoringTimer?.Dispose();
+            
+            // Dispose scrapers that are still running
+            foreach (var scraper in _scrapers.Values)
+            {
+                if (scraper.Scraper != null)
+                {
+                    try
+                    {
+                        // Only dispose if IsRunning is true, as it might already be disposed otherwise
+                        if (scraper.Status.IsRunning)
+                        {
+                            scraper.Scraper.Dispose();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error disposing scraper {scraper.Config.Id}");
+                    }
+                }
+                
+                // Dispose state manager if it exists
+                scraper.StateManager?.Dispose();
+            }
         }
         
         #region Scraper Configuration Management
@@ -505,39 +545,88 @@ namespace WebScraperApi.Services
                         _logger.LogInformation($"Starting scraper {id}: {scraperInstance.Config.Name}");
                         AddLogMessage(id, $"Starting scraper: {scraperInstance.Config.Name}");
                         
+                        // First validate the configuration using our new validator
+                        var validator = new ConfigurationValidator(message => AddLogMessage(id, message));
+                        var validationResult = await validator.ValidateConfigurationAsync(config);
+                        
+                        if (!validationResult.IsValid && !validationResult.CanRunWithWarnings)
+                        {
+                            AddLogMessage(id, "Configuration validation failed");
+                            foreach (var error in validationResult.Errors)
+                            {
+                                AddLogMessage(id, $"Error: {error}");
+                            }
+                            
+                            // Update status
+                            scraperInstance.Status.IsRunning = false;
+                            scraperInstance.Status.EndTime = DateTime.Now;
+                            AddLogMessage(id, "Scraping aborted due to configuration errors");
+                            return;
+                        }
+                        else if (validationResult.Warnings.Any())
+                        {
+                            AddLogMessage(id, "Configuration has warnings:");
+                            foreach (var warning in validationResult.Warnings)
+                            {
+                                AddLogMessage(id, $"Warning: {warning}");
+                            }
+                            AddLogMessage(id, "Continuing with warnings...");
+                        }
+                        
                         // Check if regulatory features are enabled
                         bool useEnhancedScraper = IsRegulatoryFeaturesEnabled(config);
                         
+                        // Also check if other enhanced features are enabled
+                        useEnhancedScraper = useEnhancedScraper || 
+                                            config.ProcessPdfDocuments || 
+                                            config.ProcessJsHeavyPages;
+                        
+                        // Create a persistent state manager for this scraper
+                        var stateDbConnectionString = _stateDbPath;
+                        scraperInstance.StateManager = new PersistentStateManager(
+                            stateDbConnectionString, 
+                            message => AddLogMessage(id, message));
+                        
+                        await scraperInstance.StateManager.InitializeAsync();
+                        
                         if (useEnhancedScraper)
                         {
-                            AddLogMessage(id, "Using enhanced scraper with regulatory capabilities");
+                            AddLogMessage(id, "Using enhanced scraper with advanced capabilities");
                             
-                            // Create and initialize the enhanced scraper
-                            var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+                            // Create the logger for the enhanced scraper
+                            var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
+                            
+                            // Create document processor if PDF processing is enabled
+                            IDocumentProcessor documentProcessor = null;
+                            if (config.ProcessPdfDocuments)
                             {
-                                builder.AddConsole();
-                                builder.SetMinimumLevel(LogLevel.Information);
-                            });
+                                documentProcessor = new PdfDocumentHandler(
+                                    config.OutputDirectory,
+                                    message => AddLogMessage(id, message));
+                            }
                             
-                            var scraperLogger = loggerFactory.CreateLogger<EnhancedScraper>();
-                            
-                            // Create the enhanced scraper
+                            // Create the enhanced scraper with our new components
                             scraperInstance.Scraper = new EnhancedScraper(
                                 config, 
                                 scraperLogger,
+                                crawlStrategy: null,
                                 contentExtractor: null,
-                                documentProcessor: null);
+                                documentProcessor: documentProcessor);
                         }
                         else
                         {
                             // Create and initialize the standard scraper
-                            scraperInstance.Scraper = new Scraper(config, message => AddLogMessage(id, message));
+                            scraperInstance.Scraper = new Scraper(
+                                config, 
+                                message => AddLogMessage(id, message));
                         }
                         
                         // Initialize the scraper
+                        AddLogMessage(id, "Initializing scraper...");
                         await scraperInstance.Scraper.InitializeAsync();
                         
                         // Start scraping
+                        AddLogMessage(id, "Starting scraping process...");
                         await scraperInstance.Scraper.StartScrapingAsync();
                         
                         // Set up continuous monitoring if enabled
@@ -551,14 +640,46 @@ namespace WebScraperApi.Services
                         // Update status once complete
                         scraperInstance.Status.IsRunning = false;
                         scraperInstance.Status.EndTime = DateTime.Now;
+                        
+                        // If enhanced scraper, get pipeline statistics
+                        if (scraperInstance.Scraper is EnhancedScraper enhancedScraper)
+                        {
+                            var pipelineStatus = enhancedScraper.GetPipelineStatus();
+                            if (pipelineStatus != null)
+                            {
+                                AddLogMessage(id, "Pipeline statistics:");
+                                AddLogMessage(id, $" - Processed Items: {pipelineStatus.CompletedItems}");
+                                AddLogMessage(id, $" - Failed Items: {pipelineStatus.FailedItems}");
+                                AddLogMessage(id, $" - Average Processing Time: {pipelineStatus.AverageProcessingTimeMs:F1}ms");
+                            }
+                            
+                            // Get persistent state information
+                            var scraperState = await enhancedScraper.GetStateAsync();
+                            if (scraperState != null)
+                            {
+                                scraperInstance.Status.UrlsProcessed = scraperState.UrlsProcessed;
+                            }
+                        }
+                        
                         AddLogMessage(id, "Scraping completed successfully");
                         
                         // Get and log regulatory statistics if applicable
-                        if (useEnhancedScraper && scraperInstance.Scraper is EnhancedScraper enhancedScraper)
+                        if (useEnhancedScraper && scraperInstance.Scraper is EnhancedScraper enhScraper)
                         {
-                            var stats = enhancedScraper.GetRegulatoryStatistics();
+                            var stats = enhScraper.GetRegulatoryStatistics();
                             AddLogMessage(id, "Regulatory Statistics:");
                             AddLogMessage(id, stats);
+                            
+                            // Get high importance regulatory documents
+                            var highImportanceDocuments = enhScraper.GetHighImportanceDocuments();
+                            if (highImportanceDocuments.Any())
+                            {
+                                AddLogMessage(id, $"Found {highImportanceDocuments.Count} high importance regulatory documents:");
+                                foreach (var doc in highImportanceDocuments.Take(5)) // Show only top 5 in log
+                                {
+                                    AddLogMessage(id, $" - {doc.Title} ({doc.Importance})");
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -613,6 +734,40 @@ namespace WebScraperApi.Services
                     {
                         var elapsed = DateTime.Now - scraperInstance.Status.StartTime.Value;
                         scraperInstance.Status.ElapsedTime = elapsed.ToString(@"hh\:mm\:ss");
+                    }
+                    
+                    // If we have an enhanced scraper with persistent state, update status from there
+                    if (scraperInstance.Scraper is EnhancedScraper enhancedScraper && 
+                        scraperInstance.StateManager != null)
+                    {
+                        try
+                        {
+                            // Get scraper state asynchronously but wait for result
+                            var state = enhancedScraper.GetStateAsync().GetAwaiter().GetResult();
+                            if (state != null)
+                            {
+                                // Update status with information from persistent state
+                                scraperInstance.Status.UrlsProcessed = state.UrlsProcessed;
+                                
+                                // Get pipeline metrics
+                                var metrics = enhancedScraper.GetPipelineStatus();
+                                if (metrics != null)
+                                {
+                                    scraperInstance.Status.PipelineMetrics = new PipelineMetrics
+                                    {
+                                        ProcessingItems = metrics.ProcessingItems,
+                                        QueuedItems = metrics.QueuedItems,
+                                        CompletedItems = metrics.CompletedItems,
+                                        FailedItems = metrics.FailedItems,
+                                        AverageProcessingTimeMs = metrics.AverageProcessingTimeMs
+                                    };
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error getting enhanced scraper state");
+                        }
                     }
                     
                     return scraperInstance.Status.Clone();
@@ -844,6 +999,7 @@ namespace WebScraperApi.Services
         public ScraperConfigModel Config { get; set; }
         public ScraperStatus Status { get; set; }
         public Scraper Scraper { get; set; }
+        public PersistentStateManager StateManager { get; set; }
     }
     
     public class ScraperStatus
@@ -855,6 +1011,7 @@ namespace WebScraperApi.Services
         public int UrlsProcessed { get; set; }
         public List<LogEntry> LogMessages { get; set; } = new List<LogEntry>();
         public DateTime? LastMonitorCheck { get; set; }
+        public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
         
         // Clone the status (to avoid locking issues)
         public ScraperStatus Clone()
@@ -867,9 +1024,26 @@ namespace WebScraperApi.Services
                 ElapsedTime = this.ElapsedTime,
                 UrlsProcessed = this.UrlsProcessed,
                 LogMessages = this.LogMessages.ToList(),
-                LastMonitorCheck = this.LastMonitorCheck
+                LastMonitorCheck = this.LastMonitorCheck,
+                PipelineMetrics = new PipelineMetrics
+                {
+                    ProcessingItems = this.PipelineMetrics?.ProcessingItems ?? 0,
+                    QueuedItems = this.PipelineMetrics?.QueuedItems ?? 0,
+                    CompletedItems = this.PipelineMetrics?.CompletedItems ?? 0,
+                    FailedItems = this.PipelineMetrics?.FailedItems ?? 0,
+                    AverageProcessingTimeMs = this.PipelineMetrics?.AverageProcessingTimeMs ?? 0
+                }
             };
         }
+    }
+    
+    public class PipelineMetrics
+    {
+        public int ProcessingItems { get; set; }
+        public int QueuedItems { get; set; }
+        public int CompletedItems { get; set; }
+        public int FailedItems { get; set; }
+        public double AverageProcessingTimeMs { get; set; }
     }
     
     public class LogEntry
