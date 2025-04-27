@@ -148,7 +148,7 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPost("{id}/monitor")]
-        public async Task<IActionResult> SetMonitoring(string id, [FromBody] MonitoringSettings settings)
+        public async Task<IActionResult> SetMonitoring(string id, [FromBody] Models.MonitoringSettings settings)
         {
             var config = await _scraperManager.GetScraperConfig(id);
             if (config == null)
@@ -196,7 +196,7 @@ namespace WebScraperApi.Controllers
             });
         }
         
-        #region New API endpoints for additional functionality
+        #region API endpoints for additional functionality
         
         [HttpGet("{id}/changes")]
         public async Task<IActionResult> GetDetectedChanges(string id, [FromQuery] DateTime? since = null, [FromQuery] int limit = 100)
@@ -235,7 +235,7 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPut("{id}/content-extraction")]
-        public async Task<IActionResult> UpdateContentExtractionRules(string id, [FromBody] ContentExtractionRules rules)
+        public async Task<IActionResult> UpdateContentExtractionRules(string id, [FromBody] Models.ContentExtractionRules rules)
         {
             var success = await _scraperManager.UpdateContentExtractionRules(id, rules);
             if (!success)
@@ -271,7 +271,7 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPut("{id}/regulatory-config")]
-        public async Task<IActionResult> UpdateRegulatoryConfig(string id, [FromBody] RegulatoryConfigModel config)
+        public async Task<IActionResult> UpdateRegulatoryConfig(string id, [FromBody] Models.RegulatoryConfigModel config)
         {
             if (!ModelState.IsValid)
             {
@@ -288,7 +288,7 @@ namespace WebScraperApi.Controllers
         }
         
         [HttpPost("{id}/export-data")]
-        public async Task<IActionResult> ExportScrapedData(string id, [FromBody] ExportOptions options)
+        public async Task<IActionResult> ExportScrapedData(string id, [FromBody] Models.ExportOptions options)
         {
             if (!ModelState.IsValid)
             {
@@ -306,50 +306,4 @@ namespace WebScraperApi.Controllers
         
         #endregion
     }
-    
-    public class MonitoringSettings
-    {
-        public bool Enabled { get; set; } = true;
-        public int IntervalMinutes { get; set; } = 1440; // 24 hours by default
-        public bool NotifyOnChanges { get; set; } = false;
-        public string NotificationEmail { get; set; }
-        public bool TrackChangesHistory { get; set; } = true;
-    }
-    
-    #region New model classes for additional endpoints
-    
-    public class ContentExtractionRules
-    {
-        public List<string> IncludeSelectors { get; set; } = new List<string>();
-        public List<string> ExcludeSelectors { get; set; } = new List<string>();
-        public bool ExtractMetadata { get; set; } = true;
-        public bool ExtractStructuredData { get; set; } = false;
-        public string CustomJsExtractor { get; set; }
-    }
-    
-    public class RegulatoryConfigModel
-    {
-        public bool EnableRegulatoryContentAnalysis { get; set; } = false;
-        public bool TrackRegulatoryChanges { get; set; } = false;
-        public bool ClassifyRegulatoryDocuments { get; set; } = false;
-        public bool ExtractStructuredContent { get; set; } = false;
-        public bool ProcessPdfDocuments { get; set; } = false;
-        public bool MonitorHighImpactChanges { get; set; } = false;
-        public bool IsUKGCWebsite { get; set; } = false;
-        public List<string> KeywordAlertList { get; set; } = new List<string>();
-        public string NotificationEndpoint { get; set; }
-    }
-    
-    public class ExportOptions
-    {
-        public string Format { get; set; } = "json";
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
-        public bool IncludeRawHtml { get; set; } = false;
-        public bool IncludeProcessedContent { get; set; } = true;
-        public bool IncludeMetadata { get; set; } = true;
-        public string OutputPath { get; set; }
-    }
-    
-    #endregion
 }

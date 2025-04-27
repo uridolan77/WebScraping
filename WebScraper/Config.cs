@@ -55,6 +55,13 @@
         public int MaxDelayBetweenRequests { get; set; } = 5000; // milliseconds
         public bool MonitorResponseTimes { get; set; } = true;
         
+        // Content extraction options
+        public System.Collections.Generic.List<string> ContentExtractorSelectors { get; set; } = new System.Collections.Generic.List<string>();
+        public System.Collections.Generic.List<string> ContentExtractorExcludeSelectors { get; set; } = new System.Collections.Generic.List<string>();
+        public bool ExtractMetadata { get; set; } = true;
+        public bool ExtractStructuredData { get; set; } = false;
+        public string CustomJsExtractor { get; set; }
+        
         // Regulatory content monitoring options
         public bool EnableRegulatoryContentAnalysis { get; set; } = false;
         public bool TrackRegulatoryChanges { get; set; } = false;
@@ -63,6 +70,10 @@
         public bool ProcessPdfDocuments { get; set; } = false;
         public bool ProcessOfficeDocuments { get; set; } = false;  // Added support for Office documents
         public bool MonitorHighImpactChanges { get; set; } = false;
+        
+        // Regulatory alert options
+        public System.Collections.Generic.List<string> KeywordAlertList { get; set; } = new System.Collections.Generic.List<string>();
+        public string NotificationEndpoint { get; set; }
         
         // UKGC specific options
         public bool IsUKGCWebsite { get; set; } = false;

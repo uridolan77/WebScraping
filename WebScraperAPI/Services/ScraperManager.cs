@@ -10,9 +10,9 @@ using WebScraper;
 using WebScraper.StateManagement;
 using WebScraperApi.Models;
 using WebScraperAPI.Data.Repositories;
-using WebScraperApi.Controllers;  // Added for new model types
-using WebScraper.RegulatoryContent;  // Added for regulatory-specific functionality
-using WebScraper.ContentChange;  // Added for content change functionality
+using WebScraperApi.Controllers;
+using WebScraper.RegulatoryContent;
+using WebScraper.ContentChange;
 
 namespace WebScraperApi.Services
 {
@@ -709,7 +709,7 @@ namespace WebScraperApi.Services
                 
                 // Load version history
                 var json = await File.ReadAllTextAsync(versionHistoryPath);
-                var history = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, List<PageVersion>>>(json);
+                var history = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, List<WebScraper.ContentChange.PageVersion>>>(json);
                 
                 if (history == null)
                 {
@@ -726,7 +726,7 @@ namespace WebScraperApi.Services
                     // Filter by date if specified
                     if (since.HasValue)
                     {
-                        versions = versions.Where(v => v.Timestamp >= since.Value).ToList();
+                        versions = versions.Where(v => v.VersionDate >= since.Value).ToList();
                     }
                     
                     // Skip if no versions or only one version (no changes to detect)
@@ -741,12 +741,13 @@ namespace WebScraperApi.Services
                         changes.Add(new
                         {
                             Url = url,
-                            PreviousVersion = versions[i - 1].Timestamp,
-                            CurrentVersion = versions[i].Timestamp,
-                            ChangeType = versions[i].ChangeType.ToString(),
-                            ChangeSummary = versions[i].ChangeSummary,
-                            ImpactLevel = versions[i].ImpactLevel.ToString(),
-                            ContentHashChanged = versions[i].ContentHash != versions[i - 1].ContentHash
+                            PreviousVersion = versions[i - 1].VersionDate,
+                            CurrentVersion = versions[i].VersionDate,
+                            ChangeType = versions[i].ChangeFromPrevious.ToString(),
+                            ChangeSummary = versions[i].ChangedSections != null ? 
+                                string.Join(Environment.NewLine, versions[i].ChangedSections.Select(kvp => $"{kvp.Key}: {kvp.Value}")) : 
+                                string.Empty,
+                            ContentHashChanged = versions[i].Hash != versions[i - 1].Hash
                         });
                     }
                 }

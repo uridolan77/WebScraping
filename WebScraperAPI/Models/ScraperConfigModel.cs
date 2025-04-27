@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace WebScraperApi.Models
@@ -14,6 +15,9 @@ namespace WebScraperApi.Models
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         
         public DateTime? LastRun { get; set; }
+        
+        // Track run count for analytics
+        public int RunCount { get; set; } = 0;
         
         // Basic settings
         [Required]
@@ -86,6 +90,17 @@ namespace WebScraperApi.Models
         
         public bool MonitorHighImpactChanges { get; set; } = false;
         
+        // Content extraction options
+        public List<string> ContentExtractorSelectors { get; set; } = new List<string>();
+        
+        public List<string> ContentExtractorExcludeSelectors { get; set; } = new List<string>();
+        
+        public bool ExtractMetadata { get; set; } = true;
+        
+        public bool ExtractStructuredData { get; set; } = false;
+        
+        public string CustomJsExtractor { get; set; }
+        
         // UKGC specific options
         public bool IsUKGCWebsite { get; set; } = false;
         
@@ -94,6 +109,11 @@ namespace WebScraperApi.Models
         public bool PrioritizeLCCP { get; set; } = true;
         
         public bool PrioritizeAML { get; set; } = true;
+        
+        // Regulatory alert options
+        public List<string> KeywordAlertList { get; set; } = new List<string>();
+        
+        public string NotificationEndpoint { get; set; }
         
         // Get the monitoring interval as TimeSpan
         public TimeSpan GetMonitoringInterval() => TimeSpan.FromMinutes(MonitoringIntervalMinutes);
@@ -128,6 +148,13 @@ namespace WebScraperApi.Models
                 MaxDelayBetweenRequests = this.MaxDelayBetweenRequests,
                 MonitorResponseTimes = this.MonitorResponseTimes,
                 
+                // Content extraction options
+                ContentExtractorSelectors = this.ContentExtractorSelectors,
+                ContentExtractorExcludeSelectors = this.ContentExtractorExcludeSelectors,
+                ExtractMetadata = this.ExtractMetadata,
+                ExtractStructuredData = this.ExtractStructuredData,
+                CustomJsExtractor = this.CustomJsExtractor,
+                
                 // Add regulatory options
                 EnableRegulatoryContentAnalysis = this.EnableRegulatoryContentAnalysis,
                 TrackRegulatoryChanges = this.TrackRegulatoryChanges,
@@ -135,6 +162,8 @@ namespace WebScraperApi.Models
                 ExtractStructuredContent = this.ExtractStructuredContent,
                 ProcessPdfDocuments = this.ProcessPdfDocuments,
                 MonitorHighImpactChanges = this.MonitorHighImpactChanges,
+                KeywordAlertList = this.KeywordAlertList,
+                NotificationEndpoint = this.NotificationEndpoint,
                 
                 // UKGC specific options
                 IsUKGCWebsite = this.IsUKGCWebsite,
