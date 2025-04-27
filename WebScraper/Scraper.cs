@@ -1,580 +1,349 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using HtmlAgilityPack;
-using Newtonsoft.Json;
-using WebScraper.AdaptiveCrawling;
-using WebScraper.ContentChange;
-using WebScraper.PatternLearning;
-using WebScraper.RateLimiting;
+using Microsoft.Extensions.Logging;
+using WebScraper.Scraping;
+using WebScraper.Scraping.Components;
 
 namespace WebScraper
 {
+    /// <summary>
+    /// Comprehensive modular web scraper that handles all scraping functionality 
+    /// through pluggable components
+    /// </summary>
     public class Scraper : IDisposable
     {
-        // Configuration and state
-        protected readonly ScraperConfig _config;
-        private readonly HashSet<string> _visitedUrls = new HashSet<string>();
-        private readonly Dictionary<string, ScrapedPage> _scrapedData = new Dictionary<string, ScrapedPage>();
-        protected readonly Action<string> _logger;
-        protected readonly string _outputDirectory;
-
-        // Component modules
-        protected readonly ContentChangeDetector _changeDetector;
-        protected readonly AdaptiveCrawlStrategy _crawlStrategy;
-        protected readonly PatternLearner _patternLearner;
-        protected readonly AdaptiveRateLimiter _rateLimiter;
-
-        // HTTP client
-        protected readonly HttpClient _httpClient;
-
-        // Crawling state
-        private bool _isRunning = false;
-        private readonly object _lock = new object();
+        private readonly ScraperCore _core;
+        private readonly ILogger _logger;
+        private readonly ScraperConfig _config;
         private CancellationTokenSource _continuousScrapingCts;
+        private bool _isInitialized;
+        private bool _isDisposed;
 
-        // Add a disposal flag
-        private bool _disposed = false;
+        /// <summary>
+        /// Gets the configuration for this scraper
+        /// </summary>
+        public ScraperConfig Config => _config;
 
-        public Scraper(ScraperConfig config, Action<string> logger = null)
-            : this(config, logger, config?.OutputDirectory ?? "ScrapedData")
+        /// <summary>
+        /// Gets current metrics for the scraper
+        /// </summary>
+        public ScraperMetrics Metrics { get; } = new ScraperMetrics();
+
+        #region Constructors
+
+        /// <summary>
+        /// Initializes a new instance of the Scraper class with an ILogger
+        /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        /// <param name="logger">Logger for the scraper</param>
+        public Scraper(ScraperConfig config, ILogger logger)
         {
-            // Calls the more specific constructor
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _core = new ScraperCore(config, logger);
+            
+            RegisterComponents();
         }
 
-        public Scraper(ScraperConfig config, Action<string> logger, string outputDirectory)
+        /// <summary>
+        /// Initializes a new instance of the Scraper class with a log action
+        /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        /// <param name="logAction">Action for logging messages</param>
+        public Scraper(ScraperConfig config, Action<string> logAction)
+            : this(config, new ActionLogger(logAction ?? (s => Console.WriteLine(s))))
         {
-            _config = config ?? new ScraperConfig();
-            _logger = logger ?? (message => Console.WriteLine(message));
-            _outputDirectory = outputDirectory;
-
-            // Set the output directory in the config if it's not set
-            if (string.IsNullOrEmpty(_config.OutputDirectory))
-            {
-                _config.OutputDirectory = outputDirectory;
-            }
-
-            // Initialize modules with the logger
-            _changeDetector = new ContentChangeDetector(_config.OutputDirectory, _logger);
-            
-            // Register this scraper with the change detector
-            if (!string.IsNullOrEmpty(_config.ScraperId))
-            {
-                _changeDetector.RegisterScraper(
-                    _config.ScraperId,
-                    _config.ScraperName,
-                    _config.MaxVersionsToKeep,
-                    _config.TrackContentVersions,
-                    _config.NotifyOnChanges,
-                    _config.NotificationEmail
-                );
-            }
-            
-            _crawlStrategy = new AdaptiveCrawlStrategy(_logger);
-            _patternLearner = new PatternLearner(_logger, _config.OutputDirectory);
-            _rateLimiter = new AdaptiveRateLimiter(_logger);
-
-            // Initialize HTTP client with default settings
-            _httpClient = new HttpClient(new HttpClientHandler
-            {
-                AllowAutoRedirect = true,
-                MaxAutomaticRedirections = 5,
-                AutomaticDecompression = System.Net.DecompressionMethods.All
-            });
-            _httpClient.Timeout = TimeSpan.FromSeconds(_config.RequestTimeoutSeconds);
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", _config.UserAgent);
-
-            // Create output directory if it doesn't exist
-            if (!Directory.Exists(_config.OutputDirectory))
-            {
-                Directory.CreateDirectory(_config.OutputDirectory);
-            }
-
-            _logger("Scraper initialized");
         }
 
-        public virtual async Task InitializeAsync()
+        /// <summary>
+        /// Initializes a new instance of the Scraper class with default logging to console
+        /// </summary>
+        /// <param name="config">The scraper configuration</param>
+        public Scraper(ScraperConfig config)
+            : this(config, new ActionLogger(s => Console.WriteLine(s)))
         {
-            _logger("Initializing scraper...");
+        }
+        
+        /// <summary>
+        /// Initializes a new instance of the Scraper class with a default configuration
+        /// </summary>
+        /// <param name="startUrl">The URL to start scraping from</param>
+        public Scraper(string startUrl)
+            : this(new ScraperConfig { StartUrl = startUrl })
+        {
+        }
 
-            // Load previously scraped data if exists
-            await LoadPreviouslyScrapedDataAsync();
+        #endregion
 
-            // Load previously learned patterns if they exist
-            await _patternLearner.LoadLearnedPatternsAsync();
-
-            // Load version history for content change detection
+        /// <summary>
+        /// Registers components with the scraper core based on configuration
+        /// </summary>
+        private void RegisterComponents()
+        {
+            // Core components
+            _core.AddComponent(new HttpUrlProcessor());
+            _core.AddComponent(new ContentExtractionComponent());
+            
+            // Optional components based on configuration
+            if (_config.EnablePersistentState)
+            {
+                _core.AddComponent(new StateManagerComponent());
+            }
+            
+            if (_config.ProcessJsHeavyPages || _config.IsUKGCWebsite)
+            {
+                _core.AddComponent(new HeadlessBrowserComponent());
+            }
+            
+            if (_config.ProcessPdfDocuments || _config.ProcessOfficeDocuments)
+            {
+                _core.AddComponent(new DocumentProcessingComponent());
+            }
+            
             if (_config.EnableChangeDetection)
             {
-                await LoadVersionHistoryAsync();
+                _core.AddComponent(new ChangeDetectionComponent());
             }
-
-            // Load page metadata for adaptive crawling
+            
+            if (_config.EnableRegulatoryContentAnalysis)
+            {
+                _core.AddComponent(new RegulatoryContentComponent());
+            }
+            
             if (_config.EnableAdaptiveCrawling)
             {
-                await LoadPageMetadataAsync();
+                _core.AddComponent(new AdaptiveCrawlingComponent());
             }
-
-            // Load site profiles for adaptive rate limiting
-            if (_config.EnableAdaptiveRateLimiting)
+            
+            if (_config.EnableRateLimiting)
             {
-                await LoadSiteProfilesAsync();
+                _core.AddComponent(new RateLimitingComponent());
             }
-
-            _logger("Scraper initialized successfully");
+            
+            if (_config.EnableMetricsTracking)
+            {
+                _core.AddComponent(new MetricsTrackingComponent(Metrics));
+            }
         }
 
-        public async Task SetupContinuousScrapingAsync(TimeSpan interval, CancellationToken? cancellationToken = null)
+        #region Public API
+
+        /// <summary>
+        /// Initializes the scraper and all components
+        /// </summary>
+        public async Task InitializeAsync()
         {
-            _continuousScrapingCts = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken ?? CancellationToken.None);
-            
-            _logger($"Setting up continuous scraping with interval of {interval.TotalMinutes} minutes");
+            if (_isInitialized)
+                return;
+                
+            try
+            {
+                await _core.InitializeAsync();
+                _isInitialized = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize scraper");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Starts the scraping process
+        /// </summary>
+        public async Task StartScrapingAsync()
+        {
+            if (!_isInitialized)
+            {
+                await InitializeAsync();
+            }
             
             try
             {
-                while (!_continuousScrapingCts.Token.IsCancellationRequested)
+                await _core.StartScrapingAsync();
+                
+                // Update metrics
+                Metrics.LastRunTime = DateTime.Now;
+                if (Metrics.FirstRunTime == DateTime.MinValue)
                 {
-                    _logger("Starting scheduled scraping run");
+                    Metrics.FirstRunTime = DateTime.Now;
+                }
+                Metrics.TotalRuns++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during scraping");
+                Metrics.FailedRuns++;
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Stops the scraping process
+        /// </summary>
+        public void StopScraping()
+        {
+            try
+            {
+                _core.StopScraping();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping scraper");
+            }
+        }
+
+        /// <summary>
+        /// Processes a specific URL
+        /// </summary>
+        public async Task ProcessUrlAsync(string url)
+        {
+            if (!_isInitialized)
+            {
+                await InitializeAsync();
+            }
+            
+            if (string.IsNullOrEmpty(url))
+            {
+                _logger.LogWarning("Attempted to process null or empty URL");
+                return;
+            }
+
+            try
+            {
+                _logger.LogInformation($"Processing URL: {url}");
+                var urlProcessor = _core.GetComponent<IUrlProcessor>();
+                
+                if (urlProcessor != null)
+                {
+                    await urlProcessor.ProcessUrlAsync(url);
+                    Metrics.ProcessedUrls++;
+                }
+                else
+                {
+                    _logger.LogWarning("No URL processor component found");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error processing URL: {url}");
+                Metrics.FailedUrls++;
+            }
+        }
+
+        /// <summary>
+        /// Sets up continuous scraping with the specified interval
+        /// </summary>
+        /// <param name="interval">The interval between scraping runs</param>
+        public async Task SetupContinuousScrapingAsync(TimeSpan interval)
+        {
+            if (_continuousScrapingCts != null)
+            {
+                _logger.LogWarning("Continuous scraping already active, stopping previous instance");
+                StopContinuousScraping();
+            }
+            
+            _continuousScrapingCts = new CancellationTokenSource();
+            var token = _continuousScrapingCts.Token;
+            
+            _logger.LogInformation($"Setting up continuous scraping with interval of {interval.TotalMinutes} minutes");
+            
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Starting scheduled scraping run");
                     await StartScrapingAsync();
-                    _logger($"Scheduled scraping completed, waiting {interval.TotalMinutes} minutes until next run");
-                    
-                    // Save results after each run
-                    await SaveVersionHistoryAsync();
-                    await SavePageMetadataAsync(); 
-                    await SaveSiteProfilesAsync();
-                    await _patternLearner.SaveLearnedPatternsAsync();
+                    _logger.LogInformation($"Scheduled scraping completed, waiting {interval.TotalMinutes} minutes until next run");
                     
                     try
                     {
-                        await Task.Delay(interval, _continuousScrapingCts.Token);
+                        await Task.Delay(interval, token);
                     }
                     catch (TaskCanceledException)
                     {
-                        _logger("Continuous scraping canceled");
+                        _logger.LogInformation("Continuous scraping canceled");
                         break;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger($"Error in continuous scraping: {ex.Message}");
+                _logger.LogError(ex, "Error in continuous scraping");
                 throw;
             }
         }
 
+        /// <summary>
+        /// Stops continuous scraping if active
+        /// </summary>
         public void StopContinuousScraping()
         {
-            _logger("Stopping continuous scraping");
+            _logger.LogInformation("Stopping continuous scraping");
             _continuousScrapingCts?.Cancel();
-        }
-
-        public virtual async Task StartScrapingAsync()
-        {
-            _isRunning = true;
-
-            // Add start URL to pending queue
-            var startUrls = new ConcurrentBag<string>();
-            startUrls.Add(_config.StartUrl);
-
-            // Initialize priority queue if using adaptive crawling
-            if (_config.EnableAdaptiveCrawling)
-            {
-                _crawlStrategy.InitializePriorityQueue(startUrls);
-            }
-
-            // Start the scraping process
-            await ScrapeUrlsAsync(startUrls);
-
-            _isRunning = false;
-        }
-
-        protected async Task ScrapeUrlsAsync(ConcurrentBag<string> urls)
-        {
-            var tasks = new List<Task>();
-
-            while (urls.TryTake(out var url))
-            {
-                if (_visitedUrls.Contains(url))
-                    continue;
-
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        // Process the URL
-                        await ProcessUrlAsync(url);
-
-                        // Extract links and add to queue
-                        var links = ExtractLinks(_httpClient, url);
-                        foreach (var link in links)
-                        {
-                            urls.Add(link);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger($"Error processing {url}: {ex.Message}");
-                    }
-                }));
-
-                // Respect the delay between requests
-                await Task.Delay(_config.DelayBetweenRequests);
-            }
-
-            await Task.WhenAll(tasks);
-        }
-
-        protected virtual async Task ProcessUrlAsync(string url)
-        {
-            if (!IsAllowedByRobotsTxt(url))
-                return;
-
-            // Mark as visited
-            _visitedUrls.Add(url);
-
-            // Scrape the page content
-            var content = await _httpClient.GetStringAsync(url);
-
-            // Extract text content using pattern learner
-            var textContent = _patternLearner.ExtractTextContent(content);
-
-            // Content change detection if enabled
-            if (_config.EnableChangeDetection)
-            {
-                _changeDetector.TrackPageVersion(url, content, textContent);
-            }
-
-            // Store the scraped data
-            var scrapedPage = new ScrapedPage
-            {
-                Url = url,
-                ScrapedDateTime = DateTime.Now,
-                TextContent = textContent
-            };
-
-            lock (_scrapedData)
-            {
-                _scrapedData[url] = scrapedPage;
-            }
-
-            // Save the content to file
-            await SavePageToDiskAsync(url, content, textContent);
-        }
-
-        private List<string> ExtractLinks(HttpClient httpClient, string currentUrl)
-        {
-            var result = new List<string>();
-            var baseUri = new Uri(currentUrl);
-
-            // Fetch and parse the HTML document
-            var htmlDoc = new HtmlDocument();
-            var htmlContent = httpClient.GetStringAsync(currentUrl).Result;
-            htmlDoc.LoadHtml(htmlContent);
-
-            var linkNodes = htmlDoc.DocumentNode.SelectNodes("//a[@href]");
-            if (linkNodes == null)
-                return result;
-
-            foreach (var linkNode in linkNodes)
-            {
-                var href = linkNode.GetAttributeValue("href", string.Empty);
-
-                if (string.IsNullOrWhiteSpace(href) || href.StartsWith("#") || href.StartsWith("javascript:"))
-                    continue;
-
-                if (Uri.TryCreate(baseUri, href, out Uri absoluteUri))
-                {
-                    var absoluteUrl = absoluteUri.ToString();
-
-                    // Check if we should follow this link
-                    if (!_config.FollowExternalLinks && !absoluteUrl.StartsWith(_config.BaseUrl))
-                        continue;
-
-                    // Normalize URL (remove fragments, default page names, etc.)
-                    absoluteUrl = NormalizeUrl(absoluteUrl);
-
-                    result.Add(absoluteUrl);
-                }
-            }
-
-            return result;
-        }
-
-        private string NormalizeUrl(string url)
-        {
-            // Remove fragments
-            int fragmentIndex = url.IndexOf('#');
-            if (fragmentIndex >= 0)
-            {
-                url = url.Substring(0, fragmentIndex);
-            }
-
-            // Remove trailing slashes
-            url = url.TrimEnd('/');
-
-            // Add additional normalization as needed for your specific case
-
-            return url;
-        }
-
-        private async Task SavePageToDiskAsync(string url, string rawHtml, string textContent)
-        {
-            try
-            {
-                // Create a safe filename from the URL
-                var uri = new Uri(url);
-                var path = uri.Host + uri.AbsolutePath.Replace("/", "_");
-                if (string.IsNullOrEmpty(Path.GetExtension(path)))
-                {
-                    path += ".html";
-                }
-                path = Path.Combine(_config.OutputDirectory, path);
-
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(path);
-                if (!Directory.Exists(directory) && !string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // Save raw HTML
-                await File.WriteAllTextAsync(path, rawHtml);
-
-                // Save extracted text
-                await File.WriteAllTextAsync(path + ".txt", textContent);
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error saving page {url} to disk: {ex.Message}");
-            }
-        }
-
-        private bool IsAllowedByRobotsTxt(string url)
-        {
-            // Implement robots.txt checking logic here
-            return true;
-        }
-
-        private async Task LoadPreviouslyScrapedDataAsync()
-        {
-            try
-            {
-                var metadataPath = Path.Combine(_config.OutputDirectory, "metadata.json");
-                var visitedUrlsPath = Path.Combine(_config.OutputDirectory, "visited_urls.txt");
-
-                if (File.Exists(metadataPath))
-                {
-                    var json = await File.ReadAllTextAsync(metadataPath);
-                    var data = JsonConvert.DeserializeObject<Dictionary<string, ScrapedPage>>(json);
-
-                    if (data != null)
-                    {
-                        foreach (var kvp in data)
-                        {
-                            _scrapedData[kvp.Key] = kvp.Value;
-                            _visitedUrls.Add(kvp.Key);
-                        }
-                    }
-                }
-                else if (File.Exists(visitedUrlsPath))
-                {
-                    var urls = await File.ReadAllLinesAsync(visitedUrlsPath);
-                    foreach (var url in urls)
-                    {
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            _visitedUrls.Add(url);
-                        }
-                    }
-                }
-
-                _logger($"Loaded previously scraped data: {_visitedUrls.Count} URLs.");
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error loading previously scraped data: {ex.Message}");
-            }
-        }
-
-        private async Task LoadVersionHistoryAsync()
-        {
-            try
-            {
-                var versionHistoryPath = Path.Combine(_config.OutputDirectory, "version_history.json");
-
-                if (File.Exists(versionHistoryPath))
-                {
-                    var json = await File.ReadAllTextAsync(versionHistoryPath);
-                    var history = JsonConvert.DeserializeObject<Dictionary<string, List<PageVersion>>>(json);
-
-                    if (history != null)
-                    {
-                        _changeDetector.LoadVersionHistory(history);
-                        _logger($"Loaded version history for {history.Count} pages.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error loading version history: {ex.Message}");
-            }
-        }
-
-        // Fix for method to properly serialize the dictionary
-        private async Task SaveVersionHistoryAsync()
-        {
-            try
-            {
-                string filePath = Path.Combine(_outputDirectory, "version_history.json");
-                
-                // Convert PageVersion objects to serializable format (get version history from change detector)
-                var versionHistory = _changeDetector.GetVersionHistory();
-                var serializableVersions = new Dictionary<string, List<Dictionary<string, object>>>();
-                
-                foreach (var urlEntry in versionHistory)
-                {
-                    var versionList = new List<Dictionary<string, object>>();
-                    
-                    foreach (var version in urlEntry.Value)
-                    {
-                        versionList.Add(new Dictionary<string, object>
-                        {
-                            ["url"] = version.Url,
-                            ["contentHash"] = version.ContentHash,
-                            ["versionDate"] = version.VersionDate,
-                            ["changeFromPrevious"] = version.ChangeFromPrevious.ToString()
-                        });
-                    }
-                    
-                    serializableVersions[urlEntry.Key] = versionList;
-                }
-                
-                // Serialize to JSON
-                string json = System.Text.Json.JsonSerializer.Serialize(serializableVersions);
-                
-                // Write to file
-                await File.WriteAllTextAsync(filePath, json);
-                
-                _logger($"Version history saved to {filePath}");
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error saving version history: {ex.Message}");
-            }
-        }
-
-        private async Task LoadPageMetadataAsync()
-        {
-            try
-            {
-                var metadataPath = Path.Combine(_config.OutputDirectory, "page_metadata.json");
-
-                if (File.Exists(metadataPath))
-                {
-                    var json = await File.ReadAllTextAsync(metadataPath);
-                    var metadata = JsonConvert.DeserializeObject<Dictionary<string, PageMetadata>>(json);
-
-                    if (metadata != null)
-                    {
-                        _crawlStrategy.LoadMetadata(metadata);
-                        _logger($"Loaded metadata for {metadata.Count} pages.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error loading page metadata: {ex.Message}");
-            }
-        }
-
-        private async Task SavePageMetadataAsync()
-        {
-            try
-            {
-                var metadata = _crawlStrategy.GetPageMetadata();
-                var metadataPath = Path.Combine(_config.OutputDirectory, "page_metadata.json");
-
-                await File.WriteAllTextAsync(
-                    metadataPath,
-                    JsonConvert.SerializeObject(metadata, Newtonsoft.Json.Formatting.Indented)
-                );
-
-                _logger($"Saved metadata for {metadata.Count} pages.");
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error saving page metadata: {ex.Message}");
-            }
-        }
-
-        private async Task LoadSiteProfilesAsync()
-        {
-            try
-            {
-                var profilesPath = Path.Combine(_config.OutputDirectory, "site_profiles.json");
-
-                if (File.Exists(profilesPath))
-                {
-                    var json = await File.ReadAllTextAsync(profilesPath);
-                    var profiles = JsonConvert.DeserializeObject<Dictionary<string, SiteProfile>>(json);
-
-                    if (profiles != null)
-                    {
-                        _rateLimiter.LoadSiteProfiles(profiles);
-                        _logger($"Loaded profiles for {profiles.Count} sites.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error loading site profiles: {ex.Message}");
-            }
-        }
-
-        private async Task SaveSiteProfilesAsync()
-        {
-            try
-            {
-                var profiles = _rateLimiter.GetSiteProfiles();
-                var profilesPath = Path.Combine(_config.OutputDirectory, "site_profiles.json");
-
-                await File.WriteAllTextAsync(
-                    profilesPath,
-                    JsonConvert.SerializeObject(profiles, Newtonsoft.Json.Formatting.Indented)
-                );
-
-                _logger($"Saved profiles for {profiles.Count} sites.");
-            }
-            catch (Exception ex)
-            {
-                _logger($"Error saving site profiles: {ex.Message}");
-            }
+            _continuousScrapingCts?.Dispose();
+            _continuousScrapingCts = null;
         }
 
         /// <summary>
-        /// Disposes resources used by the scraper
+        /// Gets a component of the specified type
         /// </summary>
-        public virtual void Dispose()
+        /// <typeparam name="T">The type of component to get</typeparam>
+        /// <returns>The component, or null if not found</returns>
+        public T GetComponent<T>() where T : class, IScraperComponent
         {
-            if (!_disposed)
+            return _core.GetComponent<T>();
+        }
+
+        /// <summary>
+        /// Disposes resources
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
+                
+            _isDisposed = true;
+            
+            try
             {
-                _disposed = true;
+                StopContinuousScraping();
+                _core.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing scraper");
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Simple logger that wraps a log action
+        /// </summary>
+        private class ActionLogger : ILogger
+        {
+            private readonly Action<string> _logAction;
+
+            public ActionLogger(Action<string> logAction)
+            {
+                _logAction = logAction ?? throw new ArgumentNullException(nameof(logAction));
+            }
+
+            public IDisposable BeginScope<TState>(TState state) => null;
+            
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+            {
+                var message = formatter(state, exception);
+                _logAction($"[{logLevel}] {message}");
                 
-                // Cancel any ongoing operations
-                _continuousScrapingCts?.Cancel();
-                _continuousScrapingCts?.Dispose();
-                
-                // Dispose the HTTP client
-                _httpClient?.Dispose();
-                
-                _logger("Scraper disposed");
+                if (exception != null)
+                {
+                    _logAction($"[{logLevel}] Exception: {exception}");
+                }
             }
         }
     }
