@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Container, 
-  Box, 
-  Typography, 
-  Button, 
+import {
+  Container,
+  Box,
+  Typography,
+  Button,
   Paper,
   Stepper,
   Step,
@@ -15,44 +15,18 @@ import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { useScrapers } from '../contexts/ScraperContext';
 import PageHeader from '../components/common/PageHeader';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-
-// Import the ScraperForm component
-// This would be a component that contains the form for creating a scraper
-// For now, we'll assume it exists and will be implemented later
-const ScraperForm = ({ onSubmit, initialValues, isSubmitting }) => {
-  // This is a placeholder for the actual form component
-  return (
-    <Box>
-      <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
-        Scraper form will be implemented in a future update
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-        <Button 
-          variant="contained" 
-          onClick={() => onSubmit({ 
-            name: 'New Scraper', 
-            startUrl: 'https://example.com', 
-            baseUrl: 'https://example.com' 
-          })}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Creating...' : 'Create Scraper'}
-        </Button>
-      </Box>
-    </Box>
-  );
-};
+import ScraperForm from '../components/scrapers/ScraperForm';
 
 const ScraperCreate = () => {
   const navigate = useNavigate();
   const { addScraper } = useScrapers();
-  
+
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [createdScraperId, setCreatedScraperId] = useState(null);
 
-  const steps = ['Basic Information', 'Crawling Settings', 'Advanced Options'];
+  const steps = ['Configure Scraper', 'Success'];
 
   const handleNext = () => {
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
@@ -66,25 +40,11 @@ const ScraperCreate = () => {
     try {
       setIsSubmitting(true);
       setError(null);
-      
-      // Add default values for required fields
-      const scraperData = {
-        ...formData,
-        outputDirectory: formData.outputDirectory || 'ScrapedData',
-        delayBetweenRequests: formData.delayBetweenRequests || 1000,
-        maxConcurrentRequests: formData.maxConcurrentRequests || 5,
-        maxDepth: formData.maxDepth || 5,
-        followExternalLinks: formData.followExternalLinks || false,
-        respectRobotsTxt: formData.respectRobotsTxt || true,
-        autoLearnHeaderFooter: formData.autoLearnHeaderFooter || true,
-        learningPagesCount: formData.learningPagesCount || 5,
-        enableChangeDetection: formData.enableChangeDetection || true,
-        trackContentVersions: formData.trackContentVersions || true,
-        maxVersionsToKeep: formData.maxVersionsToKeep || 5
-      };
-      
-      const result = await addScraper(scraperData);
-      
+
+      // The form already handles default values, so we can use formData directly
+
+      const result = await addScraper(formData);
+
       if (result && result.id) {
         setCreatedScraperId(result.id);
         handleNext(); // Move to success step
@@ -103,7 +63,7 @@ const ScraperCreate = () => {
     switch (step) {
       case 0:
         return (
-          <ScraperForm 
+          <ScraperForm
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
           />
@@ -118,14 +78,14 @@ const ScraperCreate = () => {
               Your new scraper has been created with ID: {createdScraperId}
             </Typography>
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={() => navigate(`/scrapers/${createdScraperId}`)}
               >
                 View Scraper
               </Button>
-              <Button 
-                variant="outlined" 
+              <Button
+                variant="outlined"
                 onClick={() => navigate('/scrapers')}
               >
                 Back to Scrapers List
@@ -171,13 +131,11 @@ const ScraperCreate = () => {
 
       {/* Stepper */}
       <Paper sx={{ mb: 3, p: 3 }}>
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
+        {activeStep === 0 && (
+          <Typography variant="h6" gutterBottom>
+            Configure your new scraper
+          </Typography>
+        )}
 
         {/* Step Content */}
         {renderStepContent(activeStep)}

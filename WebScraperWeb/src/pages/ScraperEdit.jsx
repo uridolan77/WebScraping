@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Container, 
-  Box, 
-  Typography, 
-  Button, 
+import {
+  Container,
+  Box,
+  Typography,
+  Button,
   Paper,
   Alert,
   CircularProgress
@@ -13,44 +13,19 @@ import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { useScrapers } from '../contexts/ScraperContext';
 import PageHeader from '../components/common/PageHeader';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-
-// Import the ScraperForm component
-// This would be a component that contains the form for editing a scraper
-// For now, we'll assume it exists and will be implemented later
-const ScraperForm = ({ onSubmit, initialValues, isSubmitting }) => {
-  // This is a placeholder for the actual form component
-  return (
-    <Box>
-      <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
-        Scraper edit form will be implemented in a future update
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-        <Button 
-          variant="contained" 
-          onClick={() => onSubmit({ 
-            ...initialValues,
-            name: initialValues.name + ' (Updated)'
-          })}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </Box>
-    </Box>
-  );
-};
+import ScraperForm from '../components/scrapers/ScraperForm';
 
 const ScraperEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { 
-    fetchScraper, 
-    selectedScraper, 
-    loading, 
-    error, 
-    editScraper 
+  const {
+    fetchScraper,
+    selectedScraper,
+    loading,
+    error,
+    editScraper
   } = useScrapers();
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -64,14 +39,14 @@ const ScraperEdit = () => {
 
   const handleSubmit = async (formData) => {
     if (!id) return;
-    
+
     try {
       setIsSubmitting(true);
       setSubmitError(null);
       setSubmitSuccess(false);
-      
+
       const result = await editScraper(id, formData);
-      
+
       if (result) {
         setSubmitSuccess(true);
         // Navigate back to detail page after a short delay
@@ -99,9 +74,9 @@ const ScraperEdit = () => {
         <Alert severity="error" sx={{ mb: 2 }}>
           Error loading scraper: {error}
         </Alert>
-        <Button 
-          variant="contained" 
-          startIcon={<ArrowBackIcon />} 
+        <Button
+          variant="contained"
+          startIcon={<ArrowBackIcon />}
           onClick={() => navigate('/scrapers')}
         >
           Back to Scrapers
@@ -116,9 +91,9 @@ const ScraperEdit = () => {
         <Alert severity="warning" sx={{ mb: 2 }}>
           Scraper not found
         </Alert>
-        <Button 
-          variant="contained" 
-          startIcon={<ArrowBackIcon />} 
+        <Button
+          variant="contained"
+          startIcon={<ArrowBackIcon />}
           onClick={() => navigate('/scrapers')}
         >
           Back to Scrapers
@@ -169,16 +144,17 @@ const ScraperEdit = () => {
       {/* Form */}
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>Edit Scraper Configuration</Typography>
-        
+
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
         ) : (
-          <ScraperForm 
+          <ScraperForm
             initialValues={selectedScraper}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
+            isEditMode={true}
           />
         )}
       </Paper>
