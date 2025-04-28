@@ -10,6 +10,7 @@ using WebScraper;
 using WebScraper.StateManagement;
 using WebScraperApi.Models;
 using WebScraper.ContentChange;
+using WebScraperApi.Extensions;
 
 namespace WebScraperApi.Services.State
 {
@@ -21,13 +22,13 @@ namespace WebScraperApi.Services.State
         private readonly ILogger<ScraperStateService> _logger;
         private readonly Dictionary<string, ScraperInstance> _scrapers;
         private readonly object _lock = new object();
-        
+
         public ScraperStateService(ILogger<ScraperStateService> logger)
         {
             _logger = logger;
             _scrapers = new Dictionary<string, ScraperInstance>();
         }
-        
+
         /// <summary>
         /// Gets the current scraper instances
         /// </summary>
@@ -38,7 +39,7 @@ namespace WebScraperApi.Services.State
                 return _scrapers;
             }
         }
-        
+
         /// <summary>
         /// Gets a specific scraper instance
         /// </summary>
@@ -53,10 +54,10 @@ namespace WebScraperApi.Services.State
                     return instance;
                 }
             }
-            
+
             return null;
         }
-        
+
         /// <summary>
         /// Adds or updates a scraper instance
         /// </summary>
@@ -68,20 +69,20 @@ namespace WebScraperApi.Services.State
             {
                 throw new ArgumentException("Scraper ID cannot be null or empty", nameof(id));
             }
-            
+
             if (instance == null)
             {
                 throw new ArgumentNullException(nameof(instance));
             }
-            
+
             lock (_lock)
             {
                 _scrapers[id] = instance;
             }
-            
+
             _logger.LogInformation($"Added or updated scraper instance: {id}");
         }
-        
+
         /// <summary>
         /// Removes a scraper instance
         /// </summary>
@@ -98,11 +99,11 @@ namespace WebScraperApi.Services.State
                     return true;
                 }
             }
-            
+
             _logger.LogWarning($"Failed to remove scraper instance: {id} (not found)");
             return false;
         }
-        
+
         /// <summary>
         /// Compresses stored content for a specific scraper
         /// </summary>
@@ -116,18 +117,18 @@ namespace WebScraperApi.Services.State
                 _logger.LogWarning($"Cannot compress content: scraper {id} not found");
                 return new { Success = false, Message = "Scraper not found" };
             }
-            
+
             if (instance.StateManager == null)
             {
                 _logger.LogWarning($"Cannot compress content: scraper {id} has no state manager");
                 return new { Success = false, Message = "Scraper has no state manager" };
             }
-            
+
             try
             {
                 // Use the persistent state manager to compress content
                 var compressedFile = await CompressContentFolderAsync(id, instance.Config.OutputDirectory);
-                
+
                 return new
                 {
                     Success = true,
@@ -141,7 +142,7 @@ namespace WebScraperApi.Services.State
                 return new { Success = false, Message = $"Error compressing content: {ex.Message}" };
             }
         }
-        
+
         /// <summary>
         /// Helper method to compress a folder
         /// </summary>
@@ -152,19 +153,19 @@ namespace WebScraperApi.Services.State
                 _logger.LogWarning($"Content folder not found: {folderPath}");
                 return null;
             }
-            
+
             var compressedFile = Path.Combine(
                 Path.GetDirectoryName(folderPath),
                 $"scraper_{id}_content_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
-            
+
             await Task.Run(() =>
             {
                 ZipFile.CreateFromDirectory(folderPath, compressedFile);
             });
-            
+
             return compressedFile;
         }
-        
+
         /// <summary>
         /// Updates webhook configuration for a specific scraper
         /// </summary>
@@ -179,7 +180,7 @@ namespace WebScraperApi.Services.State
                 _logger.LogWarning($"Cannot update webhook config: scraper {id} not found");
                 return false;
             }
-            
+
             try
             {
                 // Update the webhook config in the instance
@@ -187,9 +188,9 @@ namespace WebScraperApi.Services.State
                 instance.Config.WebhookEnabled = config.Enabled;
                 instance.Config.WebhookFormat = config.Format;
                 instance.Config.WebhookTriggers = config.Triggers;
-                
+
                 _logger.LogInformation($"Updated webhook configuration for scraper {id}");
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -198,7 +199,7 @@ namespace WebScraperApi.Services.State
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Gets analytics data from a state manager
         /// </summary>
@@ -210,13 +211,13 @@ namespace WebScraperApi.Services.State
             {
                 return new Dictionary<string, object>();
             }
-            
+
             try
             {
                 var result = new Dictionary<string, object>();
-                
+
                 // Get stats about stored content
-                var contentStats = await Task.Run(() => 
+                var contentStats = await Task.Run(() =>
                 {
                     try
                     {
@@ -229,7 +230,7 @@ namespace WebScraperApi.Services.State
                         return null;
                     }
                 });
-                
+
                 if (contentStats != null)
                 {
                     result["totalContentItems"] = contentStats.TotalContentItems;
@@ -238,7 +239,7 @@ namespace WebScraperApi.Services.State
                     result["totalStorageSizeBytes"] = contentStats.TotalStorageSizeBytes;
                     result["lastContentUpdate"] = contentStats.LastContentUpdate;
                 }
-                
+
                 return result;
             }
             catch (Exception ex)
@@ -250,7 +251,7 @@ namespace WebScraperApi.Services.State
                 };
             }
         }
-        
+
         /// <summary>
         /// Gets detected content changes for a specific scraper
         /// </summary>
@@ -266,17 +267,17 @@ namespace WebScraperApi.Services.State
                 _logger.LogWarning($"Cannot get detected changes: scraper {id} not found");
                 return new List<object>();
             }
-            
+
             if (instance.StateManager == null)
             {
                 _logger.LogWarning($"Cannot get detected changes: scraper {id} has no state manager");
                 return new List<object>();
             }
-            
+
             try
             {
                 // Use the persistent state manager to get change history
-                var changes = await Task.Run(() => 
+                var changes = await Task.Run(() =>
                 {
                     try
                     {
@@ -288,7 +289,7 @@ namespace WebScraperApi.Services.State
                         return new List<ContentChangeRecord>();
                     }
                 });
-                
+
                 // Convert to anonymous objects
                 var result = changes.Select(c => new
                 {
@@ -298,7 +299,7 @@ namespace WebScraperApi.Services.State
                     significance = c.Significance,
                     changeDetails = c.ChangeDetails
                 }).Cast<object>().ToList();
-                
+
                 return result;
             }
             catch (Exception ex)
@@ -307,7 +308,7 @@ namespace WebScraperApi.Services.State
                 return new List<object>();
             }
         }
-        
+
         /// <summary>
         /// Gets processed documents for a specific scraper
         /// </summary>
@@ -324,36 +325,27 @@ namespace WebScraperApi.Services.State
                 _logger.LogWarning($"Cannot get processed documents: scraper {id} not found");
                 return new PagedDocumentResult { TotalCount = 0 };
             }
-            
+
             if (instance.StateManager == null)
             {
                 _logger.LogWarning($"Cannot get processed documents: scraper {id} has no state manager");
                 return new PagedDocumentResult { TotalCount = 0 };
             }
-            
+
             try
             {
                 // Use the persistent state manager to get processed documents
-                var result = await Task.Run(() => 
+                var result = await Task.Run(() =>
                 {
                     try
                     {
                         var docs = instance.StateManager.GetProcessedDocuments(documentType, page, pageSize);
-                        
+
                         // Convert to a format suitable for API
                         return new PagedDocumentResult
                         {
                             TotalCount = docs.TotalCount,
-                            Documents = docs.Documents.Select(d => new
-                            {
-                                id = d.Id,
-                                url = d.Url,
-                                title = d.Title,
-                                type = d.DocumentType,
-                                processedAt = d.ProcessedAt,
-                                size = d.ContentSizeBytes,
-                                metadata = d.Metadata
-                            }).Cast<object>().ToList()
+                            Documents = docs.Documents.Select(d => d.ToProcessedDocument()).Cast<object>().ToList()
                         };
                     }
                     catch (Exception ex)
@@ -362,13 +354,80 @@ namespace WebScraperApi.Services.State
                         return new PagedDocumentResult { TotalCount = 0 };
                     }
                 });
-                
+
                 return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error getting processed documents for scraper {id}");
                 return new PagedDocumentResult { TotalCount = 0 };
+            }
+        }
+
+        /// <summary>
+        /// Gets all scraper instances
+        /// </summary>
+        /// <returns>List of scraper instances</returns>
+        public List<ScraperInstance> GetAllScraperInstances()
+        {
+            lock (_lock)
+            {
+                return _scrapers.Values.ToList();
+            }
+        }
+
+        /// <summary>
+        /// Gets all scraper IDs
+        /// </summary>
+        /// <returns>List of scraper IDs</returns>
+        public List<string> GetAllScraperIds()
+        {
+            lock (_lock)
+            {
+                return _scrapers.Keys.ToList();
+            }
+        }
+
+        /// <summary>
+        /// Gets performance metrics for a specific scraper within a date range
+        /// </summary>
+        /// <param name="id">Scraper ID</param>
+        /// <param name="start">Start date</param>
+        /// <param name="end">End date</param>
+        /// <returns>Performance metrics</returns>
+        public async Task<object> GetScraperPerformanceAsync(string id, DateTime start, DateTime end)
+        {
+            var instance = GetScraperInstance(id);
+            if (instance == null)
+            {
+                _logger.LogWarning($"Cannot get performance metrics: scraper {id} not found");
+                return new { error = "Scraper not found" };
+            }
+
+            try
+            {
+                // For now, return some basic metrics
+                return await Task.FromResult(new
+                {
+                    scraperId = id,
+                    scraperName = instance.Config?.Name ?? "",
+                    startDate = start,
+                    endDate = end,
+                    metrics = new
+                    {
+                        totalRuns = instance.Metrics?.TotalRuns ?? 0,
+                        successfulRuns = (instance.Metrics?.TotalRuns ?? 0) - (instance.Metrics?.FailedRuns ?? 0),
+                        failedRuns = instance.Metrics?.FailedRuns ?? 0,
+                        totalUrlsProcessed = instance.Metrics?.ProcessedUrls ?? 0,
+                        averageProcessingTimeMs = instance.Metrics?.AverageProcessingTimePerUrlMs ?? 0,
+                        contentChangesDetected = instance.Metrics?.ContentChangesDetected ?? 0
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting performance metrics for scraper {id}");
+                return new { error = ex.Message };
             }
         }
     }

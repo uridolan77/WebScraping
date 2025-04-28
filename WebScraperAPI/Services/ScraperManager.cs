@@ -44,7 +44,7 @@ namespace WebScraperApi.Services
             _stateService = stateService;
             _analyticsService = analyticsService;
             _schedulingService = schedulingService;
-            
+
             // Register this instance with the ServiceLocator to resolve circular dependency
             ServiceLocator.RegisterService(typeof(ScraperManager), this);
         }
@@ -57,11 +57,11 @@ namespace WebScraperApi.Services
             try
             {
                 _logger.LogInformation("Initializing ScraperManager...");
-                
+
                 // Load scraper configurations
                 var configs = await _configService.LoadScraperConfigurationsAsync();
                 _logger.LogInformation($"Loaded {configs.Count} scraper configurations.");
-                
+
                 // Initialize instances for each configuration
                 foreach (var config in configs)
                 {
@@ -74,13 +74,13 @@ namespace WebScraperApi.Services
                             LastStatusUpdate = DateTime.Now
                         }
                     };
-                    
+
                     _stateService.AddOrUpdateScraper(config.Id, instance);
                 }
-                
+
                 // Run a monitoring check for all loaded scrapers
                 await _monitoringService.RunAllMonitoringChecksAsync();
-                
+
                 _logger.LogInformation("ScraperManager initialized successfully.");
             }
             catch (Exception ex)
@@ -113,7 +113,7 @@ namespace WebScraperApi.Services
         {
             // Create the configuration
             var createdConfig = await _configService.CreateScraperConfigAsync(config);
-            
+
             // Initialize an instance for the new configuration
             var instance = new ScraperInstance
             {
@@ -124,13 +124,13 @@ namespace WebScraperApi.Services
                     LastStatusUpdate = DateTime.Now
                 }
             };
-            
+
             // Add to state management
             _stateService.AddOrUpdateScraper(createdConfig.Id, instance);
-            
+
             // Add initial log message
             _monitoringService.AddLogMessage(createdConfig.Id, "Scraper configuration created");
-            
+
             return createdConfig;
         }
 
@@ -141,7 +141,7 @@ namespace WebScraperApi.Services
         {
             // Update the configuration
             var result = await _configService.UpdateScraperConfigAsync(id, config);
-            
+
             if (result)
             {
                 // Get current scraper instance
@@ -164,14 +164,14 @@ namespace WebScraperApi.Services
                     // Update the existing instance
                     instance.Config = config;
                 }
-                
+
                 // Update state management
                 _stateService.AddOrUpdateScraper(id, instance);
-                
+
                 // Add log message
                 _monitoringService.AddLogMessage(id, "Scraper configuration updated");
             }
-            
+
             return result;
         }
 
@@ -187,27 +187,27 @@ namespace WebScraperApi.Services
                 _logger.LogWarning($"Cannot delete config: scraper {id} not found in state");
                 return false;
             }
-            
+
             // Validate that the scraper is not running
             if (instance.Status.IsRunning)
             {
                 _logger.LogWarning($"Cannot delete config: scraper {id} is currently running");
                 return false;
             }
-            
+
             // Stop and dispose the scraper if needed
             if (instance.Scraper != null)
             {
                 _executionService.StopScraper(instance.Scraper, message => _monitoringService.AddLogMessage(id, message));
-                
+
                 // Clean up resources
                 instance.Scraper.Dispose();
                 instance.Scraper = null;
             }
-            
+
             // Remove from state management
             _stateService.RemoveScraper(id);
-            
+
             // Delete from configuration store
             return await _configService.DeleteScraperConfigAsync(id);
         }
@@ -222,43 +222,46 @@ namespace WebScraperApi.Services
             try
             {
                 _logger.LogInformation($"Starting scraper {id}...");
-                
+
                 var instance = _stateService.GetScraperInstance(id);
                 if (instance == null)
                 {
                     _logger.LogWarning($"Cannot start scraper {id}: not found");
                     return false;
                 }
-                
+
                 // Skip if already running
                 if (instance.Status.IsRunning)
                 {
                     _logger.LogInformation($"Scraper {id} is already running");
                     return true;
                 }
-                
+
                 // Update status
                 instance.Status.IsRunning = true;
-                instance.Status.LastStartTime = DateTime.Now;
+                instance.Status.StartTime = DateTime.Now;
                 instance.Status.Message = "Starting scraper execution";
-                
+
                 // Add log message
                 _monitoringService.AddLogMessage(id, "Starting scraper execution");
-                
+
                 // Update metrics
                 instance.Metrics ??= new ScraperMetrics();
                 instance.Metrics.ExecutionCount++;
-                
+
                 // Execute the scraper
-                await _executionService.ExecuteScraperAsync(id, instance.Config);
-                
+                await _executionService.StartScraperAsync(
+                    instance.Config,
+                    new WebScraperApi.Models.ScraperState { Id = id, Status = "Running" },
+                    message => _monitoringService.AddLogMessage(id, message));
+
                 return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error starting scraper {id}");
                 _monitoringService.AddLogMessage(id, $"Error starting scraper: {ex.Message}");
-                
+
                 // Update status
                 var instance = _stateService.GetScraperInstance(id);
                 if (instance != null)
@@ -268,7 +271,7 @@ namespace WebScraperApi.Services
                     instance.Status.LastError = ex.Message;
                     instance.Status.Message = $"Error: {ex.Message}";
                 }
-                
+
                 return false;
             }
         }
@@ -287,26 +290,26 @@ namespace WebScraperApi.Services
                     _logger.LogWarning($"Cannot stop scraper: scraper {id} not found");
                     return new { Success = false, Message = "Scraper not found" };
                 }
-                
+
                 // Check if not running
                 if (!instance.Status.IsRunning || instance.Scraper == null)
                 {
                     _logger.LogWarning($"Cannot stop scraper: scraper {id} is not running");
                     return new { Success = false, Message = "Scraper is not running" };
                 }
-                
+
                 // Define a log action that will be passed to the execution service
                 Action<string> logAction = (message) => _monitoringService.AddLogMessage(id, message);
-                
+
                 // Stop the scraper
                 _executionService.StopScraper(instance.Scraper, logAction);
-                
+
                 // Update status
                 instance.Status.IsRunning = false;
                 instance.Status.EndTime = DateTime.Now;
                 instance.Status.LastStatusUpdate = DateTime.Now;
                 instance.Status.Message = "Scraper stopped by user";
-                
+
                 return new { Success = true, Message = "Scraper stopped" };
             }
             catch (Exception ex)
@@ -322,7 +325,7 @@ namespace WebScraperApi.Services
         public IEnumerable<object> GetAllScraperStatus()
         {
             var scrapers = _stateService.GetScrapers();
-            
+
             return scrapers.Select(s => new
             {
                 Id = s.Key,
@@ -347,9 +350,9 @@ namespace WebScraperApi.Services
             {
                 return new { Error = "Scraper not found" };
             }
-            
+
             var analytics = await _analyticsService.GetScraperAnalyticsAsync(id);
-            
+
             return new
             {
                 Id = id,
@@ -384,15 +387,15 @@ namespace WebScraperApi.Services
                 _logger.LogWarning($"Cannot schedule scraper: scraper {id} not found");
                 return new { Success = false, Message = "Scraper not found" };
             }
-            
+
             // Schedule the scraper
             var result = await _schedulingService.ScheduleScraperAsync(id, options);
-            
+
             if ((result as dynamic).Success)
             {
                 _monitoringService.AddLogMessage(id, $"Scheduled scraper for {(result as dynamic).NextRunTime}");
             }
-            
+
             return result;
         }
 
@@ -426,12 +429,12 @@ namespace WebScraperApi.Services
         public async Task<bool> RemoveScheduleAsync(string scraperId, string scheduleId)
         {
             var result = await _schedulingService.RemoveScheduleAsync(scraperId, scheduleId);
-            
+
             if (result)
             {
                 _monitoringService.AddLogMessage(scraperId, $"Removed schedule {scheduleId}");
             }
-            
+
             return result;
         }
 
@@ -449,12 +452,12 @@ namespace WebScraperApi.Services
         public async Task<bool> UpdateWebhookConfigAsync(string id, WebhookConfig config)
         {
             var result = await _stateService.UpdateWebhookConfigAsync(id, config);
-            
+
             if (result)
             {
                 _monitoringService.AddLogMessage(id, "Updated webhook configuration");
             }
-            
+
             return result;
         }
     }

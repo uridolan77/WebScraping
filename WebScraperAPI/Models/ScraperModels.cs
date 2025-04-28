@@ -12,20 +12,19 @@ namespace WebScraperApi.Models
         public bool IsRunning { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
-        public string ElapsedTime { get; set; }
+        public string ElapsedTime { get; set; } = string.Empty;
         public int UrlsProcessed { get; set; }
+        public int UrlsQueued { get; set; }
+        public int DocumentsProcessed { get; set; }
+        public bool HasErrors { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public DateTime? LastStatusUpdate { get; set; } = DateTime.Now;
+        public DateTime? LastUpdate { get; set; } = DateTime.Now;
         public List<LogEntry> LogMessages { get; set; } = new List<LogEntry>();
         public DateTime? LastMonitorCheck { get; set; }
         public PipelineMetrics PipelineMetrics { get; set; } = new PipelineMetrics();
-        
-        // Added properties to fix compilation errors
-        public string Message { get; set; }
-        public bool HasErrors { get; set; }
-        public string LastError { get; set; }
-        public DateTime LastStatusUpdate { get; set; } = DateTime.Now;
-        public int UrlsQueued { get; set; }
-        public int DocumentsProcessed { get; set; }
-        
+        public string LastError { get; set; } = string.Empty;
+
         /// <summary>
         /// Clone the status (to avoid locking issues)
         /// </summary>
@@ -33,32 +32,32 @@ namespace WebScraperApi.Models
         {
             return new ScraperStatus
             {
-                IsRunning = this.IsRunning,
-                StartTime = this.StartTime,
-                EndTime = this.EndTime,
-                ElapsedTime = this.ElapsedTime,
-                UrlsProcessed = this.UrlsProcessed,
-                LogMessages = this.LogMessages.ToList(),
-                LastMonitorCheck = this.LastMonitorCheck,
+                IsRunning = IsRunning,
+                StartTime = StartTime,
+                EndTime = EndTime,
+                ElapsedTime = ElapsedTime,
+                UrlsProcessed = UrlsProcessed,
+                LogMessages = LogMessages?.ToList() ?? new List<LogEntry>(),
+                LastMonitorCheck = LastMonitorCheck,
                 PipelineMetrics = new PipelineMetrics
                 {
-                    ProcessingItems = this.PipelineMetrics?.ProcessingItems ?? 0,
-                    QueuedItems = this.PipelineMetrics?.QueuedItems ?? 0,
-                    CompletedItems = this.PipelineMetrics?.CompletedItems ?? 0,
-                    FailedItems = this.PipelineMetrics?.FailedItems ?? 0,
-                    AverageProcessingTimeMs = this.PipelineMetrics?.AverageProcessingTimeMs ?? 0
+                    ProcessingItems = PipelineMetrics?.ProcessingItems ?? 0,
+                    QueuedItems = PipelineMetrics?.QueuedItems ?? 0,
+                    CompletedItems = PipelineMetrics?.CompletedItems ?? 0,
+                    FailedItems = PipelineMetrics?.FailedItems ?? 0,
+                    AverageProcessingTimeMs = PipelineMetrics?.AverageProcessingTimeMs ?? 0
                 },
-                // Clone the new properties
-                Message = this.Message,
-                HasErrors = this.HasErrors,
-                LastError = this.LastError,
-                LastStatusUpdate = this.LastStatusUpdate,
-                UrlsQueued = this.UrlsQueued,
-                DocumentsProcessed = this.DocumentsProcessed
+                Message = Message,
+                HasErrors = HasErrors,
+                LastError = LastError,
+                LastStatusUpdate = LastStatusUpdate,
+                LastUpdate = LastUpdate,
+                UrlsQueued = UrlsQueued,
+                DocumentsProcessed = DocumentsProcessed
             };
         }
     }
-    
+
     /// <summary>
     /// Represents metrics from the processing pipeline
     /// </summary>
@@ -70,18 +69,19 @@ namespace WebScraperApi.Models
         public int FailedItems { get; set; }
         public double AverageProcessingTimeMs { get; set; }
     }
-    
+
     /// <summary>
     /// Represents a log entry
     /// </summary>
     public class LogEntry
     {
         public DateTime Timestamp { get; set; }
-        public string Message { get; set; }
-        
+        public string Message { get; set; } = string.Empty;
+        public string Level { get; set; } = "Info";
+
         public override string ToString()
         {
-            return $"[{Timestamp:HH:mm:ss}] {Message}";
+            return $"[{Timestamp:HH:mm:ss}] [{Level}] {Message}";
         }
     }
 }

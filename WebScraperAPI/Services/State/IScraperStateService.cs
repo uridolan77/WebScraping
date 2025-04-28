@@ -15,35 +15,35 @@ namespace WebScraperApi.Services.State
         /// Gets the current scraper instances
         /// </summary>
         Dictionary<string, ScraperInstance> GetScrapers();
-        
+
         /// <summary>
         /// Gets a specific scraper instance
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <returns>Scraper instance if found, null otherwise</returns>
         ScraperInstance GetScraperInstance(string id);
-        
+
         /// <summary>
         /// Adds or updates a scraper instance
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <param name="instance">Scraper instance</param>
         void AddOrUpdateScraper(string id, ScraperInstance instance);
-        
+
         /// <summary>
         /// Removes a scraper instance
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <returns>True if successful, false otherwise</returns>
         bool RemoveScraper(string id);
-        
+
         /// <summary>
         /// Compresses stored content for a specific scraper
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <returns>Operation result</returns>
         Task<object> CompressStoredContentAsync(string id);
-        
+
         /// <summary>
         /// Updates webhook configuration for a specific scraper
         /// </summary>
@@ -51,14 +51,14 @@ namespace WebScraperApi.Services.State
         /// <param name="config">Webhook configuration</param>
         /// <returns>True if successful, false otherwise</returns>
         Task<bool> UpdateWebhookConfigAsync(string id, WebhookConfig config);
-        
+
         /// <summary>
         /// Gets analytics data from a state manager
         /// </summary>
         /// <param name="stateManager">The state manager</param>
         /// <returns>Dictionary of analytics data</returns>
         Task<Dictionary<string, object>> GetStateManagerAnalyticsAsync(PersistentStateManager stateManager);
-        
+
         /// <summary>
         /// Gets detected content changes for a specific scraper
         /// </summary>
@@ -67,7 +67,7 @@ namespace WebScraperApi.Services.State
         /// <param name="limit">Max number of changes to return</param>
         /// <returns>List of detected changes</returns>
         Task<List<object>> GetDetectedChangesAsync(string id, DateTime? since = null, int limit = 100);
-        
+
         /// <summary>
         /// Gets processed documents for a specific scraper
         /// </summary>
@@ -77,8 +77,29 @@ namespace WebScraperApi.Services.State
         /// <param name="pageSize">Page size</param>
         /// <returns>Paged list of documents</returns>
         Task<PagedDocumentResult> GetProcessedDocumentsAsync(string id, string documentType = null, int page = 1, int pageSize = 20);
+
+        /// <summary>
+        /// Gets all scraper instances
+        /// </summary>
+        /// <returns>List of scraper instances</returns>
+        List<ScraperInstance> GetAllScraperInstances();
+
+        /// <summary>
+        /// Gets all scraper IDs
+        /// </summary>
+        /// <returns>List of scraper IDs</returns>
+        List<string> GetAllScraperIds();
+
+        /// <summary>
+        /// Gets performance metrics for a specific scraper within a date range
+        /// </summary>
+        /// <param name="id">Scraper ID</param>
+        /// <param name="start">Start date</param>
+        /// <param name="end">End date</param>
+        /// <returns>Performance metrics</returns>
+        Task<object> GetScraperPerformanceAsync(string id, DateTime start, DateTime end);
     }
-    
+
     /// <summary>
     /// Result object for paged document queries
     /// </summary>
@@ -88,7 +109,7 @@ namespace WebScraperApi.Services.State
         /// Total count of all documents matching the filter
         /// </summary>
         public int TotalCount { get; set; }
-        
+
         /// <summary>
         /// The documents in the current page
         /// </summary>

@@ -18,20 +18,20 @@ namespace WebScraperApi.Services.Notifications
         private readonly ILogger<WebhookNotificationService> _logger;
         private readonly IScraperStateService _stateService;
         private readonly HttpClient _httpClient;
-        
+
         public WebhookNotificationService(
             ILogger<WebhookNotificationService> logger,
             IScraperStateService stateService,
-            HttpClient httpClient = null)
+            HttpClient? httpClient = null)
         {
             _logger = logger;
             _stateService = stateService;
             _httpClient = httpClient ?? new HttpClient();
-            
+
             // Set default timeout for webhooks (to avoid waiting too long)
             _httpClient.Timeout = TimeSpan.FromSeconds(10);
         }
-        
+
         /// <summary>
         /// Sends a notification about a detected change
         /// </summary>
@@ -46,14 +46,14 @@ namespace WebScraperApi.Services.Notifications
             {
                 return false;
             }
-            
+
             // Check if content change notifications are enabled
-            var triggers = instance.Config.WebhookTriggers ?? new List<string>();
+            var triggers = instance.Config.WebhookTriggers?.ToList() ?? new List<string>();
             if (!triggers.Contains("content_change") && !triggers.Contains("all"))
             {
                 return false;
             }
-            
+
             var payload = new
             {
                 eventType = "content_change",
@@ -63,10 +63,10 @@ namespace WebScraperApi.Services.Notifications
                 url = url,
                 changeDetails = changeData
             };
-            
+
             return await SendWebhookAsync(instance.Config, payload);
         }
-        
+
         /// <summary>
         /// Sends a notification about scraper status changes
         /// </summary>
@@ -80,14 +80,14 @@ namespace WebScraperApi.Services.Notifications
             {
                 return false;
             }
-            
+
             // Check if status notifications are enabled
-            var triggers = instance.Config.WebhookTriggers ?? new List<string>();
+            var triggers = instance.Config.WebhookTriggers?.ToList() ?? new List<string>();
             if (!triggers.Contains("status_change") && !triggers.Contains("all"))
             {
                 return false;
             }
-            
+
             var payload = new
             {
                 eventType = "status_change",
@@ -105,10 +105,10 @@ namespace WebScraperApi.Services.Notifications
                     urlsProcessed = status.UrlsProcessed
                 }
             };
-            
+
             return await SendWebhookAsync(instance.Config, payload);
         }
-        
+
         /// <summary>
         /// Sends a notification with scraper results
         /// </summary>
@@ -122,14 +122,14 @@ namespace WebScraperApi.Services.Notifications
             {
                 return false;
             }
-            
+
             // Check if results notifications are enabled
-            var triggers = instance.Config.WebhookTriggers ?? new List<string>();
+            var triggers = instance.Config.WebhookTriggers?.ToList() ?? new List<string>();
             if (!triggers.Contains("results") && !triggers.Contains("all"))
             {
                 return false;
             }
-            
+
             var payload = new
             {
                 eventType = "results",
@@ -138,10 +138,10 @@ namespace WebScraperApi.Services.Notifications
                 timestamp = DateTime.Now,
                 results = results
             };
-            
+
             return await SendWebhookAsync(instance.Config, payload);
         }
-        
+
         /// <summary>
         /// Sends a custom notification
         /// </summary>
@@ -156,14 +156,14 @@ namespace WebScraperApi.Services.Notifications
             {
                 return false;
             }
-            
+
             // Check if custom notifications are enabled
-            var triggers = instance.Config.WebhookTriggers ?? new List<string>();
+            var triggers = instance.Config.WebhookTriggers?.ToList() ?? new List<string>();
             if (!triggers.Contains("custom") && !triggers.Contains("all"))
             {
                 return false;
             }
-            
+
             var payload = new
             {
                 eventType = eventType,
@@ -172,10 +172,10 @@ namespace WebScraperApi.Services.Notifications
                 timestamp = DateTime.Now,
                 data = data
             };
-            
+
             return await SendWebhookAsync(instance.Config, payload);
         }
-        
+
         /// <summary>
         /// Sends a webhook notification
         /// </summary>
@@ -191,11 +191,11 @@ namespace WebScraperApi.Services.Notifications
                 {
                     return false;
                 }
-                
+
                 // Format the payload according to the specified format
                 string content;
                 string contentType;
-                
+
                 switch (config.WebhookFormat?.ToLower())
                 {
                     case "json":
@@ -203,7 +203,7 @@ namespace WebScraperApi.Services.Notifications
                         content = JsonConvert.SerializeObject(payload);
                         contentType = "application/json";
                         break;
-                        
+
                     case "form":
                         // Convert to form data
                         var formData = new Dictionary<string, string>();
@@ -223,16 +223,16 @@ namespace WebScraperApi.Services.Notifications
                                 }
                             }
                         }
-                        
+
                         var formContent = new FormUrlEncodedContent(formData);
                         var response = await _httpClient.PostAsync(webhookUrl, formContent);
                         return response.IsSuccessStatusCode;
                 }
-                
+
                 // Send the webhook notification
                 var stringContent = new StringContent(content, Encoding.UTF8, contentType);
                 var httpResponse = await _httpClient.PostAsync(webhookUrl, stringContent);
-                
+
                 if (httpResponse.IsSuccessStatusCode)
                 {
                     _logger.LogInformation($"Webhook sent successfully to {webhookUrl}");

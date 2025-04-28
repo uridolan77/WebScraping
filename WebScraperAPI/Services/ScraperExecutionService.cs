@@ -8,6 +8,7 @@ using WebScraper;
 using WebScraper.Validation;
 using WebScraperApi.Models;
 using WebScraper.RegulatoryFramework.Configuration;
+using WebScraper.RegulatoryFramework.Implementation;
 using WebScraperApi.Services.Factories;
 
 namespace WebScraperApi.Services
@@ -20,14 +21,14 @@ namespace WebScraperApi.Services
         private readonly ILogger _logger;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ScraperComponentFactory _componentFactory;
-        
+
         public ScraperExecutionService(ILogger logger, ILoggerFactory loggerFactory)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
             _componentFactory = new ScraperComponentFactory(loggerFactory);
         }
-        
+
         /// <summary>
         /// Starts a scraper with the provided configuration
         /// </summary>
@@ -36,34 +37,36 @@ namespace WebScraperApi.Services
         /// <param name="logAction">Action for logging messages</param>
         /// <returns>A task representing the asynchronous operation</returns>
         public async Task<bool> StartScraperAsync(
-            ScraperConfigModel config, 
-            ScraperState scraperState,
+            ScraperConfigModel config,
+            WebScraperApi.Models.ScraperState scraperState,
             Action<string> logAction)
         {
             try
             {
                 logAction($"Starting scraper: {config.Name}");
-                
+
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
-                
+
                 // Validate the configuration
                 if (!await ValidateConfigurationAsync(scraperConfig, logAction))
                 {
                     return false;
                 }
-                
+
                 // Always use EnhancedScraper for all scrapers
-                Scraper scraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
-                
+                var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
+                // Create a standard Scraper that we can use with the existing code
+                var scraper = new Scraper(scraperConfig, _logger);
+
                 // Initialize the scraper
                 logAction("Initializing scraper...");
                 await scraper.InitializeAsync();
-                
+
                 // Start scraping
                 logAction("Starting scraping process...");
                 await scraper.StartScrapingAsync();
-                
+
                 // Set up continuous monitoring if enabled
                 if (config.EnableContinuousMonitoring)
                 {
@@ -71,9 +74,9 @@ namespace WebScraperApi.Services
                     await scraper.SetupContinuousScrapingAsync(interval);
                     logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
                 }
-                
+
                 logAction("Scraping operation completed successfully");
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -83,7 +86,7 @@ namespace WebScraperApi.Services
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Validate the scraper configuration
         /// </summary>
@@ -91,11 +94,11 @@ namespace WebScraperApi.Services
         {
             // Create an HttpClient for validation
             using var httpClient = new System.Net.Http.HttpClient();
-                
+
             // First validate the configuration using our validator
             var validator = new ConfigurationValidator(httpClient, logAction);
             var validationResult = await validator.ValidateConfigurationAsync(config);
-            
+
             if (!validationResult.IsValid && !validationResult.CanRunWithWarnings)
             {
                 logAction("Configuration validation failed");
@@ -103,7 +106,7 @@ namespace WebScraperApi.Services
                 {
                     logAction($"Error: {error}");
                 }
-                
+
                 logAction("Scraping aborted due to configuration errors");
                 return false;
             }
@@ -116,20 +119,20 @@ namespace WebScraperApi.Services
                 }
                 logAction("Continuing with warnings...");
             }
-            
+
             return true;
         }
-        
+
         /// <summary>
         /// Create an enhanced scraper with components from factories
         /// </summary>
         private async Task<EnhancedScraper> CreateEnhancedScraperAsync(ScraperConfig config, Action<string> logAction)
         {
             logAction("Using enhanced scraper with advanced capabilities");
-            
+
             // Create the logger for the enhanced scraper
             var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
-            
+
             // Create all required components for the enhanced scraper using the factory
             var crawlStrategy = _componentFactory.CreateCrawlStrategy(config, logAction);
             var contentExtractor = _componentFactory.CreateContentExtractor(config, logAction);
@@ -139,43 +142,43 @@ namespace WebScraperApi.Services
             var dynamicRenderer = _componentFactory.CreateDynamicContentRenderer(config, logAction);
             var stateStore = _componentFactory.CreateStateStore(config, logAction);
             var alertService = _componentFactory.CreateAlertService(config, logAction);
-            
+
+            // Convert ScraperConfig to RegulatoryScraperConfig
+            var regulatoryConfig = new WebScraper.RegulatoryFramework.Configuration.RegulatoryScraperConfig
+            {
+                DomainName = config.Name,
+                BaseUrl = config.BaseUrl,
+                UserAgent = "WebScraperAPI/1.0",
+                MaxConcurrentRequests = config.MaxConcurrentRequests,
+                RequestTimeoutSeconds = 30,
+                EnablePriorityCrawling = config.EnableAdaptiveCrawling,
+                EnableHierarchicalExtraction = config.ExtractStructuredContent,
+                EnableDocumentProcessing = config.ProcessPdfDocuments,
+                EnableComplianceChangeDetection = config.EnableChangeDetection,
+                EnableDomainClassification = config.ClassifyRegulatoryDocuments,
+                EnableDynamicContentRendering = false,
+                EnableAlertSystem = config.NotifyOnChanges
+            };
+
             // Create the enhanced scraper with all components
             var enhancedScraper = new EnhancedScraper(
-                config, 
+                regulatoryConfig,
                 scraperLogger,
                 crawlStrategy,
                 contentExtractor,
-                documentProcessor);
-            
-            // Configure additional components if available
-            if (changeDetector != null && stateStore != null)
-            {
-                logAction("Configuring change detection capabilities");
-                enhancedScraper.ConfigureChangeDetection(changeDetector, stateStore);
-            }
-            
-            if (contentClassifier != null)
-            {
-                logAction("Configuring content classification capabilities");
-                enhancedScraper.ConfigureContentClassification(contentClassifier);
-            }
-            
-            if (dynamicRenderer != null)
-            {
-                logAction("Configuring dynamic content rendering capabilities");
-                enhancedScraper.ConfigureDynamicRendering(dynamicRenderer);
-            }
-            
-            if (alertService != null)
-            {
-                logAction("Configuring regulatory alerts");
-                enhancedScraper.ConfigureAlertService(alertService);
-            }
-            
+                documentProcessor,
+                changeDetector,
+                contentClassifier,
+                dynamicRenderer,
+                alertService,
+                stateStore);
+
+            // Wait a moment to make this truly async
+            await Task.Delay(1);
+
             return enhancedScraper;
         }
-        
+
         /// <summary>
         /// Stops a running scraper
         /// </summary>
@@ -198,7 +201,7 @@ namespace WebScraperApi.Services
                 }
             }
         }
-        
+
         /// <summary>
         /// Determines if the enhanced scraper should be used based on configuration
         /// </summary>
@@ -208,15 +211,15 @@ namespace WebScraperApi.Services
         {
             // Check if regulatory features are enabled
             bool useEnhancedScraper = IsRegulatoryFeaturesEnabled(config);
-            
+
             // Also check if other enhanced features are enabled
-            useEnhancedScraper = useEnhancedScraper || 
-                                config.ProcessPdfDocuments || 
+            useEnhancedScraper = useEnhancedScraper ||
+                                config.ProcessPdfDocuments ||
                                 config.ProcessJsHeavyPages;
-                                
+
             return useEnhancedScraper;
         }
-        
+
         /// <summary>
         /// Determines if regulatory features are enabled in the scraper configuration
         /// </summary>

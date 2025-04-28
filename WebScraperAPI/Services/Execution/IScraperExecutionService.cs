@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using WebScraper;
 using WebScraperApi.Models;
+using WebScraper.RegulatoryFramework.Implementation;
 
 namespace WebScraperApi.Services.Execution
 {
@@ -18,10 +19,10 @@ namespace WebScraperApi.Services.Execution
         /// <param name="logAction">Action for logging messages</param>
         /// <returns>A task representing the asynchronous operation</returns>
         Task<bool> StartScraperAsync(
-            ScraperConfigModel config, 
-            ScraperState scraperState,
+            ScraperConfigModel config,
+            WebScraperApi.Models.ScraperState scraperState,
             Action<string> logAction);
-        
+
         /// <summary>
         /// Creates an enhanced scraper with components from factories
         /// </summary>
@@ -29,7 +30,7 @@ namespace WebScraperApi.Services.Execution
         /// <param name="logAction">Action for logging messages</param>
         /// <returns>A configured EnhancedScraper instance</returns>
         Task<EnhancedScraper> CreateEnhancedScraperAsync(ScraperConfig config, Action<string> logAction);
-        
+
         /// <summary>
         /// Stops a running scraper
         /// </summary>
