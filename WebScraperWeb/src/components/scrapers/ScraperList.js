@@ -1,74 +1,94 @@
-// src/pages/ScraperList.jsx
+// src/components/scrapers/ScraperList.jsx
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Container, Typography, Box, Button, TextField, InputAdornment,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  Paper, Chip, IconButton, Dialog, DialogTitle, DialogContent, 
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, CircularProgress, Tooltip,
-  Card, CardContent, Grid, MenuItem, Select, FormControl, InputLabel
+  Card, CardContent, Grid, MenuItem, Select, FormControl, InputLabel,
+  Alert, Snackbar
 } from '@mui/material';
-import { 
-  Add as AddIcon, 
-  Search as SearchIcon, 
-  PlayArrow as PlayIcon, 
-  Stop as StopIcon, 
+import {
+  Add as AddIcon,
+  Search as SearchIcon,
+  PlayArrow as PlayIcon,
+  Stop as StopIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   Refresh as RefreshIcon,
-  FilterList as FilterIcon,
-  MoreVert as MoreVertIcon
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
-import { getAllScrapers, startScraper, stopScraper, deleteScraper } from '../api/scrapers';
+import { useScrapers } from '../../contexts/ScraperContext';
+import { getUserFriendlyErrorMessage } from '../../utils/errorHandler';
 
 const ScraperList = () => {
   const navigate = useNavigate();
-  const [scrapers, setScrapers] = useState([]);
+  const {
+    scrapers,
+    loading: isLoading,
+    error,
+    scraperStatus,
+    fetchScrapers,
+    start: startScraper,
+    stop: stopScraper,
+    removeScraper: deleteScraper,
+    refreshAll
+  } = useScrapers();
+
   const [filteredScrapers, setFilteredScrapers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scraperToDelete, setScraperToDelete] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
 
-  // Fetch scrapers
-  const fetchScrapers = async () => {
-    try {
-      setIsLoading(true);
-      const data = await getAllScrapers();
-      setScrapers(data || []);
-    } catch (error) {
-      console.error('Error fetching scrapers:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  // Show notification
+  const showNotification = (message, severity = 'info') => {
+    setNotification({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  // Handle notification close
+  const handleNotificationClose = () => {
+    setNotification(prev => ({ ...prev, open: false }));
   };
 
   // Initial load
   useEffect(() => {
     fetchScrapers();
-    
+
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchScrapers, 30000);
+    const interval = setInterval(refreshAll, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchScrapers, refreshAll]);
+
+  // Show error notification if there's an error
+  useEffect(() => {
+    if (error) {
+      showNotification(getUserFriendlyErrorMessage(error), 'error');
+    }
+  }, [error]);
 
   // Filter scrapers based on search term and status filter
   useEffect(() => {
     let filtered = [...scrapers];
-    
+
     // Apply search term filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        scraper => 
-          scraper.name.toLowerCase().includes(term) || 
+        scraper =>
+          scraper.name.toLowerCase().includes(term) ||
           scraper.baseUrl.toLowerCase().includes(term) ||
           scraper.id.toLowerCase().includes(term)
       );
     }
-    
+
     // Apply status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'running') {
@@ -79,7 +99,7 @@ const ScraperList = () => {
         filtered = filtered.filter(scraper => scraper.hasErrors);
       }
     }
-    
+
     setFilteredScrapers(filtered);
   }, [scrapers, searchTerm, statusFilter]);
 
@@ -88,9 +108,9 @@ const ScraperList = () => {
     try {
       setActionInProgress(id);
       await startScraper(id);
-      fetchScrapers(); // Refresh the list
+      showNotification('Scraper started successfully', 'success');
     } catch (error) {
-      console.error(`Error starting scraper ${id}:`, error);
+      showNotification(getUserFriendlyErrorMessage(error, `Failed to start scraper with ID ${id}`), 'error');
     } finally {
       setActionInProgress(null);
     }
@@ -100,9 +120,9 @@ const ScraperList = () => {
     try {
       setActionInProgress(id);
       await stopScraper(id);
-      fetchScrapers(); // Refresh the list
+      showNotification('Scraper stopped successfully', 'success');
     } catch (error) {
-      console.error(`Error stopping scraper ${id}:`, error);
+      showNotification(getUserFriendlyErrorMessage(error, `Failed to stop scraper with ID ${id}`), 'error');
     } finally {
       setActionInProgress(null);
     }
@@ -115,15 +135,15 @@ const ScraperList = () => {
 
   const handleDeleteScraper = async () => {
     if (!scraperToDelete) return;
-    
+
     try {
       setActionInProgress(scraperToDelete.id);
       await deleteScraper(scraperToDelete.id);
       setDeleteDialogOpen(false);
       setScraperToDelete(null);
-      fetchScrapers(); // Refresh the list
+      showNotification(`Scraper "${scraperToDelete.name}" deleted successfully`, 'success');
     } catch (error) {
-      console.error(`Error deleting scraper ${scraperToDelete.id}:`, error);
+      showNotification(getUserFriendlyErrorMessage(error, `Failed to delete scraper "${scraperToDelete.name}"`), 'error');
     } finally {
       setActionInProgress(null);
     }
@@ -131,10 +151,25 @@ const ScraperList = () => {
 
   // Render status chip with appropriate color
   const renderStatusChip = (scraper) => {
-    if (scraper.isRunning) {
+    const status = scraperStatus[scraper.id];
+
+    if (!status) {
+      return <Chip label="Unknown" color="default" size="small" />;
+    }
+
+    if (status.isRunning) {
       return <Chip label="Running" color="success" size="small" />;
-    } else if (scraper.hasErrors) {
-      return <Chip label="Error" color="error" size="small" />;
+    } else if (status.hasErrors) {
+      return (
+        <Tooltip title={status.errorMessage || 'An error occurred'}>
+          <Chip
+            label="Error"
+            color="error"
+            size="small"
+            icon={<ErrorIcon fontSize="small" />}
+          />
+        </Tooltip>
+      );
     } else {
       return <Chip label="Idle" color="default" size="small" />;
     }
@@ -197,7 +232,7 @@ const ScraperList = () => {
                 <Button
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={fetchScrapers}
+                  onClick={refreshAll}
                   disabled={isLoading}
                 >
                   Refresh
@@ -231,8 +266,8 @@ const ScraperList = () => {
                 filteredScrapers.map((scraper) => (
                   <TableRow key={scraper.id}>
                     <TableCell>
-                      <Link 
-                        to={`/scrapers/${scraper.id}`} 
+                      <Link
+                        to={`/scrapers/${scraper.id}`}
                         style={{ textDecoration: 'none', color: 'inherit', fontWeight: 'bold' }}
                       >
                         {scraper.name}
@@ -241,16 +276,18 @@ const ScraperList = () => {
                     <TableCell>{scraper.baseUrl}</TableCell>
                     <TableCell>{renderStatusChip(scraper)}</TableCell>
                     <TableCell>
-                      {scraper.lastRun 
-                        ? new Date(scraper.lastRun).toLocaleString() 
+                      {scraper.lastRun
+                        ? new Date(scraper.lastRun).toLocaleString()
                         : 'Never'}
                     </TableCell>
-                    <TableCell>{scraper.urlsProcessed || 0}</TableCell>
+                    <TableCell>
+                      {scraperStatus[scraper.id]?.urlsProcessed || scraper.urlsProcessed || 0}
+                    </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 1 }}>
-                        {scraper.isRunning ? (
+                        {scraperStatus[scraper.id]?.isRunning ? (
                           <Tooltip title="Stop Scraper">
-                            <IconButton 
+                            <IconButton
                               color="warning"
                               onClick={() => handleStopScraper(scraper.id)}
                               disabled={actionInProgress === scraper.id}
@@ -265,7 +302,7 @@ const ScraperList = () => {
                           </Tooltip>
                         ) : (
                           <Tooltip title="Start Scraper">
-                            <IconButton 
+                            <IconButton
                               color="success"
                               onClick={() => handleStartScraper(scraper.id)}
                               disabled={actionInProgress === scraper.id}
@@ -280,7 +317,7 @@ const ScraperList = () => {
                           </Tooltip>
                         )}
                         <Tooltip title="Edit Scraper">
-                          <IconButton 
+                          <IconButton
                             color="primary"
                             onClick={() => navigate(`/scrapers/${scraper.id}/edit`)}
                             size="small"
@@ -289,10 +326,10 @@ const ScraperList = () => {
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete Scraper">
-                          <IconButton 
+                          <IconButton
                             color="error"
                             onClick={() => handleOpenDeleteDialog(scraper)}
-                            disabled={actionInProgress === scraper.id || scraper.isRunning}
+                            disabled={actionInProgress === scraper.id || scraperStatus[scraper.id]?.isRunning}
                             size="small"
                           >
                             <DeleteIcon />
@@ -310,8 +347,8 @@ const ScraperList = () => {
                         <Typography variant="body1" gutterBottom>
                           No scrapers found matching your filters.
                         </Typography>
-                        <Button 
-                          variant="text" 
+                        <Button
+                          variant="text"
                           onClick={() => {
                             setSearchTerm('');
                             setStatusFilter('all');
@@ -325,8 +362,8 @@ const ScraperList = () => {
                         <Typography variant="body1" gutterBottom>
                           No scrapers found. Create your first scraper to get started.
                         </Typography>
-                        <Button 
-                          variant="contained" 
+                        <Button
+                          variant="contained"
                           startIcon={<AddIcon />}
                           component={Link}
                           to="/scrapers/create"
@@ -343,7 +380,7 @@ const ScraperList = () => {
           </Table>
         </TableContainer>
       )}
-      
+
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
@@ -352,15 +389,15 @@ const ScraperList = () => {
         <DialogTitle>Delete Scraper</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete the scraper "{scraperToDelete?.name}"? 
+            Are you sure you want to delete the scraper "{scraperToDelete?.name}"?
             This action cannot be undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleDeleteScraper} 
-            color="error" 
+          <Button
+            onClick={handleDeleteScraper}
+            color="error"
             variant="contained"
             disabled={actionInProgress === scraperToDelete?.id}
           >
@@ -372,6 +409,23 @@ const ScraperList = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Notification Snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleNotificationClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleNotificationClose}
+          severity={notification.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

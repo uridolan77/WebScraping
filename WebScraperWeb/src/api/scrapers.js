@@ -1,168 +1,207 @@
 // src/api/scrapers.js
-import apiClient from './index';
+import apiClient, { handleResponse } from './index';
+import { handleApiError } from '../utils/errorHandler';
 
-// Get all scrapers
+/**
+ * Get all scrapers
+ * @returns {Promise<Array>} List of scrapers
+ */
 export const getAllScrapers = async () => {
   try {
-    const response = await apiClient.get('/Scraper');
-    return response.data;
+    return handleResponse(apiClient.get('/Scraper'));
   } catch (error) {
-    console.error('Error fetching scrapers:', error);
-    throw error;
+    throw handleApiError(error, 'Failed to fetch scrapers');
   }
 };
 
-// Get a single scraper by ID
+/**
+ * Get a single scraper by ID
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Scraper details
+ */
 export const getScraper = async (id) => {
   try {
-    const response = await apiClient.get(`/Scraper/${id}`);
-    return response.data;
+    return handleResponse(apiClient.get(`/Scraper/${id}`));
   } catch (error) {
-    console.error(`Error fetching scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to fetch scraper with ID ${id}`);
   }
 };
 
-// Create a new scraper
+/**
+ * Create a new scraper
+ * @param {Object} scraperData - Scraper configuration
+ * @returns {Promise<Object>} Created scraper
+ */
 export const createScraper = async (scraperData) => {
   try {
-    const response = await apiClient.post('/Scraper', scraperData);
-    return response.data;
+    return handleResponse(apiClient.post('/Scraper', scraperData));
   } catch (error) {
-    console.error('Error creating scraper:', error);
-    throw error;
+    throw handleApiError(error, 'Failed to create scraper');
   }
 };
 
-// Update an existing scraper
+/**
+ * Update an existing scraper
+ * @param {string} id - Scraper ID
+ * @param {Object} scraperData - Updated scraper configuration
+ * @returns {Promise<Object>} Updated scraper
+ */
 export const updateScraper = async (id, scraperData) => {
   try {
-    const response = await apiClient.put(`/Scraper/${id}`, scraperData);
-    return response.data;
+    return handleResponse(apiClient.put(`/Scraper/${id}`, scraperData));
   } catch (error) {
-    console.error(`Error updating scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to update scraper with ID ${id}`);
   }
 };
 
-// Delete a scraper
+/**
+ * Delete a scraper
+ * @param {string} id - Scraper ID
+ * @returns {Promise<void>}
+ */
 export const deleteScraper = async (id) => {
   try {
-    const response = await apiClient.delete(`/Scraper/${id}`);
-    return response.data;
+    return handleResponse(apiClient.delete(`/Scraper/${id}`));
   } catch (error) {
-    console.error(`Error deleting scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to delete scraper with ID ${id}`);
   }
 };
 
-// Get scraper status
+/**
+ * Get scraper status
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Scraper status
+ */
 export const getScraperStatus = async (id) => {
   try {
-    const response = await apiClient.get(`/Scraper/${id}/status`);
-    return response.data;
+    return handleResponse(apiClient.get(`/Scraper/${id}/status`));
   } catch (error) {
-    console.error(`Error fetching status for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to get status for scraper with ID ${id}`);
   }
 };
 
-// Get scraper logs
+/**
+ * Get scraper logs
+ * @param {string} id - Scraper ID
+ * @param {number} limit - Maximum number of log entries to return
+ * @returns {Promise<Array>} Scraper logs
+ */
 export const getScraperLogs = async (id, limit = 100) => {
   try {
-    const response = await apiClient.get(`/Scraper/${id}/logs`, {
+    return handleResponse(apiClient.get(`/Scraper/${id}/logs`, {
       params: { limit }
-    });
-    return response.data;
+    }));
   } catch (error) {
-    console.error(`Error fetching logs for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to get logs for scraper with ID ${id}`);
   }
 };
 
-// Start a scraper
+/**
+ * Start a scraper
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Start result
+ */
 export const startScraper = async (id) => {
   try {
-    const response = await apiClient.post(`/Scraper/${id}/start`);
-    return response.data;
+    return handleResponse(apiClient.post(`/Scraper/${id}/start`));
   } catch (error) {
-    console.error(`Error starting scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to start scraper with ID ${id}`);
   }
 };
 
-// Stop a scraper
+/**
+ * Stop a scraper
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Stop result
+ */
 export const stopScraper = async (id) => {
   try {
-    const response = await apiClient.post(`/Scraper/${id}/stop`);
-    return response.data;
+    return handleResponse(apiClient.post(`/Scraper/${id}/stop`));
   } catch (error) {
-    console.error(`Error stopping scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to stop scraper with ID ${id}`);
   }
 };
 
-// Set monitoring settings
+/**
+ * Set monitoring settings
+ * @param {string} id - Scraper ID
+ * @param {Object} settings - Monitoring settings
+ * @returns {Promise<Object>} Updated monitoring settings
+ */
 export const setMonitoring = async (id, settings) => {
   try {
-    const response = await apiClient.post(`/Scraper/${id}/monitor`, settings);
-    return response.data;
+    return handleResponse(apiClient.post(`/Scraper/${id}/monitor`, settings));
   } catch (error) {
-    console.error(`Error setting monitoring for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to set monitoring for scraper with ID ${id}`);
   }
 };
 
-// Get scraper results
+/**
+ * Get scraper results
+ * @param {number} page - Page number
+ * @param {number} pageSize - Page size
+ * @param {string} search - Search term
+ * @param {string} scraperId - Scraper ID
+ * @returns {Promise<Object>} Scraper results with pagination
+ */
 export const getScraperResults = async (page = 1, pageSize = 20, search = null, scraperId = null) => {
   try {
     const params = { page, pageSize };
     if (search) params.search = search;
     if (scraperId) params.scraperId = scraperId;
-    
-    const response = await apiClient.get('/Scraper/results', { params });
-    return response.data;
+
+    return handleResponse(apiClient.get('/Scraper/results', { params }));
   } catch (error) {
-    console.error('Error fetching scraper results:', error);
-    throw error;
+    throw handleApiError(error, 'Failed to fetch scraper results');
   }
 };
 
-// Get detected changes for a scraper
+/**
+ * Get detected changes for a scraper
+ * @param {string} id - Scraper ID
+ * @param {Date} since - Date to get changes since
+ * @param {number} limit - Maximum number of changes to return
+ * @returns {Promise<Array>} Detected changes
+ */
 export const getDetectedChanges = async (id, since = null, limit = 100) => {
   try {
     const params = { limit };
     if (since) params.since = since.toISOString();
-    
-    const response = await apiClient.get(`/Scraper/${id}/changes`, { params });
-    return response.data;
+
+    return handleResponse(apiClient.get(`/Scraper/${id}/changes`, { params }));
   } catch (error) {
-    console.error(`Error fetching detected changes for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to fetch detected changes for scraper with ID ${id}`);
   }
 };
 
-// Get processed documents
+/**
+ * Get processed documents
+ * @param {string} id - Scraper ID
+ * @param {string} documentType - Document type filter
+ * @param {number} page - Page number
+ * @param {number} pageSize - Page size
+ * @returns {Promise<Object>} Processed documents with pagination
+ */
 export const getProcessedDocuments = async (id, documentType = null, page = 1, pageSize = 20) => {
   try {
     const params = { page, pageSize };
     if (documentType) params.documentType = documentType;
-    
-    const response = await apiClient.get(`/Scraper/${id}/documents`, { params });
-    return response.data;
+
+    return handleResponse(apiClient.get(`/Scraper/${id}/documents`, { params }));
   } catch (error) {
-    console.error(`Error fetching processed documents for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to fetch processed documents for scraper with ID ${id}`);
   }
 };
 
-// Compress stored content
+/**
+ * Compress stored content
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Compression result
+ */
 export const compressStoredContent = async (id) => {
   try {
-    const response = await apiClient.post(`/Scraper/${id}/compress`);
-    return response.data;
+    return handleResponse(apiClient.post(`/Scraper/${id}/compress`));
   } catch (error) {
-    console.error(`Error compressing content for scraper with id ${id}:`, error);
-    throw error;
+    throw handleApiError(error, `Failed to compress content for scraper with ID ${id}`);
   }
 };

@@ -1,23 +1,38 @@
 // src/hooks/useAnalytics.js
-import { useState, useCallback } from 'react';
-import { 
-  getOverallAnalytics, 
-  getScraperAnalytics, 
+import { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  getOverallAnalytics,
+  getScraperAnalytics,
   getContentChangeAnalytics,
   getPerformanceMetrics,
   getContentTypeDistribution,
-  getRegulatoryImpactAnalysis
+  getRegulatoryImpactAnalysis,
+  getTrendAnalysis,
+  getScraperComparison
 } from '../api/analytics';
+import { getUserFriendlyErrorMessage } from '../utils/errorHandler';
 
-const useAnalytics = () => {
+const useAnalytics = (scraperId = null) => {
   const [overallData, setOverallData] = useState(null);
   const [scraperData, setScraperData] = useState(null);
   const [changeData, setChangeData] = useState(null);
   const [performanceData, setPerformanceData] = useState(null);
   const [contentTypeData, setContentTypeData] = useState(null);
   const [regulatoryImpactData, setRegulatoryImpactData] = useState(null);
+  const [trendData, setTrendData] = useState(null);
+  const [comparisonData, setComparisonData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Use a ref to track if the component is mounted
+  const isMounted = useRef(true);
+
+  // Set isMounted to false when the component unmounts
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Fetch overall analytics
   const fetchOverallAnalytics = useCallback(async (timeframe = 'week') => {
@@ -25,33 +40,51 @@ const useAnalytics = () => {
       setLoading(true);
       setError(null);
       const data = await getOverallAnalytics(timeframe);
-      setOverallData(data);
+
+      if (isMounted.current) {
+        setOverallData(data);
+      }
+
       return data;
     } catch (err) {
-      setError('Failed to fetch overall analytics');
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch overall analytics'));
+        console.error('Error fetching overall analytics:', err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   // Fetch scraper-specific analytics
-  const fetchScraperAnalytics = useCallback(async (id, timeframe = 'week') => {
+  const fetchScraperAnalytics = useCallback(async (id = scraperId, timeframe = 'week') => {
+    if (!id) return null;
+
     try {
       setLoading(true);
       setError(null);
       const data = await getScraperAnalytics(id, timeframe);
-      setScraperData(data);
+
+      if (isMounted.current) {
+        setScraperData(data);
+      }
+
       return data;
     } catch (err) {
-      setError(`Failed to fetch analytics for scraper with ID ${id}`);
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, `Failed to fetch analytics for scraper with ID ${id}`));
+        console.error(`Error fetching analytics for scraper with ID ${id}:`, err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [scraperId]);
 
   // Fetch content change analytics
   const fetchContentChangeAnalytics = useCallback(async (timeframe = 'month') => {
@@ -59,14 +92,22 @@ const useAnalytics = () => {
       setLoading(true);
       setError(null);
       const data = await getContentChangeAnalytics(timeframe);
-      setChangeData(data);
+
+      if (isMounted.current) {
+        setChangeData(data);
+      }
+
       return data;
     } catch (err) {
-      setError('Failed to fetch content change analytics');
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch content change analytics'));
+        console.error('Error fetching content change analytics:', err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -76,33 +117,49 @@ const useAnalytics = () => {
       setLoading(true);
       setError(null);
       const data = await getPerformanceMetrics(timeframe);
-      setPerformanceData(data);
+
+      if (isMounted.current) {
+        setPerformanceData(data);
+      }
+
       return data;
     } catch (err) {
-      setError('Failed to fetch performance metrics');
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch performance metrics'));
+        console.error('Error fetching performance metrics:', err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   // Fetch content type distribution
-  const fetchContentTypeDistribution = useCallback(async (scraperId = null) => {
+  const fetchContentTypeDistribution = useCallback(async (id = scraperId) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getContentTypeDistribution(scraperId);
-      setContentTypeData(data);
+      const data = await getContentTypeDistribution(id);
+
+      if (isMounted.current) {
+        setContentTypeData(data);
+      }
+
       return data;
     } catch (err) {
-      setError('Failed to fetch content type distribution');
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch content type distribution'));
+        console.error('Error fetching content type distribution:', err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [scraperId]);
 
   // Fetch regulatory impact analysis
   const fetchRegulatoryImpactAnalysis = useCallback(async (timeframe = 'month') => {
@@ -110,15 +167,147 @@ const useAnalytics = () => {
       setLoading(true);
       setError(null);
       const data = await getRegulatoryImpactAnalysis(timeframe);
-      setRegulatoryImpactData(data);
+
+      if (isMounted.current) {
+        setRegulatoryImpactData(data);
+      }
+
       return data;
     } catch (err) {
-      setError('Failed to fetch regulatory impact analysis');
-      console.error(err);
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch regulatory impact analysis'));
+        console.error('Error fetching regulatory impact analysis:', err);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
+  }, []);
+
+  // Fetch trend analysis
+  const fetchTrendAnalysis = useCallback(async (metric = 'changes', timeframe = 'month') => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getTrendAnalysis(metric, timeframe);
+
+      if (isMounted.current) {
+        setTrendData(data);
+      }
+
+      return data;
+    } catch (err) {
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch trend analysis'));
+        console.error('Error fetching trend analysis:', err);
+      }
+      return null;
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  // Fetch scraper comparison
+  const fetchScraperComparison = useCallback(async (scraperIds, metric = 'performance', timeframe = 'month') => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getScraperComparison(scraperIds, metric, timeframe);
+
+      if (isMounted.current) {
+        setComparisonData(data);
+      }
+
+      return data;
+    } catch (err) {
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch scraper comparison data'));
+        console.error('Error fetching scraper comparison data:', err);
+      }
+      return null;
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  // Fetch all analytics data
+  const fetchAllAnalytics = useCallback(async (timeframe = 'week') => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const promises = [
+        getOverallAnalytics(timeframe),
+        getContentChangeAnalytics(timeframe),
+        getPerformanceMetrics(timeframe),
+        getContentTypeDistribution(scraperId),
+        getRegulatoryImpactAnalysis(timeframe)
+      ];
+
+      // Add scraper-specific analytics if scraperId is provided
+      if (scraperId) {
+        promises.push(getScraperAnalytics(scraperId, timeframe));
+      }
+
+      const [
+        overallResult,
+        changeResult,
+        performanceResult,
+        contentTypeResult,
+        regulatoryResult,
+        scraperResult
+      ] = await Promise.all(promises);
+
+      if (isMounted.current) {
+        setOverallData(overallResult);
+        setChangeData(changeResult);
+        setPerformanceData(performanceResult);
+        setContentTypeData(contentTypeResult);
+        setRegulatoryImpactData(regulatoryResult);
+
+        if (scraperResult) {
+          setScraperData(scraperResult);
+        }
+      }
+
+      return {
+        overall: overallResult,
+        changes: changeResult,
+        performance: performanceResult,
+        contentTypes: contentTypeResult,
+        regulatoryImpact: regulatoryResult,
+        scraper: scraperResult
+      };
+    } catch (err) {
+      if (isMounted.current) {
+        setError(getUserFriendlyErrorMessage(err, 'Failed to fetch analytics data'));
+        console.error('Error fetching all analytics data:', err);
+      }
+      return null;
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
+    }
+  }, [scraperId]);
+
+  // Clear all data
+  const clearData = useCallback(() => {
+    setOverallData(null);
+    setScraperData(null);
+    setChangeData(null);
+    setPerformanceData(null);
+    setContentTypeData(null);
+    setRegulatoryImpactData(null);
+    setTrendData(null);
+    setComparisonData(null);
+    setError(null);
   }, []);
 
   return {
@@ -128,6 +317,8 @@ const useAnalytics = () => {
     performanceData,
     contentTypeData,
     regulatoryImpactData,
+    trendData,
+    comparisonData,
     loading,
     error,
     fetchOverallAnalytics,
@@ -135,7 +326,11 @@ const useAnalytics = () => {
     fetchContentChangeAnalytics,
     fetchPerformanceMetrics,
     fetchContentTypeDistribution,
-    fetchRegulatoryImpactAnalysis
+    fetchRegulatoryImpactAnalysis,
+    fetchTrendAnalysis,
+    fetchScraperComparison,
+    fetchAllAnalytics,
+    clearData
   };
 };
 
