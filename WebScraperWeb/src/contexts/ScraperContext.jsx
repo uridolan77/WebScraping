@@ -1,5 +1,14 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { getAllScrapers, getScraper, getScraperStatus } from '../api/scrapers';
+import {
+  getAllScrapers,
+  getScraper,
+  getScraperStatus,
+  createScraper,
+  updateScraper,
+  deleteScraper,
+  startScraper,
+  stopScraper
+} from '../api/scrapers';
 
 // Create the context
 const ScraperContext = createContext();
@@ -43,14 +52,14 @@ export const ScraperProvider = ({ children }) => {
       if (scrapers.length === 0) return;
 
       try {
-        const statusPromises = scrapers.map(scraper => 
+        const statusPromises = scrapers.map(scraper =>
           getScraperStatus(scraper.id)
             .then(status => ({ id: scraper.id, status }))
             .catch(err => ({ id: scraper.id, status: { isRunning: false, error: true } }))
         );
 
         const statuses = await Promise.all(statusPromises);
-        
+
         const statusMap = statuses.reduce((acc, { id, status }) => {
           acc[id] = status;
           return acc;
@@ -63,10 +72,10 @@ export const ScraperProvider = ({ children }) => {
     };
 
     fetchScraperStatuses();
-    
+
     // Set up polling for status updates
     const intervalId = setInterval(fetchScraperStatuses, 30000); // Poll every 30 seconds
-    
+
     return () => clearInterval(intervalId);
   }, [scrapers]);
 
@@ -92,6 +101,129 @@ export const ScraperProvider = ({ children }) => {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // Function to add a new scraper
+  const addScraper = async (scraperData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await createScraper(scraperData);
+      setScrapers(prev => [...prev, data]);
+      return data;
+    } catch (err) {
+      setError('Failed to create scraper');
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to edit a scraper
+  const editScraper = async (id, scraperData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await updateScraper(id, scraperData);
+      setScrapers(prev => prev.map(scraper =>
+        scraper.id === id ? data : scraper
+      ));
+      if (selectedScraper && selectedScraper.id === id) {
+        setSelectedScraper(data);
+      }
+      return data;
+    } catch (err) {
+      setError(`Failed to update scraper with ID ${id}`);
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to remove a scraper
+  const removeScraper = async (id) => {
+    try {
+      setLoading(true);
+      setError(null);
+      await deleteScraper(id);
+      setScrapers(prev => prev.filter(scraper => scraper.id !== id));
+      if (selectedScraper && selectedScraper.id === id) {
+        setSelectedScraper(null);
+      }
+      return true;
+    } catch (err) {
+      setError(`Failed to delete scraper with ID ${id}`);
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to start a scraper
+  const start = async (id) => {
+    try {
+      setError(null);
+      const result = await startScraper(id);
+
+      // Update the status in the local state
+      setScraperStatus(prev => ({
+        ...prev,
+        [id]: { ...prev[id], isRunning: true }
+      }));
+
+      return result;
+    } catch (err) {
+      setError(`Failed to start scraper with ID ${id}`);
+      console.error(err);
+      throw err;
+    }
+  };
+
+  // Function to stop a scraper
+  const stop = async (id) => {
+    try {
+      setError(null);
+      const result = await stopScraper(id);
+
+      // Update the status in the local state
+      setScraperStatus(prev => ({
+        ...prev,
+        [id]: { ...prev[id], isRunning: false }
+      }));
+
+      return result;
+    } catch (err) {
+      setError(`Failed to stop scraper with ID ${id}`);
+      console.error(err);
+      throw err;
+    }
+  };
+
+  // Function to fetch status for all scrapers
+  const fetchAllScraperStatus = async () => {
+    try {
+      const statusPromises = scrapers.map(scraper =>
+        getScraperStatus(scraper.id)
+          .then(status => ({ id: scraper.id, status }))
+          .catch(err => ({ id: scraper.id, status: { isRunning: false, error: true } }))
+      );
+
+      const statuses = await Promise.all(statusPromises);
+
+      const statusMap = statuses.reduce((acc, { id, status }) => {
+        acc[id] = status;
+        return acc;
+      }, {});
+
+      setScraperStatus(statusMap);
+      return statusMap;
+    } catch (err) {
+      console.error('Error fetching scraper statuses:', err);
+      return {};
+    }
+  };
+
   const value = {
     scrapers,
     selectedScraper,
@@ -99,7 +231,13 @@ export const ScraperProvider = ({ children }) => {
     loading,
     error,
     fetchScraper,
-    refreshScrapers
+    refreshScrapers,
+    addScraper,
+    editScraper,
+    removeScraper,
+    start,
+    stop,
+    fetchAllScraperStatus
   };
 
   return (
