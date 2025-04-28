@@ -34,7 +34,7 @@ export const getOverallAnalytics = async (timeframe = 'week', forceRefresh = fal
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Scraper-specific analytics data
  */
-export const getScraperAnalytics = async (id, timeframe = 'week', forceRefresh = false) => {
+export const getScraperAnalytics = async (id: string, timeframe: string = 'week', forceRefresh: boolean = false) => {
   try {
     return await cachedGet(`/Analytics/scraper/${id}`, {
       params: { timeframe },
@@ -52,7 +52,7 @@ export const getScraperAnalytics = async (id, timeframe = 'week', forceRefresh =
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Content change analytics data
  */
-export const getContentChangeAnalytics = async (timeframe = 'month', forceRefresh = false) => {
+export const getContentChangeAnalytics = async (timeframe: string = 'month', forceRefresh: boolean = false) => {
   try {
     return await cachedGet('/Analytics/changes', {
       params: { timeframe },
@@ -70,7 +70,7 @@ export const getContentChangeAnalytics = async (timeframe = 'month', forceRefres
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Performance metrics data
  */
-export const getPerformanceMetrics = async (timeframe = 'week', forceRefresh = false) => {
+export const getPerformanceMetrics = async (timeframe: string = 'week', forceRefresh: boolean = false) => {
   try {
     return await cachedGet('/Analytics/performance', {
       params: { timeframe },
@@ -88,9 +88,9 @@ export const getPerformanceMetrics = async (timeframe = 'week', forceRefresh = f
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Content type distribution data
  */
-export const getContentTypeDistribution = async (scraperId = null, forceRefresh = false) => {
+export const getContentTypeDistribution = async (scraperId: string | null = null, forceRefresh: boolean = false) => {
   try {
-    const params = {};
+    const params: Record<string, string> = {};
     if (scraperId) params.scraperId = scraperId;
 
     return await cachedGet('/Analytics/content-types', {
@@ -109,7 +109,7 @@ export const getContentTypeDistribution = async (scraperId = null, forceRefresh 
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Regulatory impact analysis data
  */
-export const getRegulatoryImpactAnalysis = async (timeframe = 'month', forceRefresh = false) => {
+export const getRegulatoryImpactAnalysis = async (timeframe: string = 'month', forceRefresh: boolean = false) => {
   try {
     return await cachedGet('/Analytics/regulatory-impact', {
       params: { timeframe },
@@ -128,7 +128,7 @@ export const getRegulatoryImpactAnalysis = async (timeframe = 'month', forceRefr
  * @param {boolean} forceRefresh - Force a refresh of the cache
  * @returns {Promise<Object>} Trend analysis data
  */
-export const getTrendAnalysis = async (metric = 'changes', timeframe = 'month', forceRefresh = false) => {
+export const getTrendAnalysis = async (metric: string = 'changes', timeframe: string = 'month', forceRefresh: boolean = false) => {
   try {
     return await cachedGet('/Analytics/trends', {
       params: { metric, timeframe },
@@ -147,7 +147,7 @@ export const getTrendAnalysis = async (metric = 'changes', timeframe = 'month', 
  * @param {string} timeframe - Time period for comparison (day, week, month, year)
  * @returns {Promise<Object>} Comparison data
  */
-export const getScraperComparison = async (scraperIds, metric = 'performance', timeframe = 'month') => {
+export const getScraperComparison = async (scraperIds: string[], metric: string = 'performance', timeframe: string = 'month') => {
   try {
     // Note: We don't cache POST requests
     return handleResponse(apiClient.post('/Analytics/compare', {
@@ -171,6 +171,56 @@ export const clearAnalyticsCache = () => {
  * Clear cache for a specific analytics endpoint
  * @param {string} endpoint - Analytics endpoint (e.g., 'overall', 'changes', 'performance')
  */
-export const clearAnalyticsEndpointCache = (endpoint) => {
+export const clearAnalyticsEndpointCache = (endpoint: string) => {
   clearCache(`/Analytics/${endpoint}`);
+};
+
+/**
+ * Get analytics summary
+ * @returns {Promise<Object>} Analytics summary data
+ */
+export const getAnalyticsSummary = async () => {
+  try {
+    return await cachedGet('/Analytics/summary', {
+      cacheTTL: CACHE_TTL.SHORT
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch analytics summary');
+  }
+};
+
+/**
+ * Get popular domains
+ * @param {number} limit - Maximum number of domains to return
+ * @returns {Promise<Object>} Popular domains data
+ */
+export const getPopularDomains = async (limit: number = 10) => {
+  try {
+    return await cachedGet('/Analytics/popular-domains', {
+      params: { limit },
+      cacheTTL: CACHE_TTL.MEDIUM
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch popular domains');
+  }
+};
+
+/**
+ * Get content change frequency
+ * @param {Object} options - Options
+ * @param {Date} options.since - Date to get changes since
+ * @returns {Promise<Object>} Content change frequency data
+ */
+export const getContentChangeFrequency = async (options: { since?: Date } = {}) => {
+  try {
+    const params: Record<string, string> = {};
+    if (options.since) params.since = options.since.toISOString();
+
+    return await cachedGet('/Analytics/change-frequency', {
+      params,
+      cacheTTL: CACHE_TTL.MEDIUM
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch content change frequency');
+  }
 };

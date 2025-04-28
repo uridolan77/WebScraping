@@ -1,5 +1,6 @@
-// src/api/scrapers.js
-import apiClient, { handleResponse } from './index';
+// src/api/scrapers.ts
+import apiClient from './client';
+import { handleResponse } from './index';
 import { handleApiError } from '../utils/errorHandler';
 
 /**
@@ -19,7 +20,7 @@ export const getAllScrapers = async () => {
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Scraper details
  */
-export const getScraper = async (id) => {
+export const getScraper = async (id: string) => {
   try {
     return handleResponse(apiClient.get(`/Scraper/${id}`));
   } catch (error) {
@@ -32,7 +33,7 @@ export const getScraper = async (id) => {
  * @param {Object} scraperData - Scraper configuration
  * @returns {Promise<Object>} Created scraper
  */
-export const createScraper = async (scraperData) => {
+export const createScraper = async (scraperData: any) => {
   try {
     return handleResponse(apiClient.post('/Scraper', scraperData));
   } catch (error) {
@@ -46,7 +47,7 @@ export const createScraper = async (scraperData) => {
  * @param {Object} scraperData - Updated scraper configuration
  * @returns {Promise<Object>} Updated scraper
  */
-export const updateScraper = async (id, scraperData) => {
+export const updateScraper = async (id: string, scraperData: any) => {
   try {
     return handleResponse(apiClient.put(`/Scraper/${id}`, scraperData));
   } catch (error) {
@@ -59,7 +60,7 @@ export const updateScraper = async (id, scraperData) => {
  * @param {string} id - Scraper ID
  * @returns {Promise<void>}
  */
-export const deleteScraper = async (id) => {
+export const deleteScraper = async (id: string) => {
   try {
     return handleResponse(apiClient.delete(`/Scraper/${id}`));
   } catch (error) {
@@ -72,7 +73,7 @@ export const deleteScraper = async (id) => {
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Scraper status
  */
-export const getScraperStatus = async (id) => {
+export const getScraperStatus = async (id: string) => {
   try {
     return handleResponse(apiClient.get(`/Scraper/${id}/status`));
   } catch (error) {
@@ -86,7 +87,7 @@ export const getScraperStatus = async (id) => {
  * @param {number} limit - Maximum number of log entries to return
  * @returns {Promise<Array>} Scraper logs
  */
-export const getScraperLogs = async (id, limit = 100) => {
+export const getScraperLogs = async (id: string, limit: number = 100) => {
   try {
     return handleResponse(apiClient.get(`/Scraper/${id}/logs`, {
       params: { limit }
@@ -101,7 +102,7 @@ export const getScraperLogs = async (id, limit = 100) => {
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Start result
  */
-export const startScraper = async (id) => {
+export const startScraper = async (id: string) => {
   try {
     return handleResponse(apiClient.post(`/Scraper/${id}/start`));
   } catch (error) {
@@ -114,7 +115,7 @@ export const startScraper = async (id) => {
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Stop result
  */
-export const stopScraper = async (id) => {
+export const stopScraper = async (id: string) => {
   try {
     return handleResponse(apiClient.post(`/Scraper/${id}/stop`));
   } catch (error) {
@@ -128,7 +129,7 @@ export const stopScraper = async (id) => {
  * @param {Object} settings - Monitoring settings
  * @returns {Promise<Object>} Updated monitoring settings
  */
-export const setMonitoring = async (id, settings) => {
+export const setMonitoring = async (id: string, settings: any) => {
   try {
     return handleResponse(apiClient.post(`/Scraper/${id}/monitor`, settings));
   } catch (error) {
@@ -144,9 +145,9 @@ export const setMonitoring = async (id, settings) => {
  * @param {string} scraperId - Scraper ID
  * @returns {Promise<Object>} Scraper results with pagination
  */
-export const getScraperResults = async (page = 1, pageSize = 20, search = null, scraperId = null) => {
+export const getScraperResults = async (page: number = 1, pageSize: number = 20, search: string | null = null, scraperId: string | null = null) => {
   try {
-    const params = { page, pageSize };
+    const params: Record<string, any> = { page, pageSize };
     if (search) params.search = search;
     if (scraperId) params.scraperId = scraperId;
 
@@ -163,9 +164,9 @@ export const getScraperResults = async (page = 1, pageSize = 20, search = null, 
  * @param {number} limit - Maximum number of changes to return
  * @returns {Promise<Array>} Detected changes
  */
-export const getDetectedChanges = async (id, since = null, limit = 100) => {
+export const getDetectedChanges = async (id: string, since: Date | null = null, limit: number = 100) => {
   try {
-    const params = { limit };
+    const params: Record<string, any> = { limit };
     if (since) params.since = since.toISOString();
 
     return handleResponse(apiClient.get(`/Scraper/${id}/changes`, { params }));
@@ -182,9 +183,9 @@ export const getDetectedChanges = async (id, since = null, limit = 100) => {
  * @param {number} pageSize - Page size
  * @returns {Promise<Object>} Processed documents with pagination
  */
-export const getProcessedDocuments = async (id, documentType = null, page = 1, pageSize = 20) => {
+export const getProcessedDocuments = async (id: string, documentType: string | null = null, page: number = 1, pageSize: number = 20) => {
   try {
-    const params = { page, pageSize };
+    const params: Record<string, any> = { page, pageSize };
     if (documentType) params.documentType = documentType;
 
     return handleResponse(apiClient.get(`/Scraper/${id}/documents`, { params }));
@@ -198,7 +199,7 @@ export const getProcessedDocuments = async (id, documentType = null, page = 1, p
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Compression result
  */
-export const compressStoredContent = async (id) => {
+export const compressStoredContent = async (id: string) => {
   try {
     return handleResponse(apiClient.post(`/Scraper/${id}/compress`));
   } catch (error) {

@@ -274,32 +274,35 @@ export const isValidCronExpression = (cron) => {
   // Check if we have 5 or 6 fields
   if (fields.length !== 5 && fields.length !== 6) return false;
 
-  // Define field validators
-  const validators = [
-    // Minutes: 0-59
-    (field) => /^(\*|([0-9]|[1-5][0-9])(-([0-9]|[1-5][0-9]))?(\/[1-9][0-9]*)?(,([0-9]|[1-5][0-9])(-([0-9]|[1-5][0-9]))?)*|)$/.test(field),
+  // Simple validation for common cron expressions
+  // This is a simplified approach that accepts most valid cron expressions
+  // but may not catch all edge cases
+  const simpleValidators = [
+    // Seconds/Minutes: 0-59
+    (field) => /^(\*|[0-9]|[1-5][0-9]|(\*\/[0-9]+)|([0-9]+(-[0-9]+)?(\/[0-9]+)?)(,[0-9]+(-[0-9]+)?(\/[0-9]+)?)*|\?)$/.test(field),
 
     // Hours: 0-23
-    (field) => /^(\*|([0-9]|1[0-9]|2[0-3])(-([0-9]|1[0-9]|2[0-3]))?(\/[1-9][0-9]*)?(,([0-9]|1[0-9]|2[0-3])(-([0-9]|1[0-9]|2[0-3]))?)*|)$/.test(field),
+    (field) => /^(\*|[0-9]|1[0-9]|2[0-3]|(\*\/[0-9]+)|([0-9]+(-[0-9]+)?(\/[0-9]+)?)(,[0-9]+(-[0-9]+)?(\/[0-9]+)?)*|\?)$/.test(field),
 
     // Day of month: 1-31
-    (field) => /^(\*|([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?(\/[1-9][0-9]*)?(,([1-9]|[12][0-9]|3[01])(-([1-9]|[12][0-9]|3[01]))?)*|\?)$/.test(field),
+    (field) => /^(\*|[1-9]|[12][0-9]|3[01]|(\*\/[0-9]+)|([0-9]+(-[0-9]+)?(\/[0-9]+)?)(,[0-9]+(-[0-9]+)?(\/[0-9]+)?)*|\?)$/.test(field),
 
     // Month: 1-12 or JAN-DEC
-    (field) => /^(\*|(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)|([1-9]|1[0-2]))(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|([1-9]|1[0-2])))?(\/[1-9][0-9]*)?(,(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|([1-9]|1[0-2]))(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|([1-9]|1[0-2])))?)*|)$/.test(field),
+    (field) => /^(\*|[1-9]|1[0-2]|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|(\*\/[0-9]+)|([0-9]+(-[0-9]+)?(\/[0-9]+)?)(,[0-9]+(-[0-9]+)?(\/[0-9]+)?)*|\?)$/.test(field),
 
     // Day of week: 0-6 or SUN-SAT
-    (field) => /^(\*|(SUN|MON|TUE|WED|THU|FRI|SAT)|([0-6]))(-(SUN|MON|TUE|WED|THU|FRI|SAT|([0-6])))?(\/[1-9][0-9]*)?(,(SUN|MON|TUE|WED|THU|FRI|SAT|([0-6]))(-(SUN|MON|TUE|WED|THU|FRI|SAT|([0-6])))?)*|\?)$/.test(field)
+    (field) => /^(\*|[0-6]|SUN|MON|TUE|WED|THU|FRI|SAT|(\*\/[0-9]+)|([0-9]+(-[0-9]+)?(\/[0-9]+)?)(,[0-9]+(-[0-9]+)?(\/[0-9]+)?)*|\?)$/.test(field)
   ];
 
   // If we have 6 fields, add a validator for seconds (0-59)
   if (fields.length === 6) {
-    validators.unshift((field) => /^(\*|([0-9]|[1-5][0-9])(-([0-9]|[1-5][0-9]))?(\/[1-9][0-9]*)?(,([0-9]|[1-5][0-9])(-([0-9]|[1-5][0-9]))?)*|)$/.test(field));
+    // Use the same validator as for minutes
+    simpleValidators.unshift(simpleValidators[0]);
   }
 
   // Validate each field
   for (let i = 0; i < fields.length; i++) {
-    if (!validators[i](fields[i])) {
+    if (!simpleValidators[i](fields[i])) {
       return false;
     }
   }

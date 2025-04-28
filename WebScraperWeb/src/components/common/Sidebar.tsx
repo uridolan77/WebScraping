@@ -1,10 +1,10 @@
 import React from 'react';
-import { 
-  Drawer, 
-  List, 
-  ListItem, 
-  ListItemIcon, 
-  ListItemText, 
+import {
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
   Divider,
   Toolbar,
   Box,
@@ -14,7 +14,7 @@ import {
   Dashboard as DashboardIcon,
   Web as WebIcon,
   Analytics as AnalyticsIcon,
-  Monitoring as MonitoringIcon,
+  Speed as MonitoringIcon,
   Schedule as ScheduleIcon,
   Notifications as NotificationsIcon,
   Settings as SettingsIcon
@@ -24,20 +24,25 @@ import { useNavigate, useLocation } from 'react-router-dom';
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Scrapers', icon: <WebIcon />, path: '/scrapers' },
-  { text: 'Monitoring', icon: <MonitoringIcon />, path: '/monitoring' },
-  { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
-  { text: 'Scheduling', icon: <ScheduleIcon />, path: '/scheduling' },
-  { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
-  { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' }
+  // Temporarily removed other menu items until they're implemented
+  // { text: 'Scrapers', icon: <WebIcon />, path: '/scrapers' },
+  // { text: 'Monitoring', icon: <MonitoringIcon />, path: '/monitoring' },
+  // { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
+  // { text: 'Scheduling', icon: <ScheduleIcon />, path: '/scheduling' },
+  // { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
+  // { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
 ];
 
-const Sidebar = ({ open }) => {
+interface SidebarProps {
+  open?: boolean;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ open = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const handleNavigation = (path) => {
+
+  const handleNavigation = (path: string) => {
     navigate(path);
   };
 
@@ -47,8 +52,8 @@ const Sidebar = ({ open }) => {
       sx={{
         width: drawerWidth,
         flexShrink: 0,
-        [`& .MuiDrawer-paper`]: { 
-          width: drawerWidth, 
+        [`& .MuiDrawer-paper`]: {
+          width: drawerWidth,
           boxSizing: 'border-box',
           transform: open ? 'translateX(0)' : 'translateX(-100%)',
           transition: (theme) => theme.transitions.create('transform', {
@@ -72,9 +77,9 @@ const Sidebar = ({ open }) => {
         <Divider />
         <List>
           {menuItems.map((item) => (
-            <ListItem 
-              button 
-              key={item.text} 
+            <ListItem
+              button
+              key={item.text}
               onClick={() => handleNavigation(item.path)}
               selected={location.pathname === item.path}
               sx={{

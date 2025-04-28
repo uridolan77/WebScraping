@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Grid,
   Card,
@@ -24,97 +24,102 @@ import {
   Web as WebIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useScraperContext } from '../contexts/ScraperContext';
-import { formatDate, formatRelativeTime } from '../utils/formatters';
-import { getStatusColor } from '../utils/helpers';
+import { useAuth } from '../contexts/AuthContext';
 import PageHeader from '../components/common/PageHeader';
-import LoadingSpinner from '../components/common/LoadingSpinner';
 
-const Dashboard = () => {
+// Mock data for the dashboard
+const mockStats = {
+  total: 3,
+  running: 1,
+  completed: 1,
+  failed: 1,
+  scheduled: 2
+};
+
+const mockScrapers = [
+  {
+    id: '1',
+    name: 'UKGC Scraper',
+    url: 'https://www.gamblingcommission.gov.uk',
+    lastRun: new Date().toISOString(),
+    status: { isRunning: false, hasErrors: false }
+  },
+  {
+    id: '2',
+    name: 'MGA Scraper',
+    url: 'https://www.mga.org.mt',
+    lastRun: new Date(Date.now() - 3600000).toISOString(),
+    status: { isRunning: true, hasErrors: false }
+  },
+  {
+    id: '3',
+    name: 'Gibraltar Scraper',
+    url: 'https://www.gibraltar.gov.gi',
+    lastRun: new Date(Date.now() - 7200000).toISOString(),
+    status: { isRunning: false, hasErrors: true }
+  }
+];
+
+const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { scrapers, scraperStatus, loading, error, fetchScrapers } = useScraperContext();
-  const [stats, setStats] = useState({
-    total: 0,
-    running: 0,
-    completed: 0,
-    failed: 0,
-    scheduled: 0
-  });
-
-  useEffect(() => {
-    fetchScrapers();
-  }, [fetchScrapers]);
-
-  // Calculate stats when scrapers or status changes
-  useEffect(() => {
-    if (scrapers && scraperStatus) {
-      const newStats = {
-        total: scrapers.length,
-        running: 0,
-        completed: 0,
-        failed: 0,
-        scheduled: 0
-      };
-
-      scrapers.forEach(scraper => {
-        const status = scraperStatus[scraper.id];
-        if (status) {
-          if (status.isRunning) {
-            newStats.running++;
-          } else if (status.hasErrors) {
-            newStats.failed++;
-          } else if (status.lastRun) {
-            newStats.completed++;
-          }
-
-          if (scraper.enableContinuousMonitoring) {
-            newStats.scheduled++;
-          }
-        }
-      });
-
-      setStats(newStats);
-    }
-  }, [scrapers, scraperStatus]);
+  const { currentUser } = useAuth();
+  const [stats] = useState(mockStats);
+  const [recentScrapers] = useState(mockScrapers);
 
   const handleCreateScraper = () => {
-    navigate('/scrapers/create');
+    // This would navigate to the scraper creation page
+    alert('Create scraper functionality will be implemented soon');
   };
 
-  const handleViewScraper = (id) => {
-    navigate(`/scrapers/${id}`);
+  const handleViewScraper = (id: string) => {
+    // This would navigate to the scraper detail page
+    alert(`View scraper ${id} functionality will be implemented soon`);
   };
 
   const handleViewAllScrapers = () => {
-    navigate('/scrapers');
+    // This would navigate to the scrapers list page
+    alert('View all scrapers functionality will be implemented soon');
   };
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  // Helper function to format dates
+  const formatDate = (date: Date, format: string = 'MMM d, yyyy HH:mm'): string => {
+    return date.toLocaleString();
+  };
 
-  if (error) {
-    return (
-      <Box p={3}>
-        <Typography color="error" variant="h6">
-          Error loading dashboard: {error}
-        </Typography>
-        <Button variant="contained" onClick={fetchScrapers} sx={{ mt: 2 }}>
-          Retry
-        </Button>
-      </Box>
-    );
-  }
+  // Helper function to format relative time
+  const formatRelativeTime = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
 
-  // Get recent scrapers (last 5)
-  const recentScrapers = [...scrapers]
-    .sort((a, b) => new Date(b.lastRun || 0) - new Date(a.lastRun || 0))
-    .slice(0, 5);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minutes ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hours ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} days ago`;
+  };
+
+  // Helper function to get status color
+  const getStatusColor = (status: string): 'success' | 'error' | 'warning' | 'info' => {
+    switch (status) {
+      case 'running':
+        return 'info';
+      case 'error':
+        return 'error';
+      case 'completed':
+        return 'success';
+      default:
+        return 'warning';
+    }
+  };
 
   return (
     <Box>
       <PageHeader
-        title="Dashboard"
+        title={`Welcome, ${currentUser?.name || 'User'}`}
         subtitle="Overview of your web scraping operations"
         actionText="Create New Scraper"
         onActionClick={handleCreateScraper}
@@ -186,7 +191,7 @@ const Dashboard = () => {
             {recentScrapers.length > 0 ? (
               <List>
                 {recentScrapers.map((scraper) => {
-                  const status = scraperStatus[scraper.id] || {};
+                  const status = scraper.status || { isRunning: false, hasErrors: false };
                   const statusColor = getStatusColor(status.isRunning ? 'running' : status.hasErrors ? 'error' : 'completed');
 
                   return (
@@ -231,7 +236,7 @@ const Dashboard = () => {
           <Paper sx={{ p: 2, height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">Recent Activity</Typography>
-              <Button size="small" onClick={() => navigate('/monitoring')}>View All</Button>
+              <Button size="small" onClick={() => alert('Monitoring functionality will be implemented soon')}>View All</Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
 
@@ -243,7 +248,7 @@ const Dashboard = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="UKGC Scraper completed successfully"
-                  secondary={formatDate(new Date(), 'MMM d, yyyy HH:mm')}
+                  secondary={formatDate(new Date())}
                 />
               </ListItem>
 
@@ -253,7 +258,7 @@ const Dashboard = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="MGA Scraper started"
-                  secondary={formatDate(new Date(Date.now() - 3600000), 'MMM d, yyyy HH:mm')}
+                  secondary={formatDate(new Date(Date.now() - 3600000))}
                 />
               </ListItem>
 
@@ -263,7 +268,7 @@ const Dashboard = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="Gibraltar Scraper failed"
-                  secondary={formatDate(new Date(Date.now() - 7200000), 'MMM d, yyyy HH:mm')}
+                  secondary={formatDate(new Date(Date.now() - 7200000))}
                 />
               </ListItem>
 
@@ -273,7 +278,7 @@ const Dashboard = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="UKGC Scraper stopped"
-                  secondary={formatDate(new Date(Date.now() - 86400000), 'MMM d, yyyy HH:mm')}
+                  secondary={formatDate(new Date(Date.now() - 86400000))}
                 />
               </ListItem>
             </List>

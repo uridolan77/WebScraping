@@ -1,12 +1,12 @@
-// src/api/notifications.js
+// src/api/notifications.ts
 import apiClient from './index';
 
 // Get all notifications
-export const getAllNotifications = async (page = 1, pageSize = 20, read = null) => {
+export const getAllNotifications = async (page: number = 1, pageSize: number = 20, read: boolean | null = null) => {
   try {
-    const params = { page, pageSize };
+    const params: Record<string, any> = { page, pageSize };
     if (read !== null) params.read = read;
-    
+
     const response = await apiClient.get('/Notifications', { params });
     return response.data;
   } catch (error) {
@@ -16,7 +16,7 @@ export const getAllNotifications = async (page = 1, pageSize = 20, read = null) 
 };
 
 // Get notification by ID
-export const getNotification = async (id) => {
+export const getNotification = async (id: string) => {
   try {
     const response = await apiClient.get(`/Notifications/${id}`);
     return response.data;
@@ -27,7 +27,7 @@ export const getNotification = async (id) => {
 };
 
 // Mark notification as read
-export const markNotificationAsRead = async (id) => {
+export const markNotificationAsRead = async (id: string) => {
   try {
     const response = await apiClient.put(`/Notifications/${id}/read`);
     return response.data;
@@ -49,7 +49,7 @@ export const markAllNotificationsAsRead = async () => {
 };
 
 // Delete notification
-export const deleteNotification = async (id) => {
+export const deleteNotification = async (id: string) => {
   try {
     const response = await apiClient.delete(`/Notifications/${id}`);
     return response.data;
@@ -71,7 +71,7 @@ export const getNotificationSettings = async () => {
 };
 
 // Update notification settings
-export const updateNotificationSettings = async (settings) => {
+export const updateNotificationSettings = async (settings: any) => {
   try {
     const response = await apiClient.put('/Notifications/settings', settings);
     return response.data;
@@ -82,7 +82,7 @@ export const updateNotificationSettings = async (settings) => {
 };
 
 // Configure webhook notifications
-export const configureWebhook = async (webhookConfig) => {
+export const configureWebhook = async (webhookConfig: any) => {
   try {
     const response = await apiClient.post('/Notifications/webhook', webhookConfig);
     return response.data;
@@ -93,12 +93,48 @@ export const configureWebhook = async (webhookConfig) => {
 };
 
 // Test webhook notification
-export const testWebhook = async (webhookUrl) => {
+export const testWebhook = async (webhookUrl: string, scraperId?: string) => {
   try {
-    const response = await apiClient.post('/Notifications/webhook/test', { url: webhookUrl });
+    const endpoint = scraperId
+      ? `/Scrapers/${scraperId}/webhooks/test`
+      : '/Notifications/webhook/test';
+    const response = await apiClient.post(endpoint, { url: webhookUrl });
     return response.data;
   } catch (error) {
     console.error('Error testing webhook:', error);
+    throw error;
+  }
+};
+
+// Get webhook configuration for a scraper
+export const getWebhookConfig = async (scraperId: string) => {
+  try {
+    const response = await apiClient.get(`/Scrapers/${scraperId}/webhooks`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching webhook configuration for scraper ${scraperId}:`, error);
+    throw error;
+  }
+};
+
+// Update webhook configuration for a scraper
+export const updateWebhookConfig = async (scraperId: string, config: any) => {
+  try {
+    const response = await apiClient.put(`/Scrapers/${scraperId}/webhooks`, config);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating webhook configuration for scraper ${scraperId}:`, error);
+    throw error;
+  }
+};
+
+// Get scraper by ID (this is a duplicate of the function in scrapers.ts, included here for convenience)
+export const getScraper = async (id: string) => {
+  try {
+    const response = await apiClient.get(`/Scrapers/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching scraper with ID ${id}:`, error);
     throw error;
   }
 };

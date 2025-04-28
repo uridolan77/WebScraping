@@ -1,69 +1,131 @@
-import React from 'react';
-import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary';
-import { Box, Typography, Button, Paper, Alert } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Box, Typography, Button, Paper } from '@mui/material';
+import { ErrorOutline as ErrorIcon } from '@mui/icons-material';
 
-interface ErrorFallbackProps {
-  error: Error;
-  resetErrorBoundary: () => void;
+interface Props {
+  children: ReactNode;
 }
 
-const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, resetErrorBoundary }) => {
-  const navigate = useNavigate();
+interface State {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
 
-  const handleGoHome = () => {
-    navigate('/');
-    resetErrorBoundary();
+class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    // Update state so the next render will show the fallback UI
+    return {
+      hasError: true,
+      error,
+      errorInfo: null
+    };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // You can also log the error to an error reporting service
+    console.error('Error caught by ErrorBoundary:', error, errorInfo);
+    this.setState({
+      error,
+      errorInfo
+    });
+  }
+
+  handleReset = (): void => {
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null
+    });
   };
 
-  return (
-    <Paper
-      sx={{
-        p: 4,
-        m: 2,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        maxWidth: 600,
-        mx: 'auto'
-      }}
-    >
-      <Alert severity="error" sx={{ width: '100%', mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Something went wrong
-        </Typography>
-        <Typography variant="body1" gutterBottom>
-          {error.message}
-        </Typography>
-        {process.env.NODE_ENV === 'development' && (
-          <Box component="pre" sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1, overflow: 'auto', maxHeight: 200 }}>
-            <code>{error.stack}</code>
-          </Box>
-        )}
-      </Alert>
-      
-      <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-        <Button variant="contained" color="primary" onClick={resetErrorBoundary}>
-          Try again
-        </Button>
-        <Button variant="outlined" onClick={handleGoHome}>
-          Go to Home
-        </Button>
-      </Box>
-    </Paper>
-  );
-};
+  render(): ReactNode {
+    if (this.state.hasError) {
+      // Render fallback UI
+      return (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 4,
+            minHeight: '50vh'
+          }}
+        >
+          <Paper
+            elevation={3}
+            sx={{
+              p: 4,
+              maxWidth: 600,
+              width: '100%',
+              textAlign: 'center',
+              borderRadius: 2
+            }}
+          >
+            <ErrorIcon color="error" sx={{ fontSize: 60, mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Something went wrong
+            </Typography>
+            <Typography variant="body1" color="text.secondary" paragraph>
+              {this.state.error?.message || 'An unexpected error occurred'}
+            </Typography>
+            
+            <Box sx={{ mt: 3 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={this.handleReset}
+                sx={{ mr: 2 }}
+              >
+                Try Again
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => window.location.href = '/'}
+              >
+                Go to Dashboard
+              </Button>
+            </Box>
+            
+            {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
+              <Box sx={{ mt: 4, textAlign: 'left' }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Error Details (Development Only):
+                </Typography>
+                <Box
+                  component="pre"
+                  sx={{
+                    p: 2,
+                    bgcolor: 'grey.100',
+                    borderRadius: 1,
+                    overflow: 'auto',
+                    fontSize: '0.8rem',
+                    maxHeight: 300
+                  }}
+                >
+                  {this.state.error?.stack}
+                  {'\n\nComponent Stack:\n'}
+                  {this.state.errorInfo.componentStack}
+                </Box>
+              </Box>
+            )}
+          </Paper>
+        </Box>
+      );
+    }
 
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
+    return this.props.children;
+  }
 }
-
-const ErrorBoundary: React.FC<ErrorBoundaryProps> = ({ children }) => {
-  return (
-    <ReactErrorBoundary FallbackComponent={ErrorFallback}>
-      {children}
-    </ReactErrorBoundary>
-  );
-};
 
 export default ErrorBoundary;

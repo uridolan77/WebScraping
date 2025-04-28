@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  IconButton, 
-  Badge, 
-  Menu, 
-  MenuItem, 
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  IconButton,
+  Badge,
+  Menu,
+  MenuItem,
   Box,
   Avatar,
   Tooltip
@@ -18,40 +18,48 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
-const Header = ({ title, onMenuToggle }) => {
+interface HeaderProps {
+  title?: string;
+  onMenuToggle: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ title, onMenuToggle }) => {
   const navigate = useNavigate();
-  const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
-  const [profileAnchorEl, setProfileAnchorEl] = useState(null);
-  
-  const handleNotificationsOpen = (event) => {
+  const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<HTMLElement | null>(null);
+  const [profileAnchorEl, setProfileAnchorEl] = useState<HTMLElement | null>(null);
+
+  const handleNotificationsOpen = (event: React.MouseEvent<HTMLElement>) => {
     setNotificationsAnchorEl(event.currentTarget);
   };
-  
+
   const handleNotificationsClose = () => {
     setNotificationsAnchorEl(null);
   };
-  
-  const handleProfileOpen = (event) => {
+
+  const handleProfileOpen = (event: React.MouseEvent<HTMLElement>) => {
     setProfileAnchorEl(event.currentTarget);
   };
-  
+
   const handleProfileClose = () => {
-    setProfileAnchorEl(event.currentTarget);
+    setProfileAnchorEl(null);
   };
-  
+
   const handleSettingsClick = () => {
     navigate('/settings');
     setProfileAnchorEl(null);
   };
-  
+
+  const { logout } = useAuth();
+
   const handleLogout = () => {
-    // Handle logout logic here
-    localStorage.removeItem('auth_token');
+    // Use the logout function from AuthContext
+    logout();
     navigate('/login');
     setProfileAnchorEl(null);
   };
-  
+
   const handleViewAllNotifications = () => {
     navigate('/notifications');
     setNotificationsAnchorEl(null);
@@ -69,11 +77,11 @@ const Header = ({ title, onMenuToggle }) => {
         >
           <MenuIcon />
         </IconButton>
-        
+
         <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
           {title || 'WebScraper Backoffice'}
         </Typography>
-        
+
         <Box sx={{ display: 'flex' }}>
           <Tooltip title="Notifications">
             <IconButton color="inherit" onClick={handleNotificationsOpen}>
@@ -82,7 +90,7 @@ const Header = ({ title, onMenuToggle }) => {
               </Badge>
             </IconButton>
           </Tooltip>
-          
+
           <Menu
             anchorEl={notificationsAnchorEl}
             open={Boolean(notificationsAnchorEl)}
@@ -113,7 +121,7 @@ const Header = ({ title, onMenuToggle }) => {
               </Typography>
             </MenuItem>
           </Menu>
-          
+
           <Tooltip title="Account">
             <IconButton color="inherit" onClick={handleProfileOpen}>
               <Avatar sx={{ width: 32, height: 32 }}>
@@ -121,7 +129,7 @@ const Header = ({ title, onMenuToggle }) => {
               </Avatar>
             </IconButton>
           </Tooltip>
-          
+
           <Menu
             anchorEl={profileAnchorEl}
             open={Boolean(profileAnchorEl)}

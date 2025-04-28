@@ -59,21 +59,26 @@ if (!string.IsNullOrEmpty(keyVaultEndpoint))
 }
 
 // Add services to the container.
-builder.Services.AddControllers();
-
-// Add CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReactApp",
-        builder => builder
-            .WithOrigins(
-                "http://localhost:5000",  // WebScraperWeb default port
-                "http://localhost:5192",  // Original React app URL
-                "https://localhost:5001"  // WebScraperWeb default HTTPS port
-            )
-            .AllowAnyMethod()
-            .AllowAnyHeader());
+    options.AddDefaultPolicy(
+        policy =>
+        {
+            policy.WithOrigins(
+                    "http://localhost:3000",   // React default port
+                    "http://localhost:5000",   // WebScraperWeb default port
+                    "http://localhost:5192",   // Original React app URL
+                    "https://localhost:5001",  // WebScraperWeb default HTTPS port
+                    "http://localhost:8080"    // Another common development port
+                )
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
 });
+
+builder.Services.AddControllers();
+
+// CORS is already configured above
 
 // Helper method to get connection strings from Key Vault or local configuration
 static string GetConnectionString(IConfiguration configuration, string name)
@@ -176,7 +181,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
-app.UseCors("AllowReactApp");
+app.UseCors(); // Use the default CORS policy
 app.UseAuthorization();
 app.MapControllers();
 

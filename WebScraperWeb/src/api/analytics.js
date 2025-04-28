@@ -174,3 +174,53 @@ export const clearAnalyticsCache = () => {
 export const clearAnalyticsEndpointCache = (endpoint) => {
   clearCache(`/Analytics/${endpoint}`);
 };
+
+/**
+ * Get analytics summary
+ * @returns {Promise<Object>} Analytics summary data
+ */
+export const getAnalyticsSummary = async () => {
+  try {
+    return await cachedGet('/Analytics/summary', {
+      cacheTTL: CACHE_TTL.SHORT
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch analytics summary');
+  }
+};
+
+/**
+ * Get popular domains
+ * @param {number} limit - Maximum number of domains to return
+ * @returns {Promise<Object>} Popular domains data
+ */
+export const getPopularDomains = async (limit = 10) => {
+  try {
+    return await cachedGet('/Analytics/popular-domains', {
+      params: { limit },
+      cacheTTL: CACHE_TTL.MEDIUM
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch popular domains');
+  }
+};
+
+/**
+ * Get content change frequency
+ * @param {Object} options - Options
+ * @param {Date} options.since - Date to get changes since
+ * @returns {Promise<Object>} Content change frequency data
+ */
+export const getContentChangeFrequency = async (options = {}) => {
+  try {
+    const params = {};
+    if (options.since) params.since = options.since.toISOString();
+
+    return await cachedGet('/Analytics/change-frequency', {
+      params,
+      cacheTTL: CACHE_TTL.MEDIUM
+    });
+  } catch (error) {
+    throw handleApiError(error, 'Failed to fetch content change frequency');
+  }
+};

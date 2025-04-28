@@ -59,7 +59,7 @@ export const getNotifications = async (limit = 10, includeRead = false) => {
  * @param {string} id - Notification ID
  * @returns {Promise<Object>} Updated notification
  */
-export const markNotificationAsRead = async (id) => {
+export const markNotificationAsRead = async (id: string) => {
   try {
     return handleResponse(apiClient.post(`/Monitoring/notifications/${id}/read`));
   } catch (error) {
@@ -85,7 +85,7 @@ export const markAllNotificationsAsRead = async () => {
  * @param {string} timeframe - Time period (hour, day, week, month)
  * @returns {Promise<Array>} Resource usage history
  */
-export const getResourceUsageHistory = async (resource, timeframe = 'day') => {
+export const getResourceUsageHistory = async (resource: string, timeframe: string = 'day') => {
   try {
     return handleResponse(apiClient.get('/Monitoring/resource-usage', {
       params: { resource, timeframe }
@@ -112,11 +112,11 @@ export const getServiceStatus = async () => {
  * @param {string} severity - Filter by severity (warning, error, critical)
  * @returns {Promise<Array>} List of system issues
  */
-export const getSystemIssues = async (severity = null) => {
+export const getSystemIssues = async (severity: string | null = null) => {
   try {
-    const params = {};
+    const params: Record<string, string> = {};
     if (severity) params.severity = severity;
-    
+
     return handleResponse(apiClient.get('/Monitoring/issues', { params }));
   } catch (error) {
     throw handleApiError(error, 'Failed to fetch system issues');

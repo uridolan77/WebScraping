@@ -5,7 +5,7 @@ import memoryCache, { generateCacheKey } from '../utils/cacheUtils';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://localhost:7143/api',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5203/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -64,7 +64,7 @@ apiClient.interceptors.response.use(
 );
 
 // Helper function to handle API responses
-export const handleResponse = (promise) => {
+export const handleResponse = (promise: Promise<any>) => {
   return promise
     .then(response => response.data)
     .catch(error => {
@@ -81,7 +81,7 @@ export const handleResponse = (promise) => {
  * @param {boolean} options.forceRefresh - Force a refresh of the cache
  * @returns {Promise<any>} The response data
  */
-export const cachedGet = async (url, options = {}) => {
+export const cachedGet = async (url: string, options: any = {}) => {
   const { params = {}, cacheTTL = 5 * 60 * 1000, forceRefresh = false } = options;
 
   // Generate a cache key
@@ -109,10 +109,10 @@ export const cachedGet = async (url, options = {}) => {
  * Clear cache for a specific URL pattern
  * @param {string} urlPattern - URL pattern to match
  */
-export const clearCache = (urlPattern) => {
+export const clearCache = (urlPattern: string) => {
   const keys = memoryCache.keys();
   keys.forEach(key => {
-    if (key.includes(urlPattern)) {
+    if (typeof key === 'string' && key.includes(urlPattern)) {
       memoryCache.delete(key);
     }
   });
