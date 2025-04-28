@@ -5,46 +5,68 @@
  * @returns {string} A unique ID
  */
 export const generateId = () => {
-  return Math.random().toString(36).substring(2, 15) + 
+  return Math.random().toString(36).substring(2, 15) +
          Math.random().toString(36).substring(2, 15);
 };
 
 /**
- * Debounce a function
+ * Creates a debounced function that delays invoking func until after wait milliseconds have elapsed
+ * since the last time the debounced function was invoked.
+ *
  * @param {Function} func - The function to debounce
- * @param {number} wait - The debounce wait time in milliseconds
+ * @param {number} wait - The number of milliseconds to delay
+ * @param {boolean} immediate - Whether to invoke the function on the leading edge instead of the trailing edge
  * @returns {Function} The debounced function
  */
-export const debounce = (func, wait = 300) => {
+export const debounce = (func, wait = 300, immediate = false) => {
   let timeout;
-  
+
   return function executedFunction(...args) {
+    const context = this;
+
     const later = () => {
-      clearTimeout(timeout);
-      func(...args);
+      timeout = null;
+      if (!immediate) func.apply(context, args);
     };
-    
+
+    const callNow = immediate && !timeout;
+
     clearTimeout(timeout);
+
     timeout = setTimeout(later, wait);
+
+    if (callNow) func.apply(context, args);
   };
 };
 
 /**
- * Throttle a function
+ * Creates a throttled function that only invokes func at most once per every wait milliseconds.
+ *
  * @param {Function} func - The function to throttle
- * @param {number} limit - The throttle limit in milliseconds
+ * @param {number} wait - The number of milliseconds to throttle invocations to
  * @returns {Function} The throttled function
  */
-export const throttle = (func, limit = 300) => {
+export const throttle = (func, wait = 300) => {
   let inThrottle;
-  
-  return function executedFunction(...args) {
+  let lastFunc;
+  let lastTime;
+
+  return function() {
+    const context = this;
+    const args = arguments;
+
     if (!inThrottle) {
-      func(...args);
+      func.apply(context, args);
+      lastTime = Date.now();
       inThrottle = true;
-      setTimeout(() => {
-        inThrottle = false;
-      }, limit);
+    } else {
+      clearTimeout(lastFunc);
+      lastFunc = setTimeout(function() {
+        if (Date.now() - lastTime >= wait) {
+          func.apply(context, args);
+          lastTime = Date.now();
+        }
+      }, Math.max(wait - (Date.now() - lastTime), 0));
     }
   };
 };
@@ -90,9 +112,9 @@ export const sortBy = (array, key, ascending = true) => {
  */
 export const filterBySearchTerm = (array, searchTerm, keys) => {
   if (!searchTerm) return array;
-  
+
   const term = searchTerm.toLowerCase();
-  
+
   return array.filter(item => {
     return keys.some(key => {
       const value = item[key];
@@ -128,7 +150,7 @@ export const areObjectsEqual = (obj1, obj2) => {
  */
 export const extractDomain = (url) => {
   if (!url) return '';
-  
+
   try {
     const urlObj = new URL(url);
     return urlObj.hostname;
@@ -153,6 +175,6 @@ export const getStatusColor = (status) => {
     paused: 'warning',
     error: 'error'
   };
-  
+
   return statusMap[status.toLowerCase()] || 'default';
 };

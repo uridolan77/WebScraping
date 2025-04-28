@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { 
-  Box, Typography, Paper, Table, TableBody, TableCell, 
-  TableContainer, TableHead, TableRow, Chip, Button,
-  IconButton, Tooltip, CircularProgress, Alert,
-  Dialog, DialogTitle, DialogContent, DialogContentText,
-  DialogActions, Menu, MenuItem, ListItemIcon, ListItemText
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  Box, Typography, Button, Chip, IconButton, Tooltip,
+  CircularProgress, Alert, Dialog, DialogTitle,
+  DialogContent, DialogContentText, DialogActions,
+  Menu, MenuItem, ListItemIcon, ListItemText
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -23,33 +22,41 @@ import {
 import { format, formatDistanceToNow } from 'date-fns';
 import { Link as RouterLink } from 'react-router-dom';
 import cronstrue from 'cronstrue';
+import PaginatedTable from '../common/PaginatedTable';
 
-const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRunNow, isLoading }) => {
+const ScheduledTasksList = React.memo(({ schedules, onEdit, onDelete, onToggleStatus, onRunNow, isLoading, onRefresh }) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
-  
+
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Handle menu open
   const handleMenuOpen = (event, scheduleId) => {
     setAnchorEl(event.currentTarget);
     setSelectedScheduleId(scheduleId);
   };
-  
+
   // Handle menu close
   const handleMenuClose = () => {
     setAnchorEl(null);
     setSelectedScheduleId(null);
   };
-  
+
   // Handle delete click
   const handleDeleteClick = (schedule) => {
     setScheduleToDelete(schedule);
     setDeleteDialogOpen(true);
     handleMenuClose();
   };
-  
+
   // Handle delete confirm
   const handleDeleteConfirm = () => {
     if (scheduleToDelete) {
@@ -58,7 +65,7 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
       setScheduleToDelete(null);
     }
   };
-  
+
   // Handle toggle status
   const handleToggleStatus = (id) => {
     setActionInProgress(id);
@@ -68,7 +75,7 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
     }, 500);
     handleMenuClose();
   };
-  
+
   // Handle run now
   const handleRunNow = (id) => {
     setActionInProgress(id);
@@ -78,13 +85,13 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
     }, 500);
     handleMenuClose();
   };
-  
+
   // Handle edit
   const handleEdit = (schedule) => {
     onEdit(schedule);
     handleMenuClose();
   };
-  
+
   // Format cron expression to human-readable text
   const formatCronExpression = (cronExpression) => {
     try {
@@ -93,130 +100,213 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
       return cronExpression;
     }
   };
-  
-  if (isLoading) {
+
+  // Handle page change
+  const handlePageChange = useCallback((newPage) => {
+    setPage(newPage);
+  }, []);
+
+  // Handle rows per page change
+  const handleRowsPerPageChange = useCallback((newRowsPerPage) => {
+    setRowsPerPage(newRowsPerPage);
+    setPage(0);
+  }, []);
+
+  // Handle sort
+  const handleSort = useCallback((column, direction) => {
+    setSortBy(column);
+    setSortDirection(direction);
+  }, []);
+
+  // Handle search
+  const handleSearch = useCallback((term) => {
+    setSearchTerm(term);
+    setPage(0);
+  }, []);
+
+  // Filter and sort data
+  const filteredData = useMemo(() => {
+    if (!searchTerm) return schedules;
+
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return schedules.filter(schedule =>
+      schedule.name.toLowerCase().includes(lowerSearchTerm) ||
+      schedule.scraperName.toLowerCase().includes(lowerSearchTerm) ||
+      schedule.schedule.toLowerCase().includes(lowerSearchTerm)
+    );
+  }, [schedules, searchTerm]);
+
+  // Sort data
+  const sortedData = useMemo(() => {
+    if (!filteredData) return [];
+
+    return [...filteredData].sort((a, b) => {
+      let aValue = a[sortBy];
+      let bValue = b[sortBy];
+
+      // Handle special cases
+      if (sortBy === 'nextRun' || sortBy === 'lastRun') {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredData, sortBy, sortDirection]);
+
+  // Paginate data
+  const paginatedData = useMemo(() => {
+    const startIndex = page * rowsPerPage;
+    return sortedData.slice(startIndex, startIndex + rowsPerPage);
+  }, [sortedData, page, rowsPerPage]);
+
+  // Define table columns
+  const columns = useMemo(() => [
+    {
+      id: 'name',
+      label: 'Name',
+      sortable: true,
+      render: (value, row) => (
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <ScheduleIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography variant="body2">{value}</Typography>
+        </Box>
+      )
+    },
+    {
+      id: 'scraperName',
+      label: 'Scraper',
+      sortable: true
+    },
+    {
+      id: 'schedule',
+      label: 'Schedule',
+      sortable: true,
+      render: (value) => (
+        <Tooltip title={formatCronExpression(value)}>
+          <Typography variant="body2">{value}</Typography>
+        </Tooltip>
+      )
+    },
+    {
+      id: 'nextRun',
+      label: 'Next Run',
+      sortable: true,
+      render: (value) => value ? (
+        <Tooltip title={format(new Date(value), 'PPpp')}>
+          <Typography variant="body2">
+            {formatDistanceToNow(new Date(value), { addSuffix: true })}
+          </Typography>
+        </Tooltip>
+      ) : 'Not scheduled'
+    },
+    {
+      id: 'lastRun',
+      label: 'Last Run',
+      sortable: true,
+      render: (value) => value ? (
+        <Tooltip title={format(new Date(value), 'PPpp')}>
+          <Typography variant="body2">
+            {formatDistanceToNow(new Date(value), { addSuffix: true })}
+          </Typography>
+        </Tooltip>
+      ) : 'Never'
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (value) => (
+        <Chip
+          label={value === 'active' ? 'Active' : 'Paused'}
+          color={value === 'active' ? 'success' : 'default'}
+          size="small"
+        />
+      )
+    }
+  ], []);
+
+  // Define row actions
+  const renderRowActions = useCallback((row) => (
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      <Tooltip title={row.status === 'active' ? 'Pause' : 'Activate'}>
+        <IconButton
+          size="small"
+          onClick={() => handleToggleStatus(row.id)}
+          disabled={actionInProgress === row.id}
+          color={row.status === 'active' ? 'warning' : 'success'}
+        >
+          {actionInProgress === row.id ? (
+            <CircularProgress size={20} />
+          ) : row.status === 'active' ? (
+            <PauseIcon fontSize="small" />
+          ) : (
+            <PlayIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Run Now">
+        <IconButton
+          size="small"
+          onClick={() => handleRunNow(row.id)}
+          disabled={actionInProgress === row.id}
+          color="primary"
+        >
+          {actionInProgress === row.id ? (
+            <CircularProgress size={20} />
+          ) : (
+            <PlayIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="More Actions">
+        <IconButton
+          size="small"
+          onClick={(event) => handleMenuOpen(event, row.id)}
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  ), [actionInProgress, handleMenuOpen, handleRunNow, handleToggleStatus]);
+
+  // Empty message
+  const emptyMessage = "No scheduled tasks found. Create a schedule to automate your scraping tasks.";
+
+  if (isLoading && schedules.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
         <CircularProgress />
       </Box>
     );
   }
-  
-  if (schedules.length === 0) {
-    return (
-      <Alert severity="info">
-        No scheduled tasks found. Create a schedule to automate your scraping tasks.
-      </Alert>
-    );
-  }
-  
+
   return (
     <Box>
-      <TableContainer component={Paper} variant="outlined">
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Scraper</TableCell>
-              <TableCell>Schedule</TableCell>
-              <TableCell>Next Run</TableCell>
-              <TableCell>Last Run</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {schedules.map((schedule) => (
-              <TableRow key={schedule.id} hover>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ScheduleIcon sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="body2">{schedule.name}</Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>{schedule.scraperName}</TableCell>
-                <TableCell>
-                  <Tooltip title={formatCronExpression(schedule.schedule)}>
-                    <Typography variant="body2">{schedule.schedule}</Typography>
-                  </Tooltip>
-                </TableCell>
-                <TableCell>
-                  {schedule.nextRun ? (
-                    <Tooltip title={format(new Date(schedule.nextRun), 'PPpp')}>
-                      <Typography variant="body2">
-                        {formatDistanceToNow(new Date(schedule.nextRun), { addSuffix: true })}
-                      </Typography>
-                    </Tooltip>
-                  ) : (
-                    'Not scheduled'
-                  )}
-                </TableCell>
-                <TableCell>
-                  {schedule.lastRun ? (
-                    <Tooltip title={format(new Date(schedule.lastRun), 'PPpp')}>
-                      <Typography variant="body2">
-                        {formatDistanceToNow(new Date(schedule.lastRun), { addSuffix: true })}
-                      </Typography>
-                    </Tooltip>
-                  ) : (
-                    'Never'
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Chip 
-                    label={schedule.status === 'active' ? 'Active' : 'Paused'} 
-                    color={schedule.status === 'active' ? 'success' : 'default'} 
-                    size="small" 
-                  />
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Tooltip title={schedule.status === 'active' ? 'Pause' : 'Activate'}>
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleToggleStatus(schedule.id)}
-                        disabled={actionInProgress === schedule.id}
-                        color={schedule.status === 'active' ? 'warning' : 'success'}
-                      >
-                        {actionInProgress === schedule.id ? (
-                          <CircularProgress size={20} />
-                        ) : schedule.status === 'active' ? (
-                          <PauseIcon fontSize="small" />
-                        ) : (
-                          <PlayIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Run Now">
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleRunNow(schedule.id)}
-                        disabled={actionInProgress === schedule.id}
-                        color="primary"
-                      >
-                        {actionInProgress === schedule.id ? (
-                          <CircularProgress size={20} />
-                        ) : (
-                          <PlayIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="More Actions">
-                      <IconButton 
-                        size="small"
-                        onClick={(event) => handleMenuOpen(event, schedule.id)}
-                      >
-                        <MoreVertIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      
+      <PaginatedTable
+        columns={columns}
+        data={paginatedData}
+        totalCount={filteredData.length}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        onPageChange={handlePageChange}
+        onRowsPerPageChange={handleRowsPerPageChange}
+        onSort={handleSort}
+        onSearch={handleSearch}
+        onRefresh={onRefresh}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        searchTerm={searchTerm}
+        isLoading={isLoading}
+        emptyMessage={emptyMessage}
+        title="Scheduled Tasks"
+        searchPlaceholder="Search schedules..."
+        renderRowActions={renderRowActions}
+        rowKey="id"
+      />
+
       {/* Action Menu */}
       <Menu
         anchorEl={anchorEl}
@@ -254,7 +344,7 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
           <ListItemText sx={{ color: 'error.main' }}>Delete</ListItemText>
         </MenuItem>
       </Menu>
-      
+
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
@@ -273,6 +363,6 @@ const ScheduledTasksList = ({ schedules, onEdit, onDelete, onToggleStatus, onRun
       </Dialog>
     </Box>
   );
-};
+});
 
 export default ScheduledTasksList;

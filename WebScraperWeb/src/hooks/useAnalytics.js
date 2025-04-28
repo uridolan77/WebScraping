@@ -1,5 +1,5 @@
 // src/hooks/useAnalytics.js
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   getOverallAnalytics,
   getScraperAnalytics,
@@ -8,7 +8,8 @@ import {
   getContentTypeDistribution,
   getRegulatoryImpactAnalysis,
   getTrendAnalysis,
-  getScraperComparison
+  getScraperComparison,
+  clearAnalyticsCache
 } from '../api/analytics';
 import { getUserFriendlyErrorMessage } from '../utils/errorHandler';
 
@@ -237,22 +238,22 @@ const useAnalytics = (scraperId = null) => {
   }, []);
 
   // Fetch all analytics data
-  const fetchAllAnalytics = useCallback(async (timeframe = 'week') => {
+  const fetchAllAnalytics = useCallback(async (timeframe = 'week', forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
 
       const promises = [
-        getOverallAnalytics(timeframe),
-        getContentChangeAnalytics(timeframe),
-        getPerformanceMetrics(timeframe),
-        getContentTypeDistribution(scraperId),
-        getRegulatoryImpactAnalysis(timeframe)
+        getOverallAnalytics(timeframe, forceRefresh),
+        getContentChangeAnalytics(timeframe, forceRefresh),
+        getPerformanceMetrics(timeframe, forceRefresh),
+        getContentTypeDistribution(scraperId, forceRefresh),
+        getRegulatoryImpactAnalysis(timeframe, forceRefresh)
       ];
 
       // Add scraper-specific analytics if scraperId is provided
       if (scraperId) {
-        promises.push(getScraperAnalytics(scraperId, timeframe));
+        promises.push(getScraperAnalytics(scraperId, timeframe, forceRefresh));
       }
 
       const [
@@ -310,7 +311,50 @@ const useAnalytics = (scraperId = null) => {
     setError(null);
   }, []);
 
+  // Refresh analytics cache
+  const refreshCache = useCallback(async (timeframe = 'week') => {
+    // Clear the cache first
+    clearAnalyticsCache();
+
+    // Then fetch fresh data
+    return await fetchAllAnalytics(timeframe, true);
+  }, [fetchAllAnalytics]);
+
+  // Memoized selectors
+  const totalPagesScrapped = useMemo(() => {
+    return overallData?.totalPages || 0;
+  }, [overallData]);
+
+  const totalChangesDetected = useMemo(() => {
+    return changeData?.totalChanges || 0;
+  }, [changeData]);
+
+  const topPerformingScrapers = useMemo(() => {
+    if (!overallData?.scraperPerformance) return [];
+
+    // Sort scrapers by pages scraped
+    return [...overallData.scraperPerformance]
+      .sort((a, b) => b.pagesScraped - a.pagesScraped)
+      .slice(0, 5);
+  }, [overallData]);
+
+  const contentTypeBreakdown = useMemo(() => {
+    return contentTypeData?.breakdown || [];
+  }, [contentTypeData]);
+
+  const performanceMetrics = useMemo(() => {
+    if (!performanceData) return null;
+
+    return {
+      avgCrawlTime: performanceData.avgCrawlTime,
+      avgProcessingTime: performanceData.avgProcessingTime,
+      avgMemoryUsage: performanceData.avgMemoryUsage,
+      totalErrors: performanceData.totalErrors
+    };
+  }, [performanceData]);
+
   return {
+    // Raw data
     overallData,
     scraperData,
     changeData,
@@ -319,8 +363,19 @@ const useAnalytics = (scraperId = null) => {
     regulatoryImpactData,
     trendData,
     comparisonData,
+
+    // Derived data (memoized)
+    totalPagesScrapped,
+    totalChangesDetected,
+    topPerformingScrapers,
+    contentTypeBreakdown,
+    performanceMetrics,
+
+    // Status
     loading,
     error,
+
+    // Actions
     fetchOverallAnalytics,
     fetchScraperAnalytics,
     fetchContentChangeAnalytics,
@@ -330,7 +385,8 @@ const useAnalytics = (scraperId = null) => {
     fetchTrendAnalysis,
     fetchScraperComparison,
     fetchAllAnalytics,
-    clearData
+    clearData,
+    refreshCache
   };
 };
 

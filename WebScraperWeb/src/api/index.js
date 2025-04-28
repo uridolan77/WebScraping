@@ -1,6 +1,7 @@
 // src/api/index.js
 import axios from 'axios';
 import { logError, isAuthError, isNetworkError } from '../utils/errorHandler';
+import memoryCache, { generateCacheKey } from '../utils/cacheUtils';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
@@ -69,6 +70,52 @@ export const handleResponse = (promise) => {
     .catch(error => {
       throw error;
     });
+};
+
+/**
+ * Make a GET request with caching
+ * @param {string} url - The URL to request
+ * @param {Object} options - Request options
+ * @param {Object} options.params - URL parameters
+ * @param {number} options.cacheTTL - Cache TTL in milliseconds (default: 5 minutes)
+ * @param {boolean} options.forceRefresh - Force a refresh of the cache
+ * @returns {Promise<any>} The response data
+ */
+export const cachedGet = async (url, options = {}) => {
+  const { params = {}, cacheTTL = 5 * 60 * 1000, forceRefresh = false } = options;
+
+  // Generate a cache key
+  const cacheKey = generateCacheKey(url, params);
+
+  // Check if we have a cached response and it's not a forced refresh
+  if (!forceRefresh) {
+    const cachedResponse = memoryCache.get(cacheKey);
+    if (cachedResponse !== null) {
+      return cachedResponse;
+    }
+  }
+
+  // Make the request
+  const response = await apiClient.get(url, { params });
+  const data = response.data;
+
+  // Cache the response
+  memoryCache.set(cacheKey, data, cacheTTL);
+
+  return data;
+};
+
+/**
+ * Clear cache for a specific URL pattern
+ * @param {string} urlPattern - URL pattern to match
+ */
+export const clearCache = (urlPattern) => {
+  const keys = memoryCache.keys();
+  keys.forEach(key => {
+    if (key.includes(urlPattern)) {
+      memoryCache.delete(key);
+    }
+  });
 };
 
 // Export the API client

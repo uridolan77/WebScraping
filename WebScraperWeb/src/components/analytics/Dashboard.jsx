@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Container, Grid, Paper, Typography, Box, 
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Container, Grid, Paper, Typography, Box,
   Button, FormControl, InputLabel, Select, MenuItem,
   CircularProgress, Divider, Tabs, Tab, Alert
 } from '@mui/material';
@@ -19,7 +19,7 @@ import ScraperComparison from './ScraperComparison';
 import TrendAnalysis from './TrendAnalysis';
 
 // TabPanel component for tab content
-function TabPanel(props) {
+const TabPanel = React.memo(function TabPanel(props) {
   const { children, value, index, ...other } = props;
 
   return (
@@ -34,7 +34,7 @@ function TabPanel(props) {
       {value === index && children}
     </div>
   );
-}
+});
 
 // Helper function for tab accessibility
 function a11yProps(index) {
@@ -44,13 +44,13 @@ function a11yProps(index) {
   };
 }
 
-const Dashboard = () => {
-  const { 
-    overallData, 
-    changeData, 
-    performanceData, 
-    contentTypeData, 
-    loading, 
+const Dashboard = React.memo(() => {
+  const {
+    overallData,
+    changeData,
+    performanceData,
+    contentTypeData,
+    loading,
     error,
     fetchAllAnalytics,
     fetchContentChangeAnalytics,
@@ -59,36 +59,77 @@ const Dashboard = () => {
     fetchTrendAnalysis,
     fetchScraperComparison
   } = useAnalytics();
-  
+
   const [timeframe, setTimeframe] = useState('week');
   const [tabValue, setTabValue] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
+
   // Fetch analytics data on component mount
   useEffect(() => {
     fetchAllAnalytics(timeframe);
   }, [timeframe, fetchAllAnalytics]);
-  
+
   // Handle timeframe change
-  const handleTimeframeChange = (event) => {
+  const handleTimeframeChange = useCallback((event) => {
     setTimeframe(event.target.value);
-  };
-  
+  }, []);
+
   // Handle tab change
-  const handleTabChange = (event, newValue) => {
+  const handleTabChange = useCallback((event, newValue) => {
     setTabValue(newValue);
-  };
-  
+  }, []);
+
   // Handle refresh
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await fetchAllAnalytics(timeframe);
+      await fetchAllAnalytics(timeframe, true); // Force refresh from server
     } finally {
       setIsRefreshing(false);
     }
-  };
-  
+  }, [fetchAllAnalytics, timeframe]);
+
+  // Memoize tab content to prevent unnecessary re-renders
+  const contentChangesTab = useMemo(() => (
+    <ContentChangeChart
+      data={changeData}
+      isLoading={loading}
+      timeframe={timeframe}
+      onRefresh={() => fetchContentChangeAnalytics(timeframe, true)}
+    />
+  ), [changeData, loading, timeframe, fetchContentChangeAnalytics]);
+
+  const performanceTab = useMemo(() => (
+    <PerformanceMetrics
+      data={performanceData}
+      isLoading={loading}
+      timeframe={timeframe}
+      onRefresh={() => fetchPerformanceMetrics(timeframe, true)}
+    />
+  ), [performanceData, loading, timeframe, fetchPerformanceMetrics]);
+
+  const contentTypeTab = useMemo(() => (
+    <ContentTypeDistribution
+      data={contentTypeData}
+      isLoading={loading}
+      onRefresh={() => fetchContentTypeDistribution(null, true)}
+    />
+  ), [contentTypeData, loading, fetchContentTypeDistribution]);
+
+  const trendAnalysisTab = useMemo(() => (
+    <TrendAnalysis
+      timeframe={timeframe}
+      fetchTrendAnalysis={fetchTrendAnalysis}
+    />
+  ), [timeframe, fetchTrendAnalysis]);
+
+  const scraperComparisonTab = useMemo(() => (
+    <ScraperComparison
+      timeframe={timeframe}
+      fetchScraperComparison={fetchScraperComparison}
+    />
+  ), [timeframe, fetchScraperComparison]);
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -119,24 +160,24 @@ const Dashboard = () => {
           </Button>
         </Box>
       </Box>
-      
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {getUserFriendlyErrorMessage(error, 'Failed to load analytics data')}
         </Alert>
       )}
-      
+
       {/* Overview Stats */}
-      <OverviewStats 
-        data={overallData} 
-        isLoading={loading} 
+      <OverviewStats
+        data={overallData}
+        isLoading={loading}
       />
-      
+
       {/* Tabs */}
       <Paper sx={{ mt: 3 }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={handleTabChange} 
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
           aria-label="analytics tabs"
           variant="scrollable"
           scrollButtons="auto"
@@ -148,51 +189,31 @@ const Dashboard = () => {
           <Tab label="Trends" {...a11yProps(3)} />
           <Tab label="Scraper Comparison" {...a11yProps(4)} />
         </Tabs>
-        
+
         <Box sx={{ p: 3 }}>
           <TabPanel value={tabValue} index={0}>
-            <ContentChangeChart 
-              data={changeData} 
-              isLoading={loading} 
-              timeframe={timeframe}
-              onRefresh={() => fetchContentChangeAnalytics(timeframe)}
-            />
+            {contentChangesTab}
           </TabPanel>
-          
+
           <TabPanel value={tabValue} index={1}>
-            <PerformanceMetrics 
-              data={performanceData} 
-              isLoading={loading}
-              timeframe={timeframe}
-              onRefresh={() => fetchPerformanceMetrics(timeframe)}
-            />
+            {performanceTab}
           </TabPanel>
-          
+
           <TabPanel value={tabValue} index={2}>
-            <ContentTypeDistribution 
-              data={contentTypeData} 
-              isLoading={loading}
-              onRefresh={() => fetchContentTypeDistribution()}
-            />
+            {contentTypeTab}
           </TabPanel>
-          
+
           <TabPanel value={tabValue} index={3}>
-            <TrendAnalysis 
-              timeframe={timeframe}
-              fetchTrendAnalysis={fetchTrendAnalysis}
-            />
+            {trendAnalysisTab}
           </TabPanel>
-          
+
           <TabPanel value={tabValue} index={4}>
-            <ScraperComparison 
-              timeframe={timeframe}
-              fetchScraperComparison={fetchScraperComparison}
-            />
+            {scraperComparisonTab}
           </TabPanel>
         </Box>
       </Paper>
     </Container>
   );
-};
+});
 
 export default Dashboard;
