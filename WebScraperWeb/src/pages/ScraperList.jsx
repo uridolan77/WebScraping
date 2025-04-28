@@ -1,4 +1,3 @@
-// src/pages/ScraperList.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Container, Typography, Box, Button, TextField, InputAdornment,
@@ -14,36 +13,32 @@ import {
   Stop as StopIcon, 
   Delete as DeleteIcon,
   Edit as EditIcon,
-  Refresh as RefreshIcon,
-  FilterList as FilterIcon,
-  MoreVert as MoreVertIcon
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
-import { getAllScrapers, startScraper, stopScraper, deleteScraper } from '../api/scrapers';
+import { useScrapers } from '../contexts/ScraperContext';
+import PageHeader from '../components/common/PageHeader';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const ScraperList = () => {
   const navigate = useNavigate();
-  const [scrapers, setScrapers] = useState([]);
+  const { 
+    scrapers, 
+    scraperStatus, 
+    loading, 
+    error, 
+    fetchScrapers, 
+    start: startScraper, 
+    stop: stopScraper, 
+    removeScraper: deleteScraper 
+  } = useScrapers();
+  
   const [filteredScrapers, setFilteredScrapers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scraperToDelete, setScraperToDelete] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
-
-  // Fetch scrapers
-  const fetchScrapers = async () => {
-    try {
-      setIsLoading(true);
-      const data = await getAllScrapers();
-      setScrapers(data || []);
-    } catch (error) {
-      console.error('Error fetching scrapers:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Initial load
   useEffect(() => {
@@ -52,7 +47,7 @@ const ScraperList = () => {
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchScrapers, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchScrapers]);
 
   // Filter scrapers based on search term and status filter
   useEffect(() => {
@@ -72,16 +67,25 @@ const ScraperList = () => {
     // Apply status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'running') {
-        filtered = filtered.filter(scraper => scraper.isRunning);
+        filtered = filtered.filter(scraper => {
+          const status = scraperStatus[scraper.id];
+          return status && status.isRunning;
+        });
       } else if (statusFilter === 'idle') {
-        filtered = filtered.filter(scraper => !scraper.isRunning && !scraper.hasErrors);
+        filtered = filtered.filter(scraper => {
+          const status = scraperStatus[scraper.id];
+          return status && !status.isRunning && !status.hasErrors;
+        });
       } else if (statusFilter === 'error') {
-        filtered = filtered.filter(scraper => scraper.hasErrors);
+        filtered = filtered.filter(scraper => {
+          const status = scraperStatus[scraper.id];
+          return status && status.hasErrors;
+        });
       }
     }
     
     setFilteredScrapers(filtered);
-  }, [scrapers, searchTerm, statusFilter]);
+  }, [scrapers, scraperStatus, searchTerm, statusFilter]);
 
   // Handle scraper actions
   const handleStartScraper = async (id) => {
@@ -131,30 +135,51 @@ const ScraperList = () => {
 
   // Render status chip with appropriate color
   const renderStatusChip = (scraper) => {
-    if (scraper.isRunning) {
+    const status = scraperStatus[scraper.id];
+    
+    if (!status) {
+      return <Chip label="Unknown" color="default" size="small" />;
+    }
+    
+    if (status.isRunning) {
       return <Chip label="Running" color="success" size="small" />;
-    } else if (scraper.hasErrors) {
+    } else if (status.hasErrors) {
       return <Chip label="Error" color="error" size="small" />;
     } else {
       return <Chip label="Idle" color="default" size="small" />;
     }
   };
 
+  if (loading && scrapers.length === 0) {
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Typography color="error" variant="h6">
+          Error loading scrapers: {error}
+        </Typography>
+        <Button variant="contained" onClick={fetchScrapers} sx={{ mt: 2 }}>
+          Retry
+        </Button>
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Scrapers</Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          component={Link}
-          to="/scrapers/create"
-        >
-          New Scraper
-        </Button>
-      </Box>
+      <PageHeader
+        title="Scrapers"
+        subtitle="Manage your web scrapers"
+        actionText="New Scraper"
+        onActionClick={() => navigate('/scrapers/create')}
+        breadcrumbs={[
+          { text: 'Dashboard', path: '/' },
+          { text: 'Scrapers' }
+        ]}
+      />
 
       {/* Filters */}
       <Card sx={{ mb: 3 }}>
@@ -198,7 +223,7 @@ const ScraperList = () => {
                   variant="outlined"
                   startIcon={<RefreshIcon />}
                   onClick={fetchScrapers}
-                  disabled={isLoading}
+                  disabled={loading}
                 >
                   Refresh
                 </Button>
@@ -209,7 +234,7 @@ const ScraperList = () => {
       </Card>
 
       {/* Scrapers Table */}
-      {isLoading ? (
+      {loading && scrapers.length > 0 ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress />
         </Box>
@@ -228,80 +253,83 @@ const ScraperList = () => {
             </TableHead>
             <TableBody>
               {filteredScrapers.length > 0 ? (
-                filteredScrapers.map((scraper) => (
-                  <TableRow key={scraper.id}>
-                    <TableCell>
-                      <Link 
-                        to={`/scrapers/${scraper.id}`} 
-                        style={{ textDecoration: 'none', color: 'inherit', fontWeight: 'bold' }}
-                      >
-                        {scraper.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{scraper.baseUrl}</TableCell>
-                    <TableCell>{renderStatusChip(scraper)}</TableCell>
-                    <TableCell>
-                      {scraper.lastRun 
-                        ? new Date(scraper.lastRun).toLocaleString() 
-                        : 'Never'}
-                    </TableCell>
-                    <TableCell>{scraper.urlsProcessed || 0}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        {scraper.isRunning ? (
-                          <Tooltip title="Stop Scraper">
+                filteredScrapers.map((scraper) => {
+                  const status = scraperStatus[scraper.id] || {};
+                  return (
+                    <TableRow key={scraper.id}>
+                      <TableCell>
+                        <Link 
+                          to={`/scrapers/${scraper.id}`} 
+                          style={{ textDecoration: 'none', color: 'inherit', fontWeight: 'bold' }}
+                        >
+                          {scraper.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{scraper.baseUrl}</TableCell>
+                      <TableCell>{renderStatusChip(scraper)}</TableCell>
+                      <TableCell>
+                        {scraper.lastRun 
+                          ? new Date(scraper.lastRun).toLocaleString() 
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell>{scraper.urlsProcessed || 0}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {status.isRunning ? (
+                            <Tooltip title="Stop Scraper">
+                              <IconButton 
+                                color="warning"
+                                onClick={() => handleStopScraper(scraper.id)}
+                                disabled={actionInProgress === scraper.id}
+                                size="small"
+                              >
+                                {actionInProgress === scraper.id ? (
+                                  <CircularProgress size={24} />
+                                ) : (
+                                  <StopIcon />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title="Start Scraper">
+                              <IconButton 
+                                color="success"
+                                onClick={() => handleStartScraper(scraper.id)}
+                                disabled={actionInProgress === scraper.id}
+                                size="small"
+                              >
+                                {actionInProgress === scraper.id ? (
+                                  <CircularProgress size={24} />
+                                ) : (
+                                  <PlayIcon />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="Edit Scraper">
                             <IconButton 
-                              color="warning"
-                              onClick={() => handleStopScraper(scraper.id)}
-                              disabled={actionInProgress === scraper.id}
+                              color="primary"
+                              onClick={() => navigate(`/scrapers/${scraper.id}/edit`)}
                               size="small"
                             >
-                              {actionInProgress === scraper.id ? (
-                                <CircularProgress size={24} />
-                              ) : (
-                                <StopIcon />
-                              )}
+                              <EditIcon />
                             </IconButton>
                           </Tooltip>
-                        ) : (
-                          <Tooltip title="Start Scraper">
+                          <Tooltip title="Delete Scraper">
                             <IconButton 
-                              color="success"
-                              onClick={() => handleStartScraper(scraper.id)}
-                              disabled={actionInProgress === scraper.id}
+                              color="error"
+                              onClick={() => handleOpenDeleteDialog(scraper)}
+                              disabled={actionInProgress === scraper.id || status.isRunning}
                               size="small"
                             >
-                              {actionInProgress === scraper.id ? (
-                                <CircularProgress size={24} />
-                              ) : (
-                                <PlayIcon />
-                              )}
+                              <DeleteIcon />
                             </IconButton>
                           </Tooltip>
-                        )}
-                        <Tooltip title="Edit Scraper">
-                          <IconButton 
-                            color="primary"
-                            onClick={() => navigate(`/scrapers/${scraper.id}/edit`)}
-                            size="small"
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete Scraper">
-                          <IconButton 
-                            color="error"
-                            onClick={() => handleOpenDeleteDialog(scraper)}
-                            disabled={actionInProgress === scraper.id || scraper.isRunning}
-                            size="small"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
