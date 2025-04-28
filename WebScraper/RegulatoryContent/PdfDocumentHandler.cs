@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Listener;
+using WebScraper.Processing;
 
 namespace WebScraper.RegulatoryContent
 {
@@ -415,18 +416,5 @@ namespace WebScraper.RegulatoryContent
             public string DocumentType { get; set; }
             public Dictionary<string, string> AdditionalMetadata { get; set; } = new Dictionary<string, string>();
         }
-    }
-
-    // Add DocumentProcessingResult class if it doesn't exist elsewhere
-    // This should match the class in OfficeDocumentHandler
-    public class DocumentProcessingResult
-    {
-        public string Text { get; set; }
-        public string Title { get; set; }
-        public string Author { get; set; }
-        public DateTime? CreationDate { get; set; }
-        public DateTime? ModificationDate { get; set; }
-        public int PageCount { get; set; }
-        public List<string> Keywords { get; set; } = new List<string>();
     }
 }

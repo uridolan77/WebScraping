@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using System.Linq;
 using System.Xml;
 using System.Text.RegularExpressions;
+using WebScraper.Processing;
 
 namespace WebScraper.RegulatoryContent
 {
@@ -583,17 +584,5 @@ namespace WebScraper.RegulatoryContent
             public string DocumentType { get; set; }
             public Dictionary<string, string> AdditionalMetadata { get; set; } = new Dictionary<string, string>();
         }
-    }
-    
-    // Add DocumentProcessingResult class for ExtractTextAsync method
-    public class DocumentProcessingResult
-    {
-        public string Text { get; set; }
-        public string Title { get; set; }
-        public string Author { get; set; }
-        public DateTime? CreationDate { get; set; }
-        public DateTime? ModificationDate { get; set; }
-        public int PageCount { get; set; }
-        public List<string> Keywords { get; set; } = new List<string>();
     }
 }

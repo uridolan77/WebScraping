@@ -16,13 +16,13 @@ namespace WebScraper.RegulatoryFramework.Implementation
     {
         private readonly HierarchicalExtractionConfig _config;
         private readonly ILogger<StructureAwareExtractor> _logger;
-        
+
         public StructureAwareExtractor(HierarchicalExtractionConfig config, ILogger<StructureAwareExtractor> logger)
         {
             _config = config;
             _logger = logger;
         }
-        
+
         /// <summary>
         /// Extracts plain text content from an HTML document
         /// </summary>
@@ -42,20 +42,20 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         }
                     }
                 }
-                
+
                 // Extract text from content elements
                 var contentNodes = document.DocumentNode.SelectNodes(_config.ContentSelector);
-                
+
                 if (contentNodes == null || contentNodes.Count == 0)
                 {
                     // Fallback to body text
                     return document.DocumentNode.InnerText;
                 }
-                
+
                 var textContent = string.Join("\n\n", contentNodes.Select(n => n.InnerText.Trim()));
-                
+
                 _logger.LogInformation("Extracted {Length} characters of text content", textContent.Length);
-                
+
                 return textContent;
             }
             catch (Exception ex)
@@ -64,7 +64,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 return document.DocumentNode.InnerText;
             }
         }
-        
+
         /// <summary>
         /// Extracts structured content from an HTML document
         /// </summary>
@@ -84,10 +84,10 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         }
                     }
                 }
-                
+
                 // Get parent containers
                 var parentNodes = document.DocumentNode.SelectNodes(_config.ParentSelector);
-                
+
                 if (parentNodes == null || parentNodes.Count == 0)
                 {
                     // Fallback to body
@@ -100,12 +100,12 @@ namespace WebScraper.RegulatoryFramework.Implementation
                             ["title"] = document.DocumentNode.SelectSingleNode("//title")?.InnerText.Trim() ?? "Untitled"
                         }
                     };
-                    
+
                     return new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> { rootNode };
                 }
-                
+
                 var rootNodes = new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode>();
-                
+
                 foreach (var parentNode in parentNodes)
                 {
                     // Skip deeply nested parents
@@ -113,15 +113,15 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     {
                         continue;
                     }
-                    
+
                     // Extract title
                     var titleNode = parentNode.SelectSingleNode(_config.TitleSelector);
                     string title = titleNode?.InnerText.Trim() ?? "Untitled Section";
-                    
+
                     // Extract content
                     var contentNodes = parentNode.SelectNodes(_config.ContentSelector);
                     var content = "";
-                    
+
                     if (contentNodes != null && contentNodes.Count > 0)
                     {
                         content = string.Join("\n\n", contentNodes.Select(n => n.InnerText.Trim()));
@@ -135,7 +135,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                             content = content.Replace(titleNode.InnerText, "").Trim();
                         }
                     }
-                    
+
                     // Create the content node
                     var contentNode = new WebScraper.RegulatoryFramework.Interfaces.ContentNode
                     {
@@ -144,24 +144,24 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         Depth = GetNodeDepth(parentNode),
                         Metadata = new Dictionary<string, object> { ["title"] = title }
                     };
-                    
+
                     // Extract metadata
                     ExtractNodeMetadata(contentNode, parentNode);
-                    
+
                     // Extract child nodes recursively
                     ExtractChildNodes(contentNode, parentNode);
-                    
+
                     rootNodes.Add(contentNode);
                 }
-                
+
                 _logger.LogInformation("Extracted {Count} structured content nodes", rootNodes.Count);
-                
+
                 return rootNodes;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error extracting structured content");
-                
+
                 // Return minimal content on error
                 var errorNode = new WebScraper.RegulatoryFramework.Interfaces.ContentNode
                 {
@@ -173,11 +173,11 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         ["error"] = ex.Message
                     }
                 };
-                
+
                 return new List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> { errorNode };
             }
         }
-        
+
         /// <summary>
         /// Gets the depth of a node in the DOM hierarchy
         /// </summary>
@@ -185,16 +185,16 @@ namespace WebScraper.RegulatoryFramework.Implementation
         {
             int depth = 0;
             var current = node;
-            
+
             while (current != null && current.ParentNode != null)
             {
                 depth++;
                 current = current.ParentNode;
             }
-            
+
             return depth;
         }
-        
+
         /// <summary>
         /// Determines the type of a node based on its HTML tag
         /// </summary>
@@ -217,7 +217,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     return node.Name;
             }
         }
-        
+
         /// <summary>
         /// Extracts metadata from a node
         /// </summary>
@@ -231,21 +231,21 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     contentNode.Metadata[attribute.Name] = attribute.Value;
                 }
             }
-            
+
             // Extract ID
             var id = htmlNode.GetAttributeValue("id", null);
             if (!string.IsNullOrEmpty(id))
             {
                 contentNode.Metadata["id"] = id;
             }
-            
+
             // Extract class
             var className = htmlNode.GetAttributeValue("class", null);
             if (!string.IsNullOrEmpty(className))
             {
                 contentNode.Metadata["class"] = className;
             }
-            
+
             // Extract publication date if available
             var dateNode = htmlNode.SelectSingleNode(".//time");
             if (dateNode != null)
@@ -261,7 +261,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 }
             }
         }
-        
+
         /// <summary>
         /// Recursively extracts child nodes
         /// </summary>
@@ -272,15 +272,15 @@ namespace WebScraper.RegulatoryFramework.Implementation
             {
                 return;
             }
-            
+
             // Find child containers
             var childContainers = parentHtmlNode.SelectNodes(_config.ParentSelector);
-            
+
             if (childContainers == null || childContainers.Count == 0)
             {
                 return;
             }
-            
+
             foreach (var childHtmlNode in childContainers)
             {
                 // Skip if this is actually the same node (can happen with complex selectors)
@@ -288,21 +288,21 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 {
                     continue;
                 }
-                
+
                 // Skip if not a direct descendant (in the hierarchical sense)
                 if (!IsDirectHierarchicalDescendant(parentHtmlNode, childHtmlNode))
                 {
                     continue;
                 }
-                
+
                 // Extract title
                 var titleNode = childHtmlNode.SelectSingleNode(_config.TitleSelector);
                 string title = titleNode?.InnerText.Trim() ?? "Untitled Subsection";
-                
+
                 // Extract content
                 var contentNodes = childHtmlNode.SelectNodes(_config.ContentSelector);
                 var content = "";
-                
+
                 if (contentNodes != null && contentNodes.Count > 0)
                 {
                     content = string.Join("\n\n", contentNodes.Select(n => n.InnerText.Trim()));
@@ -316,7 +316,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         content = content.Replace(titleNode.InnerText, "").Trim();
                     }
                 }
-                
+
                 // Create child node
                 var childNode = new ContentNode
                 {
@@ -325,18 +325,18 @@ namespace WebScraper.RegulatoryFramework.Implementation
                     Depth = parentNode.Depth + 1,
                     NodeType = DetermineNodeType(childHtmlNode)
                 };
-                
+
                 // Extract metadata
                 ExtractNodeMetadata(childNode, childHtmlNode);
-                
+
                 // Add to parent
                 parentNode.Children.Add(childNode);
-                
+
                 // Recursively extract grandchildren
                 ExtractChildNodes(childNode, childHtmlNode);
             }
         }
-        
+
         /// <summary>
         /// Determines if a node is a direct hierarchical descendant of another node
         /// </summary>
@@ -347,10 +347,10 @@ namespace WebScraper.RegulatoryFramework.Implementation
             {
                 return false;
             }
-            
+
             // Check if there are any other container elements between parent and potential
             var currentNode = potential.ParentNode;
-            
+
             while (currentNode != null && !currentNode.Equals(parent))
             {
                 // If we encounter another container node between them, it's not a direct descendant
@@ -358,29 +358,25 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 {
                     return false;
                 }
-                
+
                 currentNode = currentNode.ParentNode;
             }
-            
+
             return currentNode != null; // True if we found the parent in the hierarchy
         }
-        
+
         // Fix ContentNode type conversion issues
         private bool AnalyzeNodeImportance(WebScraper.RegulatoryFramework.Interfaces.ContentNode node)
         {
             try
             {
                 // Convert to our local ContentNode type first for analysis
-                var localNode = new WebScraper.ContentNode
+                // Use the ConvertToWebScraperContentNode method to ensure proper conversion
+                var localNode = ConvertToWebScraperContentNode(node);
+                if (localNode == null)
                 {
-                    NodeType = node.NodeType,
-                    Content = node.Content,
-                    Depth = node.Depth,
-                    Title = node.Title,
-                    RelevanceScore = node.RelevanceScore,
-                    Attributes = ConvertAttributes(node.Attributes),
-                    Children = new List<WebScraper.ContentNode>()
-                };
+                    return false;
+                }
 
                 // Now we can analyze it using our existing logic
                 return AnalyzeLocalNodeImportance(localNode);
@@ -396,25 +392,25 @@ namespace WebScraper.RegulatoryFramework.Implementation
         {
             // Implementation of the node importance analyzer
             // This is where the original code would go
-            
+
             // Check if the node has a high relevance score
             if (node.RelevanceScore > 0.7)
                 return true;
-                
+
             // Check if the node contains keywords
             foreach (var keyword in _config.KeywordPatterns)
             {
                 if (node.Content?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true)
                     return true;
             }
-            
+
             // Check node attributes for relevance
-            if (node.Attributes != null && node.Attributes.Any(attr => 
+            if (node.Attributes != null && node.Attributes.Any(attr =>
                 attr.Key == "class" && _config.RelevantClasses.Contains(attr.Value)))
             {
                 return true;
             }
-            
+
             return false;
         }
 
@@ -422,15 +418,28 @@ namespace WebScraper.RegulatoryFramework.Implementation
         {
             if (attributes == null)
                 return new Dictionary<string, string>();
-                
+
             return new Dictionary<string, string>(attributes);
         }
 
+        // Add a helper method to convert between ContentNode lists
+        public List<WebScraper.ContentNode> ConvertToWebScraperContentNodes(List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> nodes)
+        {
+            if (nodes == null) return null;
+
+            var result = new List<WebScraper.ContentNode>();
+            foreach (var node in nodes)
+            {
+                result.Add(ConvertToWebScraperContentNode(node));
+            }
+            return result;
+        }
+
         // Add a helper method to convert between ContentNode types
-        private WebScraper.ContentNode ConvertToLegacyContentNode(WebScraper.RegulatoryFramework.Interfaces.ContentNode node)
+        public WebScraper.ContentNode ConvertToWebScraperContentNode(WebScraper.RegulatoryFramework.Interfaces.ContentNode node)
         {
             if (node == null) return null;
-            
+
             var result = new WebScraper.ContentNode
             {
                 NodeType = node.NodeType,
@@ -442,26 +451,39 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 Children = new List<WebScraper.ContentNode>(),
                 Metadata = new Dictionary<string, object>()
             };
-            
-            foreach (var kvp in node.Attributes)
+
+            if (node.Attributes != null)
             {
-                result.Attributes[kvp.Key] = kvp.Value;
+                foreach (var kvp in node.Attributes)
+                {
+                    result.Attributes[kvp.Key] = kvp.Value;
+                }
             }
-            
-            foreach (var child in node.Children)
+
+            if (node.Children != null)
             {
-                result.Children.Add(ConvertToLegacyContentNode(child));
+                foreach (var child in node.Children)
+                {
+                    // Cast the child to WebScraper.ContentNode since WebScraper.RegulatoryFramework.Interfaces.ContentNode inherits from it
+                    var convertedChild = ConvertToWebScraperContentNode((WebScraper.RegulatoryFramework.Interfaces.ContentNode)child);
+                    if (convertedChild != null) {
+                        result.Children.Add(convertedChild);
+                    }
+                }
             }
-            
-            foreach (var kvp in node.Metadata)
+
+            if (node.Metadata != null)
             {
-                result.Metadata[kvp.Key] = kvp.Value;
+                foreach (var kvp in node.Metadata)
+                {
+                    result.Metadata[kvp.Key] = kvp.Value;
+                }
             }
-            
+
             return result;
         }
     }
-    
+
     /// <summary>
     /// Extension methods for HtmlNode
     /// </summary>
@@ -479,26 +501,26 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 {
                     return false;
                 }
-                
+
                 // Split the selector by commas
                 var selectors = selector.Split(',');
-                
+
                 foreach (var singleSelector in selectors)
                 {
                     var trimmed = singleSelector.Trim();
-                    
+
                     // Simple tag selector
                     if (trimmed.Equals(node.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }
-                    
+
                     // Simple class selector
                     if (trimmed.StartsWith("."))
                     {
                         var className = trimmed.Substring(1);
                         var classAttr = node.GetAttributeValue("class", "");
-                        
+
                         if (!string.IsNullOrEmpty(classAttr))
                         {
                             var classes = classAttr.Split(' ');
@@ -508,26 +530,26 @@ namespace WebScraper.RegulatoryFramework.Implementation
                             }
                         }
                     }
-                    
+
                     // Simple ID selector
                     if (trimmed.StartsWith("#"))
                     {
                         var id = trimmed.Substring(1);
                         var nodeId = node.GetAttributeValue("id", "");
-                        
+
                         if (nodeId.Equals(id, StringComparison.OrdinalIgnoreCase))
                         {
                             return true;
                         }
                     }
-                    
+
                     // Tag with class (e.g., div.content)
                     if (trimmed.Contains(".") && !trimmed.StartsWith("."))
                     {
                         var parts = trimmed.Split('.');
                         var tagName = parts[0];
                         var className = parts[1];
-                        
+
                         if (node.Name.Equals(tagName, StringComparison.OrdinalIgnoreCase))
                         {
                             var classAttr = node.GetAttributeValue("class", "");
@@ -542,7 +564,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                         }
                     }
                 }
-                
+
                 return false;
             }
             catch

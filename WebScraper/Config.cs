@@ -58,6 +58,9 @@
         public int MinDelayBetweenRequests { get; set; } = 500; // milliseconds
         public int MaxDelayBetweenRequests { get; set; } = 5000; // milliseconds
         public bool MonitorResponseTimes { get; set; } = true;
+        // Adding missing rate limiting properties
+        public double DefaultRequestsPerMinute { get; set; } = 60;
+        public float DefaultAdaptiveRateFactor { get; set; } = 0.8f;
         
         // Content extraction options
         public System.Collections.Generic.List<string> ContentExtractorSelectors { get; set; } = new System.Collections.Generic.List<string>();
@@ -78,6 +81,11 @@
         
         // State management
         public bool EnablePersistentState { get; set; } = true; // Added missing property
+        // Adding missing state management property
+        public bool StoreContentInDatabase { get; set; } = false;
+        
+        // Analytics and metrics
+        public bool EnableMetricsTracking { get; set; } = true;
         
         // Regulatory alert options
         public System.Collections.Generic.List<string> KeywordAlertList { get; set; } = new System.Collections.Generic.List<string>();

@@ -120,7 +120,7 @@ namespace WebScraper.RegulatoryFramework.Example
             
             // Create the scraper with only the components we need
             var scraper = new EnhancedScraper(
-                config.ToScraperConfig(), // Use extension method to convert RegulatoryScraperConfig to ScraperConfig
+                config, // Pass the RegulatoryScraperConfig directly, removed the conversion
                 logger,
                 contentExtractor: contentExtractor,
                 changeDetector: null, // Comment out: changeDetector

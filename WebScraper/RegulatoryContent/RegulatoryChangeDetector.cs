@@ -190,17 +190,7 @@ namespace WebScraper.RegulatoryContent
         }
     }
     
-    /// <summary>
-    /// Represents the level of regulatory impact of a change
-    /// </summary>
-    public enum RegulatoryImpact
-    {
-        None,
-        Low,
-        Medium,
-        High
-    }
-    
+   
     /// <summary>
     /// Results of a regulatory change analysis
     /// </summary>

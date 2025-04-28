@@ -615,9 +615,14 @@ namespace WebScraper.HeadlessBrowser
         {
             try
             {
-                if (_contexts.TryGetValue(contextId, out var context))
+                if (_contexts.TryGetValue(contextId, out var contextData))
                 {
-                    return context.Context;
+                    // Create a new BrowserContext wrapper around the IBrowserContext
+                    return new BrowserContext { 
+                        Context = contextData.Context,
+                        Id = contextId,
+                        CreatedAt = DateTime.Now
+                    };
                 }
                 
                 _logger?.Invoke($"Browser context {contextId} not found");
@@ -632,7 +637,13 @@ namespace WebScraper.HeadlessBrowser
 
         public IEnumerable<BrowserContextInfo> GetBrowserContexts()
         {
-            return _contexts.Values;
+            // Convert BrowserContextData to BrowserContextInfo
+            return _contexts.Select(kvp => new BrowserContextInfo {
+                Id = kvp.Key,
+                CreatedAt = DateTime.Now,
+                PageCount = kvp.Value.Pages.Count,
+                PageUrls = kvp.Value.Pages.Select(p => p.Value.Url).ToList()
+            });
         }
 
         // Add CloseAllContextsAsync method
@@ -651,9 +662,8 @@ namespace WebScraper.HeadlessBrowser
             {
                 if (_contexts.TryGetValue(contextId, out var browserContext))
                 {
-                    // Find the page by ID
-                    var page = browserContext.Pages.FirstOrDefault(p => p.Id == pageId);
-                    if (page != null)
+                    // Find the page by key directly instead of using Key.Id
+                    if (browserContext.Pages.TryGetValue(pageId, out var page))
                     {
                         return await page.ContentAsync();
                     }

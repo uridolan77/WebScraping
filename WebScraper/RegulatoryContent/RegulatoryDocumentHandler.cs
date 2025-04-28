@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.IO;
+using System.Linq;
 using WebScraper.Interfaces;
 using HtmlAgilityPack;
 
@@ -25,10 +27,10 @@ namespace WebScraper.RegulatoryContent
         public bool CanHandle(string url)
         {
             var extension = Path.GetExtension(url).ToLowerInvariant();
-            return extension == ".pdf" 
-                || extension == ".doc" 
-                || extension == ".docx" 
-                || extension == ".xlsx" 
+            return extension == ".pdf"
+                || extension == ".doc"
+                || extension == ".docx"
+                || extension == ".xlsx"
                 || extension == ".xls";
         }
 
@@ -39,9 +41,11 @@ namespace WebScraper.RegulatoryContent
                 if (url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 {
                     byte[] pdfBytes = await DownloadFileAsync(url);
-                    return await new PdfDocumentHandler(_logger).ExtractTextAsync(pdfBytes);
+                    // Use the extension method we created to handle byte[] parameter
+                    var pdfHandler = new PdfDocumentHandler(_logger);
+                    return await PdfDocumentHandlerExtension.ExtractTextAsync(pdfHandler, pdfBytes);
                 }
-                else if (url.EndsWith(".doc", StringComparison.OrdinalIgnoreCase) || 
+                else if (url.EndsWith(".doc", StringComparison.OrdinalIgnoreCase) ||
                         url.EndsWith(".docx", StringComparison.OrdinalIgnoreCase) ||
                         url.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
                         url.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
@@ -49,7 +53,7 @@ namespace WebScraper.RegulatoryContent
                     byte[] officeBytes = await DownloadFileAsync(url);
                     return GetExtractedText(officeBytes);
                 }
-                
+
                 _logger($"No suitable handler found for URL: {url}");
                 return string.Empty;
             }
@@ -59,16 +63,46 @@ namespace WebScraper.RegulatoryContent
                 return string.Empty;
             }
         }
-        
+
         public async Task<bool> IsRegulatoryDocument(string url, string content)
         {
-            return await _contentClassifier.IsRegulatoryDocument(url, content);
+            try
+            {
+                var htmlDoc = new HtmlDocument();
+                htmlDoc.LoadHtml(content);
+                return await IsRegulatoryDocument(url, htmlDoc);
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error determining if document is regulatory: {ex.Message}");
+                return false;
+            }
         }
-        
+
+        // Add method to handle byte array parameter
+        public async Task<bool> IsRegulatoryDocument(byte[] contentBytes)
+        {
+            if (contentBytes == null || contentBytes.Length == 0)
+                return false;
+
+            try
+            {
+                // Convert bytes to string for HTML content
+                string content = System.Text.Encoding.UTF8.GetString(contentBytes);
+                return await IsRegulatoryDocument("bytecontent://unknown", content);
+            }
+            catch (Exception ex)
+            {
+                _logger($"Error determining if byte content is regulatory: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task<StructuredContentResult> ExtractStructuredContent(string url, string content)
         {
             var extractor = new StructuredContentExtractor(_logger);
-            return await extractor.ExtractStructuredContent(url, content);
+            // Use the extension method we created to handle string content
+            return await StructuredContentExtractorExtension.ExtractStructuredContent(extractor, url, content);
         }
 
         private async Task<byte[]> DownloadFileAsync(string url)
@@ -78,7 +112,7 @@ namespace WebScraper.RegulatoryContent
                 return await httpClient.GetByteArrayAsync(url);
             }
         }
-        
+
         // Add missing method overloads for HTML document handling
         public async Task<bool> IsRegulatoryDocument(string url, HtmlDocument htmlDoc)
         {
@@ -86,7 +120,7 @@ namespace WebScraper.RegulatoryContent
             {
                 string htmlContent = null;
                 string textContent = null;
-                
+
                 if (htmlDoc != null)
                 {
                     // Extract content from the provided HTML document
@@ -99,7 +133,7 @@ namespace WebScraper.RegulatoryContent
                     using (var httpClient = new System.Net.Http.HttpClient())
                     {
                         htmlContent = await httpClient.GetStringAsync(url);
-                        
+
                         // Parse the HTML
                         htmlDoc = new HtmlDocument();
                         htmlDoc.LoadHtml(htmlContent);
@@ -125,13 +159,13 @@ namespace WebScraper.RegulatoryContent
                 // Create a temporary file to save the bytes
                 string tempPath = Path.Combine(Path.GetTempPath(), $"tempoffice_{Guid.NewGuid()}.docx");
                 File.WriteAllBytes(tempPath, officeDocBytes);
-                
+
                 // Process the file
                 var result = _officeDocumentHandler.ExtractTextFromDocument(tempPath).GetAwaiter().GetResult();
-                
+
                 // Clean up the temp file
                 try { File.Delete(tempPath); } catch { }
-                
+
                 return result;
             }
             catch (Exception ex)
@@ -188,12 +222,12 @@ namespace WebScraper.RegulatoryContent
 
                 // Classify the content
                 var classification = _contentClassifier.ClassifyContent("file://document", metadata.TextContent, htmlDoc);
-                metadata.Classification = new ClassificationResult 
+                metadata.Classification = new ClassificationResult
                 {
                     PrimaryCategory = classification.PrimaryCategory ?? "Unknown",
                     Category = classification.Category ?? "Unknown",
                     Confidence = classification.ConfidenceScore,
-                    Impact = (RegulatoryImpact)classification.Impact,
+                    Impact = (WebScraper.RegulatoryImpact)classification.Impact, // Explicit cast with full namespace
                     MatchedKeywords = classification.Topics?.ToList() ?? new List<string>()
                 };
 
@@ -214,6 +248,25 @@ namespace WebScraper.RegulatoryContent
             catch (Exception ex)
             {
                 _logger?.Invoke($"Error processing HTML document: {ex.Message}");
+                return null;
+            }
+        }
+
+        // Add overload for string content
+        public async Task<DocumentMetadata> ProcessHtmlDocument(string htmlContent)
+        {
+            if (string.IsNullOrEmpty(htmlContent))
+                return null;
+
+            try
+            {
+                var htmlDoc = new HtmlDocument();
+                htmlDoc.LoadHtml(htmlContent);
+                return await ProcessHtmlDocument(htmlDoc);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error processing HTML content: {ex.Message}");
                 return null;
             }
         }
@@ -243,17 +296,17 @@ namespace WebScraper.RegulatoryContent
             {
                 return _officeDocumentHandler.ExtractTextFromDocument(filePath);
             }
-            
+
             return Task.FromResult<string>(null);
         }
     }
-    
+
     public class StructuredContentResult
     {
-        public string Title { get; set; }
-        public string Author { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Author { get; set; } = string.Empty;
         public DateTime? PublicationDate { get; set; }
-        public string Summary { get; set; }
-        public string[] KeyPoints { get; set; }
+        public string Summary { get; set; } = string.Empty;
+        public string[] KeyPoints { get; set; } = Array.Empty<string>();
     }
 }

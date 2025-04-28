@@ -6,7 +6,7 @@ namespace WebScraper.RegulatoryFramework.Configuration
     /// <summary>
     /// Configuration for document processing
     /// </summary>
-    public class DocumentProcessingConfig
+    public class DocumentProcessingConfig : FeatureConfigBase
     {
         /// <summary>
         /// Whether to download documents
@@ -66,7 +66,7 @@ namespace WebScraper.RegulatoryFramework.Configuration
         /// <summary>
         /// Validates the configuration
         /// </summary>
-        public List<string> Validate()
+        public override List<string> Validate()
         {
             var errors = new List<string>();
             

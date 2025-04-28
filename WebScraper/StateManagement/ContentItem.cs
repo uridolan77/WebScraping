@@ -5,7 +5,7 @@ namespace WebScraper.StateManagement
     /// <summary>
     /// Represents content scraped from a website with state management support
     /// </summary>
-    public class ContentItem
+    public class ContentItem : WebScraper.Interfaces.ContentItem
     {
         /// <summary>
         /// Gets or sets the URL the content was scraped from

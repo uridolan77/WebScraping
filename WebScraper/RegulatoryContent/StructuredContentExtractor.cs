@@ -80,6 +80,36 @@ namespace WebScraper.RegulatoryContent
             }
         }
         
+        /// <summary>
+        /// Extracts structured content from raw HTML string content with URL information
+        /// Useful when working with stored content from state management or for change detection
+        /// </summary>
+        /// <param name="htmlContent">The raw HTML content as string</param>
+        /// <param name="url">The URL of the document</param>
+        /// <returns>A ContentSection object containing the document structure</returns>
+        public ContentSection ExtractStructuredContentFromHtml(string htmlContent, string url)
+        {
+            if (string.IsNullOrEmpty(htmlContent))
+                return new ContentSection { Url = url };
+                
+            try
+            {
+                _logger?.Invoke($"Extracting structured content from HTML string for {url}");
+                
+                // Parse HTML into document
+                var htmlDoc = new HtmlDocument();
+                htmlDoc.LoadHtml(htmlContent);
+                
+                // Use the existing implementation
+                return ExtractStructuredContent(htmlDoc, url);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke($"Error extracting structured content from HTML string: {ex.Message}");
+                return new ContentSection { Url = url };
+            }
+        }
+        
         private string ExtractTitle(HtmlDocument htmlDoc)
         {
             // Try to get title from h1 first

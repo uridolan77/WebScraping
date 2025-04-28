@@ -1,14 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 
 namespace WebScraper.RegulatoryContent
 {
     /// <summary>
-    /// Classifies regulatory documents based on their content and structure
+    /// Regulatory impact level definition within the RegulatoryContent namespace
+    /// </summary>
+    public enum RegulatoryImpact
+    {
+        None = 0,
+        Low = 1,
+        Medium = 2,
+        High = 3,
+        Critical = 4
+    }
+    
+    /// <summary>
+    /// Classifies regulatory documents based on their content
     /// </summary>
     public class RegulatoryDocumentClassifier
     {
@@ -63,18 +75,6 @@ namespace WebScraper.RegulatoryContent
         }
 
         /// <summary>
-        /// Regulatory impact levels for changes
-        /// </summary>
-        public enum RegulatoryImpact
-        {
-            None = 0,
-            Low = 1,
-            Medium = 2,
-            High = 3,
-            Critical = 4
-        }
-        
-        /// <summary>
         /// Regulatory document types
         /// </summary>
         public enum DocumentType
@@ -107,6 +107,13 @@ namespace WebScraper.RegulatoryContent
             public RegulatoryImpact Impact { get; set; } = RegulatoryImpact.None;
             public string PrimaryCategory { get => PrimaryType.ToString(); }
             public string Category { get => PrimaryType.ToString(); }
+            
+            // Adding Keywords property for backward compatibility
+            public List<string> Keywords 
+            { 
+                get => MatchedKeywords; 
+                set => MatchedKeywords = value ?? new List<string>(); 
+            }
         }
 
         /// <summary>
@@ -193,6 +200,7 @@ namespace WebScraper.RegulatoryContent
                                 result.PrimaryType == DocumentType.EnforcementAction ||
                                 result.PrimaryType == DocumentType.LicensingInfo));
                                 
+
             _logger($"Document at {url} is {(isRegulatory ? "regulatory" : "non-regulatory")} with confidence {result.Confidence:P0}");
             
             return await Task.FromResult(isRegulatory);

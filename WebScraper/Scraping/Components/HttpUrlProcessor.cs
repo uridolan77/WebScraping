@@ -15,10 +15,10 @@ namespace WebScraper.Scraping.Components
     /// </summary>
     public class HttpUrlProcessor : ScraperComponentBase, IUrlProcessor, IDisposable
     {
-        private HttpClient _httpClient;
+        private HttpClient? _httpClient;
         private readonly ConcurrentBag<string> _pendingUrls = new ConcurrentBag<string>();
         private readonly HashSet<string> _visitedUrls = new HashSet<string>();
-        private readonly SemaphoreSlim _processingLimiter;
+        private SemaphoreSlim _processingLimiter;
         private int _maxConcurrentRequests = 5;
         private bool _isDisposed;
         
@@ -27,7 +27,8 @@ namespace WebScraper.Scraping.Components
         /// </summary>
         public HttpUrlProcessor()
         {
-            _processingLimiter = new SemaphoreSlim(1); // Start with 1, will update in Initialize
+            // Initialize with 1, will be properly set in InitializeAsync
+            _processingLimiter = new SemaphoreSlim(1); 
         }
         
         /// <summary>
@@ -50,6 +51,9 @@ namespace WebScraper.Scraping.Components
             _httpClient.DefaultRequestHeaders.Add("User-Agent", Config.UserAgent);
             
             _maxConcurrentRequests = Config.MaxConcurrentRequests;
+            
+            // Dispose old semaphore and create a new one with correct count
+            _processingLimiter.Dispose();
             _processingLimiter = new SemaphoreSlim(_maxConcurrentRequests);
             
             LogInfo("HttpUrlProcessor initialized");
@@ -199,6 +203,13 @@ namespace WebScraper.Scraping.Components
         {
             LogInfo($"Processing with HTTP client: {url}");
             
+            // Ensure HTTP client is initialized
+            if (_httpClient == null)
+            {
+                LogError(new InvalidOperationException("HTTP client not initialized"), $"Failed to process {url}");
+                return;
+            }
+            
             // Get content
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -294,7 +305,19 @@ namespace WebScraper.Scraping.Components
                 if (string.IsNullOrWhiteSpace(href) || href.StartsWith("#") || href.StartsWith("javascript:"))
                     continue;
                 
-                if (Uri.TryCreate(baseUri, href, out Uri absoluteUri))
+                // Use a null-safe approach for URI creation
+                Uri? absoluteUri = null;
+                try
+                {
+                    absoluteUri = new Uri(baseUri, href);
+                }
+                catch
+                {
+                    // Skip invalid URIs
+                    continue;
+                }
+                
+                if (absoluteUri != null)
                 {
                     var absoluteUrl = absoluteUri.ToString();
                     
