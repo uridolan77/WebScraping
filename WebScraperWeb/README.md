@@ -4,7 +4,7 @@ A React-based administration interface for managing web scrapers, monitoring the
 
 ## Project Structure
 
-```
+```bash
 webscraper-backoffice/
 ├── public/
 │   ├── index.html
@@ -74,7 +74,7 @@ Builds the app for production to the `build` folder.
 
 Create a `.env` file in the root directory with the following variables:
 
-```
+```env
 REACT_APP_API_URL=https://localhost:7143/api
 ```
 
@@ -86,6 +86,27 @@ REACT_APP_API_URL=https://localhost:7143/api
 - **Scheduling**: Set up automated scraping schedules
 - **Notifications**: Configure alerts for important events and content changes
 - **Content Browser**: Browse and search through scraped content
+
+## Recent Improvements
+
+### TypeScript Integration
+
+- Strong type checking for improved code quality
+- Type definitions for all major entities and API responses
+- Normalized file extensions (.tsx for components, .ts for utilities)
+
+### Enhanced State Management
+
+- React Query for efficient data fetching and caching
+- Proper loading and error states for all asynchronous operations
+- Robust context architecture for global application state
+
+### Performance Optimizations
+
+- Virtualized tables for efficient rendering of large datasets
+- Component memoization with React.memo
+- Pagination for data-heavy views
+- Optimized rendering with useMemo and useCallback
 
 ## API Integration
 

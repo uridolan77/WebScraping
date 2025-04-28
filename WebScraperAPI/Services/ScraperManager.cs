@@ -45,8 +45,7 @@ namespace WebScraperApi.Services
             _analyticsService = analyticsService;
             _schedulingService = schedulingService;
 
-            // Register this instance with the ServiceLocator to resolve circular dependency
-            ServiceLocator.RegisterService(typeof(ScraperManager), this);
+            // No longer using ServiceLocator to avoid circular dependencies
         }
 
         /// <summary>
@@ -201,8 +200,8 @@ namespace WebScraperApi.Services
                 _executionService.StopScraper(instance.Scraper, message => _monitoringService.AddLogMessage(id, message));
 
                 // Clean up resources
-                instance.Scraper.Dispose();
-                instance.Scraper = null;
+                instance.Scraper?.Dispose();
+                instance.Scraper = null!; // Using null-forgiving operator
             }
 
             // Remove from state management

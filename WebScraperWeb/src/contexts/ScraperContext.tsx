@@ -1,5 +1,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useScrapers, useScraper, useScraperStatus, useCreateScraper, useUpdateScraper, useDeleteScraper, useStartScraper, useStopScraper } from '../hooks/queries/useScraperQueries';
+import { useQuery } from '@tanstack/react-query';
+import { useCreateScraper, useUpdateScraper, useDeleteScraper, useStartScraper, useStopScraper } from '../hooks/queries/useScraperQueries';
+import { getAllScrapers } from '../api/scrapers';
 import { Scraper, ScraperStatus } from '../types';
 
 interface ScraperContextType {
@@ -9,7 +11,7 @@ interface ScraperContextType {
   scraperStatus: Record<string, ScraperStatus>;
   loading: boolean;
   error: string | null;
-  
+
   // Actions
   fetchScraper: (id: string) => Promise<Scraper | null>;
   refreshScrapers: () => void;
@@ -28,7 +30,7 @@ const ScraperContext = createContext<ScraperContextType>({
   scraperStatus: {},
   loading: false,
   error: null,
-  
+
   fetchScraper: async () => null,
   refreshScrapers: () => {},
   addScraper: async () => null,
@@ -40,7 +42,7 @@ const ScraperContext = createContext<ScraperContextType>({
 });
 
 // Custom hook to use the scraper context
-export const useScrapers = () => {
+export const useScraperContext = () => {
   return useContext(ScraperContext);
 };
 
@@ -51,41 +53,54 @@ interface ScraperProviderProps {
 // Provider component
 export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) => {
   // Use React Query hooks
-  const { 
-    data: scrapers = [], 
-    isLoading: isScrapersLoading, 
+  const {
+    data: scrapers = [],
+    isLoading: isScrapersLoading,
     error: scrapersError,
     refetch: refetchScrapers
-  } = useScrapers();
-  
+  } = useQuery({
+    queryKey: ['scrapers'],
+    queryFn: getAllScrapers
+  });
+
   const createScraperMutation = useCreateScraper();
   const updateScraperMutation = useUpdateScraper();
   const deleteScraperMutation = useDeleteScraper();
   const startScraperMutation = useStartScraper();
   const stopScraperMutation = useStopScraper();
-  
+
   // Fetch a single scraper
   const fetchScraper = async (id: string): Promise<Scraper | null> => {
     try {
-      const { data } = await useScraper(id);
+      // Use direct API call instead of React Query hook
+      const response = await fetch(`/api/scrapers/${id}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch scraper: ${response.statusText}`);
+      }
+      const data = await response.json();
       return data || null;
     } catch (error) {
       console.error(`Error fetching scraper with id ${id}:`, error);
       return null;
     }
   };
-  
+
   // Fetch scraper status
   const fetchScraperStatus = async (id: string): Promise<ScraperStatus | null> => {
     try {
-      const { data } = await useScraperStatus(id);
+      // Use direct API call instead of React Query hook
+      const response = await fetch(`/api/scrapers/${id}/status`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch scraper status: ${response.statusText}`);
+      }
+      const data = await response.json();
       return data || null;
     } catch (error) {
       console.error(`Error fetching status for scraper with id ${id}:`, error);
       return null;
     }
   };
-  
+
   // Add a new scraper
   const addScraper = async (scraper: Scraper): Promise<Scraper | null> => {
     try {
@@ -96,7 +111,7 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
       return null;
     }
   };
-  
+
   // Edit an existing scraper
   const editScraper = async (scraper: Scraper): Promise<Scraper | null> => {
     try {
@@ -107,7 +122,7 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
       return null;
     }
   };
-  
+
   // Remove a scraper
   const removeScraper = async (id: string): Promise<void> => {
     try {
@@ -117,7 +132,7 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
       throw error;
     }
   };
-  
+
   // Start a scraper
   const start = async (id: string): Promise<void> => {
     try {
@@ -127,7 +142,7 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
       throw error;
     }
   };
-  
+
   // Stop a scraper
   const stop = async (id: string): Promise<void> => {
     try {
@@ -137,23 +152,23 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
       throw error;
     }
   };
-  
+
   // Compute derived state
-  const loading = isScrapersLoading || 
-    createScraperMutation.isPending || 
-    updateScraperMutation.isPending || 
+  const loading = isScrapersLoading ||
+    createScraperMutation.isPending ||
+    updateScraperMutation.isPending ||
     deleteScraperMutation.isPending ||
     startScraperMutation.isPending ||
     stopScraperMutation.isPending;
-  
-  const error = scrapersError?.message || 
-    createScraperMutation.error?.message || 
-    updateScraperMutation.error?.message || 
+
+  const error = scrapersError?.message ||
+    createScraperMutation.error?.message ||
+    updateScraperMutation.error?.message ||
     deleteScraperMutation.error?.message ||
     startScraperMutation.error?.message ||
     stopScraperMutation.error?.message ||
     null;
-  
+
   // Build the context value
   const value: ScraperContextType = {
     scrapers,
@@ -161,7 +176,7 @@ export const ScraperProvider: React.FC<ScraperProviderProps> = ({ children }) =>
     scraperStatus: {}, // This will be populated by individual components
     loading,
     error,
-    
+
     fetchScraper,
     refreshScrapers: refetchScrapers,
     addScraper,

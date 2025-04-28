@@ -22,11 +22,12 @@ namespace WebScraperApi.Services.Execution
 
         public ScraperExecutionService(
             ILogger<ScraperExecutionService> logger,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            ScraperComponentFactory componentFactory)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
-            _componentFactory = new ScraperComponentFactory(loggerFactory);
+            _componentFactory = componentFactory;
         }
 
         /// <summary>

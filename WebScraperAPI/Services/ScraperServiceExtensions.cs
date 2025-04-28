@@ -43,8 +43,12 @@ namespace WebScraperApi.Services
             // Register notification service
             services.AddScoped<IWebhookNotificationService, WebhookNotificationService>();
 
-            // Register the main scraper manager
-            services.AddSingleton<ScraperManager>();
+            // Register the main scraper manager as scoped to match its dependencies
+            services.AddScoped<ScraperManager>();
+
+            // Register the ScraperManager as a singleton for services that need it
+            // This helps avoid circular dependencies
+            services.AddSingleton<Func<ScraperManager>>(sp => () => sp.GetRequiredService<ScraperManager>());
 
             // Comment out the hosted service registration for now
             // services.AddHostedService<IHostedService>();
