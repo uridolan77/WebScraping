@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraper", "WebScraper\We
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebScraperAPI", "WebScraperAPI\WebScraperAPI.csproj", "{7445E88C-0231-45BF-BAA6-728B647F243D}"
 EndProject
-Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "webscraperfrontend", "WebScraperFrontend\webscraperfrontend.esproj", "{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,12 +21,6 @@ Global
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7445E88C-0231-45BF-BAA6-728B647F243D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{28CF1EB4-B43C-BC9A-F3CB-4031CF57D1B9}.Release|Any CPU.Deploy.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
