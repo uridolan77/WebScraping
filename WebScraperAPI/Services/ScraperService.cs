@@ -4,13 +4,14 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Models;
+using WebScraperApi.Services.Execution;
 
 namespace WebScraperApi.Services
 {
     public class ScraperService : IScraperService
     {
         private readonly ScraperConfigService _configService;
-        private readonly ScraperExecutionService _executionService;
+        private readonly IScraperExecutionService _executionService;
         private readonly ScraperRunService _runService;
         private readonly ContentChangeService _contentChangeService;
         private readonly DocumentService _documentService;
@@ -19,7 +20,7 @@ namespace WebScraperApi.Services
 
         public ScraperService(
             ScraperConfigService configService,
-            ScraperExecutionService executionService,
+            IScraperExecutionService executionService,
             ScraperRunService runService,
             ContentChangeService contentChangeService,
             DocumentService documentService,
@@ -68,7 +69,22 @@ namespace WebScraperApi.Services
 
         public async Task<bool> StartScraperAsync(string id)
         {
-            return await _executionService.StartScraperAsync(id);
+            // Get the scraper configuration
+            var config = await _configService.GetScraperByIdAsync(id);
+            if (config == null)
+            {
+                _logger.LogWarning("Cannot start scraper: scraper {ScraperId} not found", id);
+                return false;
+            }
+
+            // Create a new scraper state
+            var scraperState = new ScraperState { Id = id, Status = "Running" };
+
+            // Start the scraper with the configuration and state
+            return await _executionService.StartScraperAsync(
+                config,
+                scraperState,
+                message => _logger.LogInformation("Scraper {ScraperId}: {Message}", id, message));
         }
 
         public async Task<bool> StopScraperAsync(string id)
@@ -123,9 +139,9 @@ namespace WebScraperApi.Services
         #region Metrics Operations
 
         public async Task<Dictionary<string, List<KeyValuePair<DateTime, double>>>> GetScraperMetricsAsync(
-            string scraperId, 
-            DateTime from, 
-            DateTime to, 
+            string scraperId,
+            DateTime from,
+            DateTime to,
             string[] metricNames = null)
         {
             return await _metricsService.GetScraperMetricsAsync(scraperId, from, to, metricNames);

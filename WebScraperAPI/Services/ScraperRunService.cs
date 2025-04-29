@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using WebScraperApi.Data.Entities;
+using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Models;
 
@@ -21,7 +21,7 @@ namespace WebScraperApi.Services
             try
             {
                 var runs = await _repository.GetScraperRunsAsync(scraperId, limit);
-                return runs.Select(MapToModel).ToList();
+                return runs.Select(e => MapToModel(e)).ToList();
             }
             catch (Exception ex)
             {
@@ -35,7 +35,11 @@ namespace WebScraperApi.Services
             try
             {
                 var run = await _repository.GetScraperRunByIdAsync(runId);
-                return run != null ? MapToModel(run) : null;
+                if (run != null)
+                {
+                    return MapToModel(run);
+                }
+                return null;
             }
             catch (Exception ex)
             {
@@ -46,7 +50,7 @@ namespace WebScraperApi.Services
 
         #region Mapping Methods
 
-        private ScraperRun MapToModel(ScraperRunEntity entity)
+        private ScraperRun MapToModel(WebScraperApi.Data.ScraperRunEntity entity)
         {
             if (entity == null)
                 return null;
@@ -59,7 +63,7 @@ namespace WebScraperApi.Services
                 EndTime = entity.EndTime,
                 UrlsProcessed = entity.UrlsProcessed,
                 DocumentsProcessed = entity.DocumentsProcessed,
-                Successful = entity.Successful,
+                Successful = entity.Successful ?? false,
                 ErrorMessage = entity.ErrorMessage,
                 ElapsedTime = entity.ElapsedTime
             };

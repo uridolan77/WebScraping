@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using WebScraperApi.Data.Entities;
+using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Models;
 
@@ -21,7 +21,7 @@ namespace WebScraperApi.Services
             try
             {
                 var scrapers = await _repository.GetAllScrapersAsync();
-                return scrapers.Select(MapToModel).ToList();
+                return scrapers.Select(e => MapToModel(e)).ToList();
             }
             catch (Exception ex)
             {
@@ -35,7 +35,11 @@ namespace WebScraperApi.Services
             try
             {
                 var scraper = await _repository.GetScraperByIdAsync(id);
-                return scraper != null ? MapToModel(scraper) : null;
+                if (scraper != null)
+                {
+                    return MapToModel(scraper);
+                }
+                return null;
             }
             catch (Exception ex)
             {
@@ -71,7 +75,7 @@ namespace WebScraperApi.Services
                 model.Id = id;
                 var entity = MapToEntity(model);
                 entity.CreatedAt = existingScraper.CreatedAt;
-                
+
                 var result = await _repository.UpdateScraperAsync(entity);
                 return MapToModel(result);
             }
@@ -97,7 +101,7 @@ namespace WebScraperApi.Services
 
         #region Mapping Methods
 
-        private ScraperConfigModel MapToModel(ScraperConfigEntity entity)
+        private ScraperConfigModel MapToModel(WebScraperApi.Data.ScraperConfigEntity entity)
         {
             if (entity == null)
                 return null;
@@ -219,7 +223,7 @@ namespace WebScraperApi.Services
             return model;
         }
 
-        private ScraperConfigEntity MapToEntity(ScraperConfigModel model)
+        private WebScraperApi.Data.ScraperConfigEntity MapToEntity(ScraperConfigModel model)
         {
             if (model == null)
                 return null;

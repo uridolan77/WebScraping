@@ -37,5 +37,19 @@ namespace WebScraperApi.Services.Execution
         /// <param name="scraper">The scraper to stop</param>
         /// <param name="logAction">Action for logging messages</param>
         void StopScraper(Scraper scraper, Action<string> logAction);
+
+        /// <summary>
+        /// Stops a scraper by ID
+        /// </summary>
+        /// <param name="id">The ID of the scraper to stop</param>
+        /// <returns>True if the scraper was stopped successfully, false otherwise</returns>
+        Task<bool> StopScraperAsync(string id);
+
+        /// <summary>
+        /// Gets the status of a scraper by ID
+        /// </summary>
+        /// <param name="id">The ID of the scraper</param>
+        /// <returns>The status of the scraper</returns>
+        Task<ScraperStatus> GetScraperStatusAsync(string id);
     }
 }

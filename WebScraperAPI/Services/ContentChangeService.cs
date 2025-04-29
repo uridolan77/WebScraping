@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using WebScraperApi.Data.Entities;
+using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Models;
 
@@ -21,7 +21,7 @@ namespace WebScraperApi.Services
             try
             {
                 var changes = await _repository.GetContentChangesAsync(scraperId, limit);
-                return changes.Select(MapToModel).ToList();
+                return changes.Select(e => MapToModel(e)).ToList();
             }
             catch (Exception ex)
             {
@@ -32,7 +32,7 @@ namespace WebScraperApi.Services
 
         #region Mapping Methods
 
-        private ContentChangeRecord MapToModel(ContentChangeRecordEntity entity)
+        private ContentChangeRecord MapToModel(WebScraperApi.Data.ContentChangeRecordEntity entity)
         {
             if (entity == null)
                 return null;

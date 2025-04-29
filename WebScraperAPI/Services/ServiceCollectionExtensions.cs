@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
+using WebScraperApi.Services.Execution;
 
 namespace WebScraperApi.Services
 {
@@ -14,7 +16,7 @@ namespace WebScraperApi.Services
             services.AddDbContext<WebScraperDbContext>(options =>
                 options.UseMySql(
                     configuration.GetConnectionString("DefaultConnection"),
-                    ServerVersion.AutoDetect(configuration.GetConnectionString("DefaultConnection"))
+                    MySqlServerVersion.AutoDetect(configuration.GetConnectionString("DefaultConnection"))
                 )
             );
 
@@ -27,10 +29,10 @@ namespace WebScraperApi.Services
             services.AddScoped<ContentChangeService>();
             services.AddScoped<DocumentService>();
             services.AddScoped<MetricsService>();
-            
-            // Add the existing execution service
-            // Note: This assumes the existing ScraperExecutionService is already registered elsewhere
-            
+
+            // Add the execution service
+            services.AddScoped<IScraperExecutionService, WebScraperApi.Services.Execution.ScraperExecutionService>();
+
             // Add the composite service
             services.AddScoped<IScraperService, ScraperService>();
 

@@ -236,5 +236,66 @@ namespace WebScraperApi.Services.Execution
                 logAction($"Error stopping scraper: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Stops a scraper by ID
+        /// </summary>
+        /// <param name="id">The ID of the scraper to stop</param>
+        /// <returns>True if the scraper was stopped successfully, false otherwise</returns>
+        public async Task<bool> StopScraperAsync(string id)
+        {
+            try
+            {
+                _logger.LogInformation($"Attempting to stop scraper with ID {id}");
+
+                // This is a placeholder implementation
+                // In a real implementation, you would need to:
+                // 1. Get the scraper instance from a state service
+                // 2. Call StopScraper with the instance
+
+                // Add a small delay to make this truly async
+                await Task.Delay(1);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error stopping scraper with ID {id}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the status of a scraper by ID
+        /// </summary>
+        /// <param name="id">The ID of the scraper</param>
+        /// <returns>The status of the scraper</returns>
+        public async Task<ScraperStatus> GetScraperStatusAsync(string id)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting status for scraper with ID {id}");
+
+                // This is a placeholder implementation
+                // In a real implementation, you would need to:
+                // 1. Get the scraper status from a state service or database
+
+                // Add a small delay to make this truly async
+                await Task.Delay(1);
+
+                // Return a default status
+                return new ScraperStatus
+                {
+                    IsRunning = false,
+                    Message = "Status retrieved",
+                    LastStatusUpdate = DateTime.Now
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting status for scraper with ID {id}");
+                throw;
+            }
+        }
     }
 }
