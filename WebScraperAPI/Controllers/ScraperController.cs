@@ -2,11 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using WebScraperApi.Models;
-using WebScraperApi.Services;
-using WebScraperApi.Data.Repositories;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using WebScraperApi.Models;
+using WebScraperApi.Data.Repositories;
 using WebScraperApi.Data.Entities;
 
 namespace WebScraperApi.Controllers
@@ -226,19 +226,44 @@ namespace WebScraperApi.Controllers
         {
             try
             {
+                _logger.LogInformation("Attempting to retrieve scraper with ID: {ScraperId}", id);
+
                 var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
                 if (scraperConfig == null)
                 {
+                    _logger.LogWarning("Scraper with ID {ScraperId} not found", id);
                     return NotFound($"Scraper with ID {id} not found");
                 }
 
-                var model = MapEntityToModel(scraperConfig);
-                return Ok(model);
+                _logger.LogInformation("Successfully retrieved scraper with ID: {ScraperId}, mapping to model", id);
+
+                try
+                {
+                    var model = MapEntityToModel(scraperConfig);
+                    return Ok(model);
+                }
+                catch (Exception mapEx)
+                {
+                    _logger.LogError(mapEx, "Error mapping entity to model for scraper with ID {ScraperId}: {ErrorMessage}",
+                        id, mapEx.Message);
+                    return StatusCode(500, new {
+                        Message = $"An error occurred while mapping scraper {id}",
+                        Error = mapEx.Message,
+                        InnerError = mapEx.InnerException?.Message,
+                        StackTrace = mapEx.StackTrace
+                    });
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving scraper with ID {ScraperId}", id);
-                return StatusCode(500, $"An error occurred while retrieving scraper {id}");
+                _logger.LogError(ex, "Error retrieving scraper with ID {ScraperId}: {ErrorMessage}",
+                    id, ex.Message);
+                return StatusCode(500, new {
+                    Message = $"An error occurred while retrieving scraper {id}",
+                    Error = ex.Message,
+                    InnerError = ex.InnerException?.Message,
+                    StackTrace = ex.StackTrace
+                });
             }
         }
 
@@ -420,9 +445,108 @@ namespace WebScraperApi.Controllers
             }
         }
 
+        /// <summary>
+        /// Get scraper status
+        /// </summary>
+        /// <param name="id">The ID of the scraper to get status for</param>
+        /// <returns>Status information for the scraper</returns>
+        [HttpGet("{id}/status")]
+        [ProducesResponseType(typeof(ScraperStatusEntity), 200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetScraperStatus(string id)
+        {
+            try
+            {
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                // Try to get actual status from repository if available
+                var status = await _scraperRepository.GetScraperStatusAsync(id);
+
+                // If no status exists yet, create a default one
+                if (status == null)
+                {
+                    status = new ScraperStatusEntity
+                    {
+                        ScraperId = id,
+                        IsRunning = false,
+                        UrlsProcessed = 0,
+                        HasErrors = false,
+                        Message = "Idle",
+                        LastUpdate = DateTime.Now
+                    };
+
+                    // Save the default status
+                    await _scraperRepository.UpdateScraperStatusAsync(status);
+                }
+
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting status for scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while getting status for scraper {id}");
+            }
+        }
+
+        /// <summary>
+        /// Stop a scraper
+        /// </summary>
+        /// <param name="id">The ID of the scraper to stop</param>
+        /// <returns>Status information for the stopped scraper</returns>
+        [HttpPost("{id}/stop")]
+        [ProducesResponseType(typeof(ScraperStatusEntity), 200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> StopScraper(string id)
+        {
+            try
+            {
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                // Get current status or create new if it doesn't exist
+                var status = await _scraperRepository.GetScraperStatusAsync(id);
+                if (status == null)
+                {
+                    status = new ScraperStatusEntity
+                    {
+                        ScraperId = id,
+                        IsRunning = false,
+                        UrlsProcessed = 0,
+                        HasErrors = false,
+                        Message = "Idle",
+                        LastUpdate = DateTime.Now
+                    };
+                }
+                else
+                {
+                    // Update status to stopped
+                    status.IsRunning = false;
+                    status.Message = "Scraper stopped";
+                    status.LastUpdate = DateTime.Now;
+                }
+
+                // Save the status
+                await _scraperRepository.UpdateScraperStatusAsync(status);
+
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while stopping scraper {id}");
+            }
+        }
+
         #region Mapping Methods
 
-        private ScraperConfigModel? MapEntityToModel(WebScraperApi.Data.ScraperConfigEntity entity)
+        private ScraperConfigModel? MapEntityToModel(ScraperConfigEntity entity)
         {
             if (entity == null)
                 return null;
@@ -477,7 +601,7 @@ namespace WebScraperApi.Controllers
             return model;
         }
 
-        private WebScraperApi.Data.ScraperConfigEntity? MapModelToEntity(ScraperConfigModel model)
+        private ScraperConfigEntity? MapModelToEntity(ScraperConfigModel model)
         {
             if (model == null)
                 return null;
@@ -485,7 +609,7 @@ namespace WebScraperApi.Controllers
             // Set default values for required fields if not provided
             var now = DateTime.UtcNow;
 
-            var entity = new WebScraperApi.Data.ScraperConfigEntity
+            var entity = new ScraperConfigEntity
             {
                 Id = string.IsNullOrEmpty(model.Id) ? Guid.NewGuid().ToString() : model.Id,
                 Name = model.Name ?? "Unnamed Scraper",
@@ -502,8 +626,8 @@ namespace WebScraperApi.Controllers
                 MaxPages = model.MaxPages > 0 ? model.MaxPages : 1000,
                 FollowLinks = model.FollowLinks,
                 FollowExternalLinks = model.FollowExternalLinks,
-                StartUrls = new List<WebScraperApi.Data.ScraperStartUrlEntity>(),
-                ContentExtractorSelectors = new List<WebScraperApi.Data.ContentExtractorSelectorEntity>()
+                StartUrls = new List<ScraperStartUrlEntity>(),
+                ContentExtractorSelectors = new List<ContentExtractorSelectorEntity>()
             };
 
             // Map collections
@@ -511,7 +635,7 @@ namespace WebScraperApi.Controllers
             {
                 foreach (var url in model.StartUrls)
                 {
-                    entity.StartUrls.Add(new WebScraperApi.Data.ScraperStartUrlEntity
+                    entity.StartUrls.Add(new ScraperStartUrlEntity
                     {
                         ScraperId = entity.Id,
                         Url = url
@@ -523,7 +647,7 @@ namespace WebScraperApi.Controllers
             {
                 foreach (var selector in model.ContentExtractorSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,
@@ -536,7 +660,7 @@ namespace WebScraperApi.Controllers
             {
                 foreach (var selector in model.ContentExtractorExcludeSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,

@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using WebScraperApi.Data.Entities;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace WebScraperApi.Data
 {
@@ -69,99 +72,7 @@ namespace WebScraperApi.Data
                 }
             }
 
-            // Configure relationships
-            modelBuilder.Entity<ScraperStartUrlEntity>()
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.StartUrls)
-                .HasForeignKey(s => s.ScraperId);
-
-            modelBuilder.Entity<ContentExtractorSelectorEntity>()
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.ContentExtractorSelectors)
-                .HasForeignKey(s => s.ScraperId);
-
-            modelBuilder.Entity<KeywordAlertEntity>()
-                .HasOne(k => k.ScraperConfig)
-                .WithMany(c => c.KeywordAlerts)
-                .HasForeignKey(k => k.ScraperId);
-
-            modelBuilder.Entity<WebhookTriggerEntity>()
-                .HasOne(w => w.ScraperConfig)
-                .WithMany(c => c.WebhookTriggers)
-                .HasForeignKey(w => w.ScraperId);
-
-            modelBuilder.Entity<DomainRateLimitEntity>()
-                .HasOne(d => d.ScraperConfig)
-                .WithMany(c => c.DomainRateLimits)
-                .HasForeignKey(d => d.ScraperId);
-
-            modelBuilder.Entity<ProxyConfigurationEntity>()
-                .HasOne(p => p.ScraperConfig)
-                .WithMany(c => c.ProxyConfigurations)
-                .HasForeignKey(p => p.ScraperId);
-
-            modelBuilder.Entity<ScraperScheduleEntity>()
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.Schedules)
-                .HasForeignKey(s => s.ScraperId);
-
-            modelBuilder.Entity<ScraperRunEntity>()
-                .HasOne(r => r.ScraperConfig)
-                .WithMany(c => c.Runs)
-                .HasForeignKey(r => r.ScraperId);
-
-            modelBuilder.Entity<ScraperStatusEntity>()
-                .HasOne(s => s.ScraperConfig)
-                .WithOne(c => c.Status)
-                .HasForeignKey<ScraperStatusEntity>(s => s.ScraperId);
-
-            modelBuilder.Entity<PipelineMetricEntity>()
-                .HasOne(p => p.ScraperConfig)
-                .WithMany(c => c.PipelineMetrics)
-                .HasForeignKey(p => p.ScraperId);
-
-            modelBuilder.Entity<LogEntryEntity>()
-                .HasOne(l => l.ScraperConfig)
-                .WithMany(c => c.LogEntries)
-                .HasForeignKey(l => l.ScraperId);
-
-            modelBuilder.Entity<LogEntryEntity>()
-                .HasOne(l => l.Run)
-                .WithMany(r => r.LogEntries)
-                .HasForeignKey(l => l.RunId)
-                .IsRequired(false);
-
-            modelBuilder.Entity<ContentChangeRecordEntity>()
-                .HasOne(c => c.ScraperConfig)
-                .WithMany(c => c.ContentChangeRecords)
-                .HasForeignKey(c => c.ScraperId);
-
-            modelBuilder.Entity<ContentChangeRecordEntity>()
-                .HasOne(c => c.Run)
-                .WithMany(r => r.ContentChangeRecords)
-                .HasForeignKey(c => c.RunId)
-                .IsRequired(false);
-
-            modelBuilder.Entity<ProcessedDocumentEntity>()
-                .HasOne(p => p.ScraperConfig)
-                .WithMany(c => c.ProcessedDocuments)
-                .HasForeignKey(p => p.ScraperId);
-
-            modelBuilder.Entity<ProcessedDocumentEntity>()
-                .HasOne(p => p.Run)
-                .WithMany(r => r.ProcessedDocuments)
-                .HasForeignKey(p => p.RunId)
-                .IsRequired(false);
-
-            modelBuilder.Entity<DocumentMetadataEntity>()
-                .HasOne(d => d.ProcessedDocument)
-                .WithMany(p => p.Metadata)
-                .HasForeignKey(d => d.DocumentId);
-
-            modelBuilder.Entity<ScraperMetricEntity>()
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.Metrics)
-                .HasForeignKey(s => s.ScraperId);
+            // Relationships will be configured by convention
         }
 
         // Helper method to convert CamelCase to snake_case for MySQL compatibility
@@ -171,18 +82,18 @@ namespace WebScraperApi.Data
                 return input;
 
             var result = input.ToString();
-            
+
             // Handle common ID abbreviation
             result = System.Text.RegularExpressions.Regex.Replace(result, "ID$", "_id");
-            
+
             // Convert other camel case
             result = System.Text.RegularExpressions.Regex.Replace(
-                result, 
-                "(?<!^)([A-Z][a-z]|(?<=[a-z])[A-Z])", 
-                "_$1", 
+                result,
+                "(?<!^)([A-Z][a-z]|(?<=[a-z])[A-Z])",
+                "_$1",
                 System.Text.RegularExpressions.RegexOptions.Compiled)
                 .ToLower();
-            
+
             return result;
         }
     }

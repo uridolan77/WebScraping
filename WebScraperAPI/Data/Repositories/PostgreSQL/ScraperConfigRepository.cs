@@ -3,9 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using WebScraperAPI.Data.Entities;
+using WebScraperApi.Data.Entities;
 
-namespace WebScraperAPI.Data.Repositories.PostgreSQL
+namespace WebScraperApi.Data.Repositories.PostgreSQL
 {
     /// <summary>
     /// PostgreSQL implementation of the IScraperConfigRepository interface
@@ -13,7 +13,7 @@ namespace WebScraperAPI.Data.Repositories.PostgreSQL
     public class ScraperConfigRepository : IScraperConfigRepository
     {
         private readonly ApplicationDbContext _context;
-        
+
         /// <summary>
         /// Initializes a new instance of the ScraperConfigRepository class
         /// </summary>
@@ -22,36 +22,36 @@ namespace WebScraperAPI.Data.Repositories.PostgreSQL
         {
             _context = context;
         }
-        
+
         /// <inheritdoc/>
-        public async Task<IEnumerable<ScraperConfig>> GetAllAsync()
+        public async Task<IEnumerable<ScraperConfigEntity>> GetAllAsync()
         {
             return await _context.ScraperConfigs
                 .AsNoTracking()
                 .ToListAsync();
         }
-        
+
         /// <inheritdoc/>
-        public async Task<ScraperConfig> GetByIdAsync(Guid id)
+        public async Task<ScraperConfigEntity> GetByIdAsync(Guid id)
         {
             return await _context.ScraperConfigs
                 .Include(c => c.Runs.OrderByDescending(r => r.StartTime).Take(5))
-                .FirstOrDefaultAsync(c => c.Id == id);
+                .FirstOrDefaultAsync(c => c.Id == id.ToString());
         }
-        
+
         /// <inheritdoc/>
-        public async Task<ScraperConfig> CreateAsync(ScraperConfig config)
+        public async Task<ScraperConfigEntity> CreateAsync(ScraperConfigEntity config)
         {
             _context.ScraperConfigs.Add(config);
             await _context.SaveChangesAsync();
             return config;
         }
-        
+
         /// <inheritdoc/>
-        public async Task<bool> UpdateAsync(ScraperConfig config)
+        public async Task<bool> UpdateAsync(ScraperConfigEntity config)
         {
             _context.Entry(config).State = EntityState.Modified;
-            
+
             try
             {
                 await _context.SaveChangesAsync();
@@ -66,7 +66,7 @@ namespace WebScraperAPI.Data.Repositories.PostgreSQL
                 throw;
             }
         }
-        
+
         /// <inheritdoc/>
         public async Task<bool> DeleteAsync(Guid id)
         {
@@ -75,52 +75,52 @@ namespace WebScraperAPI.Data.Repositories.PostgreSQL
             {
                 return false;
             }
-            
+
             _context.ScraperConfigs.Remove(config);
             await _context.SaveChangesAsync();
             return true;
         }
-        
+
         /// <inheritdoc/>
-        public async Task<IEnumerable<ScraperLog>> GetLogsAsync(Guid scraperId, int limit = 100)
+        public async Task<IEnumerable<LogEntryEntity>> GetLogsAsync(Guid scraperId, int limit = 100)
         {
             return await _context.ScraperLogs
-                .Where(l => l.ScraperConfigId == scraperId)
+                .Where(l => l.ScraperId == scraperId.ToString())
                 .OrderByDescending(l => l.Timestamp)
                 .Take(limit)
                 .ToListAsync();
         }
-        
+
         /// <inheritdoc/>
-        public async Task AddLogAsync(ScraperLog log)
+        public async Task AddLogAsync(LogEntryEntity log)
         {
             _context.ScraperLogs.Add(log);
             await _context.SaveChangesAsync();
         }
-        
+
         /// <inheritdoc/>
-        public async Task<IEnumerable<ScraperRun>> GetRunsAsync(Guid scraperId, int limit = 10)
+        public async Task<IEnumerable<ScraperRunEntity>> GetRunsAsync(Guid scraperId, int limit = 10)
         {
             return await _context.ScraperRuns
-                .Where(r => r.ScraperConfigId == scraperId)
+                .Where(r => r.ScraperId == scraperId.ToString())
                 .OrderByDescending(r => r.StartTime)
                 .Take(limit)
                 .ToListAsync();
         }
-        
+
         /// <inheritdoc/>
-        public async Task<ScraperRun> AddRunAsync(ScraperRun run)
+        public async Task<ScraperRunEntity> AddRunAsync(ScraperRunEntity run)
         {
             _context.ScraperRuns.Add(run);
             await _context.SaveChangesAsync();
             return run;
         }
-        
+
         /// <inheritdoc/>
-        public async Task<bool> UpdateRunAsync(ScraperRun run)
+        public async Task<bool> UpdateRunAsync(ScraperRunEntity run)
         {
             _context.Entry(run).State = EntityState.Modified;
-            
+
             try
             {
                 await _context.SaveChangesAsync();

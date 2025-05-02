@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace WebScraperAPI.Data.Entities
+namespace WebScraperApi.Data.Entities
 {
     public class ScrapedContent
     {

@@ -84,7 +84,7 @@ namespace WebScraperApi.Services
                     _logger.LogError("Failed to map model to entity for scraper with ID {ScraperId}", id);
                     return null;
                 }
-                
+
                 if (existingScraper != null)
                 {
                     entity.CreatedAt = existingScraper.CreatedAt;
@@ -115,7 +115,7 @@ namespace WebScraperApi.Services
 
         #region Mapping Methods
 
-        private ScraperConfigModel? MapToModel(WebScraperApi.Data.ScraperConfigEntity entity)
+        private ScraperConfigModel? MapToModel(WebScraperApi.Data.Entities.ScraperConfigEntity entity)
         {
             if (entity == null)
                 return null;
@@ -237,12 +237,12 @@ namespace WebScraperApi.Services
             return model;
         }
 
-        private WebScraperApi.Data.ScraperConfigEntity? MapToEntity(ScraperConfigModel model)
+        private WebScraperApi.Data.Entities.ScraperConfigEntity? MapToEntity(ScraperConfigModel model)
         {
             if (model == null)
                 return null;
 
-            var entity = new WebScraperApi.Data.ScraperConfigEntity
+            var entity = new WebScraperApi.Data.Entities.ScraperConfigEntity
             {
                 Id = string.IsNullOrEmpty(model.Id) ? Guid.NewGuid().ToString() : model.Id,
                 Name = model.Name,
@@ -311,17 +311,17 @@ namespace WebScraperApi.Services
                 MetricsReportingIntervalSeconds = model.MetricsReportingIntervalSeconds,
                 TrackDomainMetrics = model.TrackDomainMetrics,
                 ScraperType = model.ScraperType,
-                StartUrls = new List<WebScraperApi.Data.ScraperStartUrlEntity>(),
-                ContentExtractorSelectors = new List<WebScraperApi.Data.ContentExtractorSelectorEntity>(),
-                KeywordAlerts = new List<WebScraperApi.Data.KeywordAlertEntity>(),
-                WebhookTriggers = new List<WebScraperApi.Data.WebhookTriggerEntity>(),
-                Schedules = new List<WebScraperApi.Data.ScraperScheduleEntity>()
+                StartUrls = new List<WebScraperApi.Data.Entities.ScraperStartUrlEntity>(),
+                ContentExtractorSelectors = new List<WebScraperApi.Data.Entities.ContentExtractorSelectorEntity>(),
+                KeywordAlerts = new List<WebScraperApi.Data.Entities.KeywordAlertEntity>(),
+                WebhookTriggers = new List<WebScraperApi.Data.Entities.WebhookTriggerEntity>(),
+                Schedules = new List<WebScraperApi.Data.Entities.ScraperScheduleEntity>()
             };
 
             // Map collections
             if (model.StartUrls != null)
             {
-                entity.StartUrls = model.StartUrls.Select(url => new WebScraperApi.Data.ScraperStartUrlEntity
+                entity.StartUrls = model.StartUrls.Select(url => new WebScraperApi.Data.Entities.ScraperStartUrlEntity
                 {
                     ScraperId = entity.Id,
                     Url = url
@@ -332,7 +332,7 @@ namespace WebScraperApi.Services
             {
                 foreach (var selector in model.ContentExtractorSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.Entities.ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,
@@ -345,7 +345,7 @@ namespace WebScraperApi.Services
             {
                 foreach (var selector in model.ContentExtractorExcludeSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.Entities.ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,
@@ -356,7 +356,7 @@ namespace WebScraperApi.Services
 
             if (model.KeywordAlertList != null)
             {
-                entity.KeywordAlerts = model.KeywordAlertList.Select(keyword => new WebScraperApi.Data.KeywordAlertEntity
+                entity.KeywordAlerts = model.KeywordAlertList.Select(keyword => new WebScraperApi.Data.Entities.KeywordAlertEntity
                 {
                     ScraperId = entity.Id,
                     Keyword = keyword
@@ -365,7 +365,7 @@ namespace WebScraperApi.Services
 
             if (model.WebhookTriggers != null)
             {
-                entity.WebhookTriggers = model.WebhookTriggers.Select(trigger => new WebScraperApi.Data.WebhookTriggerEntity
+                entity.WebhookTriggers = model.WebhookTriggers.Select(trigger => new WebScraperApi.Data.Entities.WebhookTriggerEntity
                 {
                     ScraperId = entity.Id,
                     TriggerName = trigger
@@ -376,7 +376,7 @@ namespace WebScraperApi.Services
             {
                 foreach (var schedule in model.Schedules)
                 {
-                    entity.Schedules.Add(new WebScraperApi.Data.ScraperScheduleEntity
+                    entity.Schedules.Add(new WebScraperApi.Data.Entities.ScraperScheduleEntity
                     {
                         ScraperId = entity.Id,
                         Name = schedule.ContainsKey("name") ? schedule["name"]?.ToString() ?? "Default Schedule" : "Default Schedule",

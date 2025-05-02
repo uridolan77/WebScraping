@@ -59,6 +59,17 @@ const ScraperEdit = () => {
       try {
         setIsLoading(true);
         const scraperData = await getScraper(id);
+        
+        // Check if we got a valid response - prevent infinite loop on error
+        if (!scraperData) {
+          setAlert({
+            show: true,
+            message: `Could not load scraper with ID: ${id}. The server may be experiencing issues.`,
+            severity: 'error'
+          });
+          return;
+        }
+        
         setScraper(scraperData);
       } catch (error) {
         console.error('Error fetching scraper:', error);

@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using WebScraperApi.Models;
-using WebScraperAPI.Data.Entities;
-using WebScraperAPI.Data.Repositories;
+using WebScraperApi.Data.Entities;
+using WebScraperApi.Data.Repositories;
 
 namespace WebScraperApi.Services
 {
@@ -19,13 +19,13 @@ namespace WebScraperApi.Services
         private readonly ILogger _logger;
         private readonly IScraperConfigRepository _configRepository;
         private readonly string _configFilePath = "scraperConfigs.json";
-        
+
         public ScraperConfigurationService(ILogger logger, IScraperConfigRepository configRepository)
         {
             _logger = logger;
             _configRepository = configRepository;
         }
-        
+
         /// <summary>
         /// Gets all scraper configurations
         /// </summary>
@@ -43,7 +43,7 @@ namespace WebScraperApi.Services
                 throw;
             }
         }
-        
+
         /// <summary>
         /// Gets a specific scraper configuration by ID
         /// </summary>
@@ -71,7 +71,7 @@ namespace WebScraperApi.Services
                 throw;
             }
         }
-        
+
         /// <summary>
         /// Creates a new scraper configuration
         /// </summary>
@@ -84,22 +84,22 @@ namespace WebScraperApi.Services
                 {
                     config.Id = Guid.NewGuid().ToString();
                 }
-                
+
                 // Ensure creation date is set
                 if (config.CreatedAt == default)
                 {
                     config.CreatedAt = DateTime.Now;
                 }
-                
+
                 // Convert to entity for the repository
                 var entity = ToEntity(config);
-                
+
                 // Save to repository
                 await _configRepository.CreateAsync(entity);
-                
+
                 // Get the saved entity with generated ID
                 config.Id = entity.Id.ToString();
-                
+
                 _logger.LogInformation($"Created scraper configuration: {config.Name} ({config.Id})");
                 return config;
             }
@@ -109,7 +109,7 @@ namespace WebScraperApi.Services
                 throw;
             }
         }
-        
+
         /// <summary>
         /// Updates an existing scraper configuration
         /// </summary>
@@ -137,7 +137,7 @@ namespace WebScraperApi.Services
 
                 // Update entity properties
                 var entity = ToEntity(config);
-                
+
                 // Update in repository
                 await _configRepository.UpdateAsync(entity);
 
@@ -150,7 +150,7 @@ namespace WebScraperApi.Services
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Deletes a scraper configuration
         /// </summary>
@@ -183,7 +183,7 @@ namespace WebScraperApi.Services
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Loads scraper configurations from the database with fallback to file
         /// </summary>
@@ -199,7 +199,7 @@ namespace WebScraperApi.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading scraper configurations from database");
-                
+
                 // Fallback to file-based configuration if database fails
                 if (File.Exists(_configFilePath))
                 {
@@ -207,7 +207,7 @@ namespace WebScraperApi.Services
                     {
                         var json = File.ReadAllText(_configFilePath);
                         var configs = JsonConvert.DeserializeObject<List<ScraperConfigModel>>(json);
-                        
+
                         if (configs != null)
                         {
                             _logger.LogInformation($"Loaded {configs.Count} scraper configurations from file");
@@ -219,11 +219,11 @@ namespace WebScraperApi.Services
                         _logger.LogError(fileEx, "Error loading scraper configurations from file");
                     }
                 }
-                
+
                 return new List<ScraperConfigModel>();
             }
         }
-        
+
         /// <summary>
         /// Saves scraper configurations to a file (used as backup)
         /// </summary>
@@ -241,11 +241,11 @@ namespace WebScraperApi.Services
                 _logger.LogError(ex, "Error saving scraper configurations to file");
             }
         }
-        
+
         /// <summary>
-        /// Converts a ScraperConfig entity to a ScraperConfigModel
+        /// Converts a ScraperConfigEntity entity to a ScraperConfigModel
         /// </summary>
-        private ScraperConfigModel ToModel(WebScraperAPI.Data.Entities.ScraperConfig entity)
+        private ScraperConfigModel ToModel(ScraperConfigEntity entity)
         {
             return new ScraperConfigModel
             {
@@ -280,15 +280,15 @@ namespace WebScraperApi.Services
                 TrackChangesHistory = entity.TrackChangesHistory
             };
         }
-        
+
         /// <summary>
-        /// Converts a ScraperConfigModel to a ScraperConfig entity
+        /// Converts a ScraperConfigModel to a ScraperConfigEntity entity
         /// </summary>
-        private WebScraperAPI.Data.Entities.ScraperConfig ToEntity(ScraperConfigModel model)
+        private ScraperConfigEntity ToEntity(ScraperConfigModel model)
         {
-            return new WebScraperAPI.Data.Entities.ScraperConfig
+            return new ScraperConfigEntity
             {
-                Id = Guid.Parse(model.Id),
+                Id = model.Id,
                 Name = model.Name,
                 CreatedAt = model.CreatedAt,
                 LastRun = model.LastRun,

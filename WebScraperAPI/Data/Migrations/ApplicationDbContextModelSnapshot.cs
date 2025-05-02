@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using WebScraperAPI.Data;
+using WebScraperApi.Data;
 
 #nullable disable
 
-namespace WebScraperAPI.Data.Migrations
+namespace WebScraperApi.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     partial class ApplicationDbContextModelSnapshot : ModelSnapshot
@@ -22,7 +22,7 @@ namespace WebScraperAPI.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperConfig", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.ScraperConfigEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -128,7 +128,7 @@ namespace WebScraperAPI.Data.Migrations
                     b.ToTable("ScraperConfigs");
                 });
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperLog", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.LogEntryEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -154,7 +154,7 @@ namespace WebScraperAPI.Data.Migrations
                     b.ToTable("ScraperLogs");
                 });
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperRun", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.ScraperRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -189,10 +189,10 @@ namespace WebScraperAPI.Data.Migrations
                     b.ToTable("ScraperRuns");
                 });
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperLog", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.LogEntryEntity", b =>
                 {
-                    b.HasOne("WebScraperAPI.Data.Entities.ScraperConfig", "ScraperConfig")
-                        .WithMany("Logs")
+                    b.HasOne("WebScraperApi.Data.Entities.ScraperConfigEntity", "ScraperConfig")
+                        .WithMany("LogEntries")
                         .HasForeignKey("ScraperConfigId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -200,9 +200,9 @@ namespace WebScraperAPI.Data.Migrations
                     b.Navigation("ScraperConfig");
                 });
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperRun", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.ScraperRunEntity", b =>
                 {
-                    b.HasOne("WebScraperAPI.Data.Entities.ScraperConfig", "ScraperConfig")
+                    b.HasOne("WebScraperApi.Data.Entities.ScraperConfigEntity", "ScraperConfig")
                         .WithMany("Runs")
                         .HasForeignKey("ScraperConfigId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -211,9 +211,9 @@ namespace WebScraperAPI.Data.Migrations
                     b.Navigation("ScraperConfig");
                 });
 
-            modelBuilder.Entity("WebScraperAPI.Data.Entities.ScraperConfig", b =>
+            modelBuilder.Entity("WebScraperApi.Data.Entities.ScraperConfigEntity", b =>
                 {
-                    b.Navigation("Logs");
+                    b.Navigation("LogEntries");
 
                     b.Navigation("Runs");
                 });

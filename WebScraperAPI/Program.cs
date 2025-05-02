@@ -2,14 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
 using StackExchange.Redis;
-using WebScraperAPI.Data;
-using WebScraperAPI.Data.Repositories;
-using WebScraperAPI.Data.Repositories.MongoDB;
-using WebScraperAPI.Data.Repositories.PostgreSQL;
-using WebScraperAPI.Data.Repositories.Redis;
+using WebScraperApi.Data;
+using WebScraperApi.Data.Repositories;
+using WebScraperApi.Data.Repositories.MongoDB;
+using WebScraperApi.Data.Repositories.PostgreSQL;
+
 using WebScraperApi.Services;
 using WebScraperApi.Services.Factories;
-using WebScraperApi.Data; // Add for WebScraperDbContext
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
@@ -134,8 +133,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 // Register repositories
 builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
 builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>();
-builder.Services.AddSingleton<ICacheRepository, CacheRepository>();
-builder.Services.AddScoped<WebScraperApi.Data.Repositories.IScraperRepository, WebScraperApi.Data.Repositories.ScraperRepository>();
+builder.Services.AddScoped<IScraperRepository, ScraperRepository>();
 
 // Register factory services
 builder.Services.AddScraperFactories();

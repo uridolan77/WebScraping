@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using WebScraperAPI.Data.Entities;
+using WebScraperApi.Data.Entities;
 
-namespace WebScraperAPI.Data
+namespace WebScraperApi.Data
 {
     /// <summary>
     /// Entity Framework Core database context for the WebScraper API
@@ -16,22 +16,22 @@ namespace WebScraperAPI.Data
             : base(options)
         {
         }
-        
+
         /// <summary>
         /// Gets or sets the scraper configurations
         /// </summary>
-        public DbSet<ScraperConfig> ScraperConfigs { get; set; }
-        
+        public DbSet<ScraperConfigEntity> ScraperConfigs { get; set; }
+
         /// <summary>
         /// Gets or sets the scraper runs
         /// </summary>
-        public DbSet<ScraperRun> ScraperRuns { get; set; }
-        
+        public DbSet<ScraperRunEntity> ScraperRuns { get; set; }
+
         /// <summary>
         /// Gets or sets the scraper logs
         /// </summary>
-        public DbSet<ScraperLog> ScraperLogs { get; set; }
-        
+        public DbSet<LogEntryEntity> ScraperLogs { get; set; }
+
         /// <summary>
         /// Configures the model that was discovered by convention from the entity types
         /// </summary>
@@ -39,9 +39,9 @@ namespace WebScraperAPI.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            
+
             // Configure entity relationships and constraints
-            modelBuilder.Entity<ScraperConfig>(entity =>
+            modelBuilder.Entity<ScraperConfigEntity>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
@@ -49,26 +49,26 @@ namespace WebScraperAPI.Data
                 entity.Property(e => e.BaseUrl).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.OutputDirectory).HasMaxLength(255);
                 entity.Property(e => e.NotificationEmail).HasMaxLength(255);
-                
+
                 // Configure relationships
                 entity.HasMany(e => e.Runs)
                     .WithOne(e => e.ScraperConfig)
-                    .HasForeignKey(e => e.ScraperConfigId)
+                    .HasForeignKey(e => e.ScraperId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
-                entity.HasMany(e => e.Logs)
+
+                entity.HasMany(e => e.LogEntries)
                     .WithOne(e => e.ScraperConfig)
-                    .HasForeignKey(e => e.ScraperConfigId)
+                    .HasForeignKey(e => e.ScraperId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
-            
-            modelBuilder.Entity<ScraperRun>(entity =>
+
+            modelBuilder.Entity<ScraperRunEntity>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.ElapsedTime).HasMaxLength(50);
             });
-            
-            modelBuilder.Entity<ScraperLog>(entity =>
+
+            modelBuilder.Entity<LogEntryEntity>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Message).IsRequired();
