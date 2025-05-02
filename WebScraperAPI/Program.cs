@@ -65,8 +65,8 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(
         policy =>
         {
-            // For development, allow any origin
-            policy.AllowAnyOrigin()
+            // For development, explicitly allow the React app's origin
+            policy.WithOrigins("http://localhost:5173")
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -95,7 +95,7 @@ static string GetConnectionString(IConfiguration configuration, string name)
 builder.Services.AddDbContext<WebScraperDbContext>(options =>
 {
     var connectionString = GetConnectionString(builder.Configuration, "WebStraction");
-    if (!string.IsNullOrEmpty(connectionString) && builder.Environment.IsProduction())
+    if (!string.IsNullOrEmpty(connectionString))
     {
         try
         {
@@ -223,9 +223,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Web Scraper API v1"));
 }
 
-app.UseHttpsRedirection();
-app.UseRouting();
+// Move UseCors before routing for correct CORS handling
 app.UseCors(); // Use the default CORS policy
+
+// Only use HTTPS redirection in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
 
