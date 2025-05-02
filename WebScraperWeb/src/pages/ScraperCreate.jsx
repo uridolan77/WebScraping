@@ -44,9 +44,11 @@ function TabPanel(props) {
 
 const defaultScraperConfig = {
   name: 'UKGC',
+  id: '',
   startUrl: 'https://www.gamblingcommission.gov.uk/licensees-and-businesses',
   baseUrl: 'https://www.gamblingcommission.gov.uk',
   outputDirectory: 'UKGCData',
+  notificationEmail: '',
   maxDepth: 5,
   maxPages: 1000,
   maxConcurrentRequests: 5,
@@ -133,6 +135,16 @@ const ScraperCreate = () => {
           isValid = false;
         }
 
+        // ID is optional, but if provided, validate it
+        if (scraper.id && scraper.id.trim() !== '') {
+          // Add any specific ID validation rules here if needed
+          // For example, check if it's alphanumeric
+          if (!/^[a-zA-Z0-9-_]+$/.test(scraper.id)) {
+            newErrors.id = 'ID should contain only letters, numbers, hyphens, and underscores';
+            isValid = false;
+          }
+        }
+
         if (!scraper.startUrl.trim()) {
           newErrors.startUrl = 'Start URL is required';
           isValid = false;
@@ -161,6 +173,15 @@ const ScraperCreate = () => {
         } else if (!isValidUrl(scraper.baseUrl)) {
           newErrors.baseUrl = 'Please enter a valid URL';
           isValid = false;
+        }
+
+        // Email validation
+        if (scraper.notificationEmail && scraper.notificationEmail.trim() !== '') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(scraper.notificationEmail)) {
+            newErrors.notificationEmail = 'Please enter a valid email address';
+            isValid = false;
+          }
         }
         break;
 
@@ -380,7 +401,7 @@ const ScraperCreate = () => {
             {/* Basic Settings Tab */}
             <TabPanel value={activeTab} index={0}>
               <Grid container spacing={3}>
-                <Grid item xs={12}>
+                <Grid item xs={12} md={6}>
                   <TextField
                     label="Scraper Name"
                     fullWidth
@@ -389,6 +410,17 @@ const ScraperCreate = () => {
                     onChange={(e) => handleChange('name', e.target.value)}
                     error={!!errors.name}
                     helperText={errors.name || 'Give your scraper a descriptive name'}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Scraper ID"
+                    fullWidth
+                    value={scraper.id || ''}
+                    onChange={(e) => handleChange('id', e.target.value)}
+                    error={!!errors.id}
+                    helperText={errors.id || 'Optional custom ID for the scraper'}
                   />
                 </Grid>
 
@@ -418,13 +450,25 @@ const ScraperCreate = () => {
                   />
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid item xs={12} md={6}>
                   <TextField
                     label="Output Directory"
                     fullWidth
                     value={scraper.outputDirectory}
                     onChange={(e) => handleChange('outputDirectory', e.target.value)}
                     helperText="Directory where scraped data will be stored"
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Notification Email"
+                    fullWidth
+                    type="email"
+                    value={scraper.notificationEmail || ''}
+                    onChange={(e) => handleChange('notificationEmail', e.target.value)}
+                    error={!!errors.notificationEmail}
+                    helperText={errors.notificationEmail || 'Email for notifications (optional)'}
                   />
                 </Grid>
               </Grid>

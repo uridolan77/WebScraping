@@ -61,8 +61,16 @@ export const createScraper = async (scraperData) => {
 
     const mergedData = { ...defaultData, ...scraperData };
 
-    console.log('Sending scraper data to API:', mergedData);
-    return handleResponse(apiClient.post('/Scraper', mergedData));
+    // Convert camelCase to PascalCase for .NET API
+    const pascalCaseData = {};
+    Object.keys(mergedData).forEach(key => {
+      // Convert first character to uppercase
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      pascalCaseData[pascalKey] = mergedData[key];
+    });
+
+    console.log('Sending scraper data to API:', pascalCaseData);
+    return handleResponse(apiClient.post('/Scraper', pascalCaseData));
   } catch (error) {
     console.error('Error creating scraper:', error);
     throw handleApiError(error, 'Failed to create scraper');
@@ -77,7 +85,15 @@ export const createScraper = async (scraperData) => {
  */
 export const updateScraper = async (id, scraperData) => {
   try {
-    return handleResponse(apiClient.put(`/Scraper/${id}`, scraperData));
+    // Convert camelCase to PascalCase for .NET API
+    const pascalCaseData = {};
+    Object.keys(scraperData).forEach(key => {
+      // Convert first character to uppercase
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      pascalCaseData[pascalKey] = scraperData[key];
+    });
+
+    return handleResponse(apiClient.put(`/Scraper/${id}`, pascalCaseData));
   } catch (error) {
     throw handleApiError(error, `Failed to update scraper with ID ${id}`);
   }

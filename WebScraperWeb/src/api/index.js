@@ -5,7 +5,7 @@ import memoryCache, { generateCacheKey } from '../utils/cacheUtils';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://localhost:7143/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5203/api',
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
