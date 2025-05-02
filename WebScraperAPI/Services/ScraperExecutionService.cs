@@ -73,7 +73,7 @@ namespace WebScraperApi.Services
                 // Set up continuous monitoring if enabled
                 if (config.EnableContinuousMonitoring)
                 {
-                    var interval = config.GetMonitoringInterval();
+                    var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
                     await scraper.SetupContinuousScrapingAsync(interval);
                     logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
                 }

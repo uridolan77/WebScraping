@@ -12,12 +12,16 @@ namespace WebScraperApi.Data.Entities
         public string ScraperId { get; set; }
         
         [Required]
+        public string ScraperName { get; set; }
+        
+        [Required]
         public string MetricName { get; set; }
         
+        [Required]
         public double MetricValue { get; set; }
         
         [Required]
-        public DateTime Timestamp { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.Now;
 
         // Navigation property
         public virtual ScraperConfigEntity ScraperConfig { get; set; }

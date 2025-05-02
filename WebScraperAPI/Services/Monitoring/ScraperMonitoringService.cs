@@ -174,7 +174,7 @@ namespace WebScraperApi.Services.Monitoring
             // Skip if not yet time for a check based on interval
             if (instance.Status.LastMonitorCheck.HasValue)
             {
-                var interval = instance.Config.GetMonitoringInterval();
+                var interval = TimeSpan.FromMinutes(instance.Config.GetMonitoringInterval());
                 var nextCheckTime = instance.Status.LastMonitorCheck.Value.Add(interval);
                 
                 if (DateTime.Now < nextCheckTime)

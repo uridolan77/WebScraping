@@ -8,7 +8,8 @@ import {
   Divider,
   Toolbar,
   Box,
-  Typography
+  Typography,
+  ListSubheader
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -17,20 +18,28 @@ import {
   Speed as MonitoringIcon,
   Schedule as ScheduleIcon,
   Notifications as NotificationsIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
 
+// Main menu items without the nested items
 const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Scrapers', icon: <WebIcon />, path: '/scrapers' },
+  // Scrapers is handled separately below
   { text: 'Monitoring', icon: <MonitoringIcon />, path: '/monitoring' },
   { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
   { text: 'Scheduling', icon: <ScheduleIcon />, path: '/scheduling' },
   { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
+];
+
+// Scraper related items
+const scraperItems = [
+  { text: 'All Scrapers', icon: <WebIcon />, path: '/scrapers' },
+  { text: 'Create New Scraper', icon: <AddIcon />, path: '/scrapers/create' }
 ];
 
 const Sidebar = ({ open }) => {
@@ -40,6 +49,9 @@ const Sidebar = ({ open }) => {
   const handleNavigation = (path) => {
     navigate(path);
   };
+
+  // Check if the current path is a scraper-related path
+  const isScraperSection = location.pathname.startsWith('/scrapers');
 
   return (
     <Drawer
@@ -71,7 +83,62 @@ const Sidebar = ({ open }) => {
         </Box>
         <Divider />
         <List>
-          {menuItems.map((item) => (
+          {/* Dashboard item */}
+          <ListItem
+            button
+            onClick={() => handleNavigation('/')}
+            selected={location.pathname === '/'}
+            sx={{
+              '&.Mui-selected': {
+                backgroundColor: 'primary.light',
+                '&:hover': {
+                  backgroundColor: 'primary.light',
+                },
+              },
+            }}
+          >
+            <ListItemIcon>
+              <DashboardIcon />
+            </ListItemIcon>
+            <ListItemText primary="Dashboard" />
+          </ListItem>
+          
+          {/* Scrapers section */}
+          <List
+            component="div"
+            subheader={
+              <ListSubheader component="div" id="scrapers-subheader">
+                Scrapers
+              </ListSubheader>
+            }
+            disablePadding
+          >
+            {scraperItems.map((item) => (
+              <ListItem
+                button
+                key={item.text}
+                onClick={() => handleNavigation(item.path)}
+                selected={location.pathname === item.path}
+                sx={{
+                  pl: 4,
+                  '&.Mui-selected': {
+                    backgroundColor: 'primary.light',
+                    '&:hover': {
+                      backgroundColor: 'primary.light',
+                    },
+                  },
+                }}
+              >
+                <ListItemIcon>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText primary={item.text} />
+              </ListItem>
+            ))}
+          </List>
+          
+          {/* Remaining main menu items */}
+          {menuItems.slice(1).map((item) => (
             <ListItem
               button
               key={item.text}

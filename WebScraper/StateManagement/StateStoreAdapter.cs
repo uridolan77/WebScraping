@@ -12,22 +12,22 @@ namespace WebScraper.StateManagement
     public class StateStoreAdapter : IStateStore
     {
         private readonly PersistentStateManager _stateManager;
-        
+
         public StateStoreAdapter(PersistentStateManager stateManager)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
         }
-        
+
         public Task<T> GetAsync<T>(string key)
         {
             return _stateManager.GetAsync<T>(key);
         }
-        
+
         public Task SetAsync<T>(string key, T value)
         {
             return _stateManager.SetAsync<T>(key, value);
         }
-        
+
         public async Task<WebScraper.RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             // Convert from internal to interface type
@@ -36,7 +36,7 @@ namespace WebScraper.StateManagement
             {
                 return null;
             }
-            
+
             // Convert from ContentItem to PageVersion
             return new WebScraper.RegulatoryFramework.Interfaces.PageVersion
             {
@@ -53,13 +53,13 @@ namespace WebScraper.StateManagement
                 }
             };
         }
-        
+
         public Task SaveVersionAsync(WebScraper.RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
-            
+
             // Convert from PageVersion to ContentItem
-            var contentItem = new ContentItem
+            var contentItem = new WebScraper.ContentItem
             {
                 Url = version.Url,
                 Title = version.Metadata.ContainsKey("title") ? version.Metadata["title"].ToString() : "Untitled",
@@ -70,23 +70,23 @@ namespace WebScraper.StateManagement
                 RawContent = version.FullContent,
                 ContentHash = version.Hash
             };
-            
+
             // Use max versions = 10 as default
             return _stateManager.SaveContentVersionAsync(contentItem, 10);
         }
-        
+
         public async Task<List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10)
         {
             // Get the history of content versions
             var results = new List<WebScraper.RegulatoryFramework.Interfaces.PageVersion>();
-            
+
             // We don't have a direct equivalent, so we need to fake this
             var latestVersion = await GetLatestVersionAsync(url);
             if (latestVersion != null)
             {
                 results.Add(latestVersion);
             }
-            
+
             return results;
         }
     }

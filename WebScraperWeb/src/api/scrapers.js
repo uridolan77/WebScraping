@@ -34,8 +34,37 @@ export const getScraper = async (id) => {
  */
 export const createScraper = async (scraperData) => {
   try {
-    return handleResponse(apiClient.post('/Scraper', scraperData));
+    // Ensure required fields are present
+    const requiredFields = ['name', 'startUrl', 'baseUrl'];
+    for (const field of requiredFields) {
+      if (!scraperData[field]) {
+        throw new Error(`Missing required field: ${field}`);
+      }
+    }
+
+    // Ensure ID is a string if provided
+    if (scraperData.id && typeof scraperData.id !== 'string') {
+      scraperData.id = String(scraperData.id);
+    }
+
+    // Set default values for required fields if not provided
+    const defaultData = {
+      outputDirectory: 'ScrapedData',
+      maxDepth: 5,
+      maxPages: 1000,
+      maxConcurrentRequests: 5,
+      delayBetweenRequests: 1000,
+      followLinks: true,
+      followExternalLinks: false,
+      respectRobotsTxt: true
+    };
+
+    const mergedData = { ...defaultData, ...scraperData };
+
+    console.log('Sending scraper data to API:', mergedData);
+    return handleResponse(apiClient.post('/Scraper', mergedData));
   } catch (error) {
+    console.error('Error creating scraper:', error);
     throw handleApiError(error, 'Failed to create scraper');
   }
 };

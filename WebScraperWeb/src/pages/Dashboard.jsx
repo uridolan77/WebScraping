@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Grid, 
-  Card, 
-  CardContent, 
-  Typography, 
-  Box, 
+import {
+  Grid,
+  Card,
+  CardContent,
+  Typography,
+  Box,
   Button,
   Paper,
   Divider,
@@ -14,7 +14,7 @@ import {
   ListItemIcon,
   Chip
 } from '@mui/material';
-import { 
+import {
   Speed as SpeedIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
@@ -32,7 +32,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { scrapers, scraperStatus, loading, error, fetchScrapers } = useScrapers();
+  const { scrapers, scraperStatus, loading, error, refreshScrapers } = useScrapers();
   const [stats, setStats] = useState({
     total: 0,
     running: 0,
@@ -42,8 +42,8 @@ const Dashboard = () => {
   });
 
   useEffect(() => {
-    fetchScrapers();
-  }, [fetchScrapers]);
+    refreshScrapers();
+  }, []);
 
   // Calculate stats when scrapers or status changes
   useEffect(() => {
@@ -99,7 +99,7 @@ const Dashboard = () => {
         <Typography color="error" variant="h6">
           Error loading dashboard: {error}
         </Typography>
-        <Button variant="contained" onClick={fetchScrapers} sx={{ mt: 2 }}>
+        <Button variant="contained" onClick={refreshScrapers} sx={{ mt: 2 }}>
           Retry
         </Button>
       </Box>
@@ -113,8 +113,8 @@ const Dashboard = () => {
 
   return (
     <Box>
-      <PageHeader 
-        title="Dashboard" 
+      <PageHeader
+        title="Dashboard"
         subtitle="Overview of your web scraping operations"
         actionText="Create New Scraper"
         onActionClick={handleCreateScraper}
@@ -131,7 +131,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -141,7 +141,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -151,7 +151,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -161,7 +161,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -182,21 +182,21 @@ const Dashboard = () => {
               <Button size="small" onClick={handleViewAllScrapers}>View All</Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
-            
+
             {recentScrapers.length > 0 ? (
               <List>
                 {recentScrapers.map((scraper) => {
                   const status = scraperStatus[scraper.id] || {};
                   const statusColor = getStatusColor(status.isRunning ? 'running' : status.hasErrors ? 'error' : 'completed');
-                  
+
                   return (
-                    <ListItem 
+                    <ListItem
                       key={scraper.id}
-                      button
                       onClick={() => handleViewScraper(scraper.id)}
-                      sx={{ 
-                        borderLeft: `4px solid ${statusColor === 'success' ? 'green' : 
-                                            statusColor === 'error' ? 'red' : 
+                      sx={{
+                        cursor: 'pointer',
+                        borderLeft: `4px solid ${statusColor === 'success' ? 'green' :
+                                            statusColor === 'error' ? 'red' :
                                             statusColor === 'warning' ? 'orange' : 'blue'}`,
                         mb: 1,
                         borderRadius: 1,
@@ -206,12 +206,12 @@ const Dashboard = () => {
                       <ListItemIcon>
                         <WebIcon />
                       </ListItemIcon>
-                      <ListItemText 
-                        primary={scraper.name} 
+                      <ListItemText
+                        primary={scraper.name}
                         secondary={`Last run: ${scraper.lastRun ? formatRelativeTime(new Date(scraper.lastRun)) : 'Never'}`}
                       />
-                      <Chip 
-                        label={status.isRunning ? 'Running' : status.hasErrors ? 'Error' : 'Completed'} 
+                      <Chip
+                        label={status.isRunning ? 'Running' : status.hasErrors ? 'Error' : 'Completed'}
                         color={statusColor}
                         size="small"
                       />
@@ -226,7 +226,7 @@ const Dashboard = () => {
             )}
           </Paper>
         </Grid>
-        
+
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2, height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -234,45 +234,45 @@ const Dashboard = () => {
               <Button size="small" onClick={() => navigate('/monitoring')}>View All</Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
-            
+
             <List>
               {/* This would be populated with actual activity data from an API */}
               <ListItem sx={{ mb: 1 }}>
                 <ListItemIcon>
                   <CheckCircleIcon color="success" />
                 </ListItemIcon>
-                <ListItemText 
-                  primary="UKGC Scraper completed successfully" 
+                <ListItemText
+                  primary="UKGC Scraper completed successfully"
                   secondary={formatDate(new Date(), 'MMM d, yyyy HH:mm')}
                 />
               </ListItem>
-              
+
               <ListItem sx={{ mb: 1 }}>
                 <ListItemIcon>
                   <ArrowUpwardIcon color="info" />
                 </ListItemIcon>
-                <ListItemText 
-                  primary="MGA Scraper started" 
+                <ListItemText
+                  primary="MGA Scraper started"
                   secondary={formatDate(new Date(Date.now() - 3600000), 'MMM d, yyyy HH:mm')}
                 />
               </ListItem>
-              
+
               <ListItem sx={{ mb: 1 }}>
                 <ListItemIcon>
                   <ErrorIcon color="error" />
                 </ListItemIcon>
-                <ListItemText 
-                  primary="Gibraltar Scraper failed" 
+                <ListItemText
+                  primary="Gibraltar Scraper failed"
                   secondary={formatDate(new Date(Date.now() - 7200000), 'MMM d, yyyy HH:mm')}
                 />
               </ListItem>
-              
+
               <ListItem sx={{ mb: 1 }}>
                 <ListItemIcon>
                   <ArrowDownwardIcon color="warning" />
                 </ListItemIcon>
-                <ListItemText 
-                  primary="UKGC Scraper stopped" 
+                <ListItemText
+                  primary="UKGC Scraper stopped"
                   secondary={formatDate(new Date(Date.now() - 86400000), 'MMM d, yyyy HH:mm')}
                 />
               </ListItem>

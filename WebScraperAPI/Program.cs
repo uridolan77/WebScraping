@@ -9,6 +9,7 @@ using WebScraperAPI.Data.Repositories.PostgreSQL;
 using WebScraperAPI.Data.Repositories.Redis;
 using WebScraperApi.Services;
 using WebScraperApi.Services.Factories;
+using WebScraperApi.Data; // Add for WebScraperDbContext
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
@@ -64,21 +65,14 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(
         policy =>
         {
-            policy.WithOrigins(
-                    "http://localhost:3000",   // React default port
-                    "http://localhost:5000",   // WebScraperWeb default port
-                    "http://localhost:5192",   // Original React app URL
-                    "https://localhost:5001",  // WebScraperWeb default HTTPS port
-                    "http://localhost:8080"    // Another common development port
-                )
-                .AllowAnyHeader()
-                .AllowAnyMethod();
+            // For development, allow any origin
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
         });
 });
 
 builder.Services.AddControllers();
-
-// CORS is already configured above
 
 // Helper method to get connection strings from Key Vault or local configuration
 static string GetConnectionString(IConfiguration configuration, string name)
@@ -97,7 +91,34 @@ static string GetConnectionString(IConfiguration configuration, string name)
     return connectionString ?? string.Empty;
 }
 
-// Add database connections with secure connection strings
+// Add MySQL connection for WebStraction
+builder.Services.AddDbContext<WebScraperDbContext>(options =>
+{
+    var connectionString = GetConnectionString(builder.Configuration, "WebStraction");
+    if (!string.IsNullOrEmpty(connectionString) && builder.Environment.IsProduction())
+    {
+        try
+        {
+            options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
+                mySqlOptions => mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null));
+            Console.WriteLine("Using MySQL database for WebStraction");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to configure MySQL: {ex.Message}");
+            Console.WriteLine("Using empty database context");
+        }
+    }
+    else
+    {
+        Console.WriteLine("Using empty database context");
+    }
+});
+
+// Add database connections with secure connection strings - kept for compatibility
 // PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(GetConnectionString(builder.Configuration, "PostgreSQL")));
@@ -114,6 +135,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
 builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>();
 builder.Services.AddSingleton<ICacheRepository, CacheRepository>();
+builder.Services.AddScoped<WebScraperApi.Data.Repositories.IScraperRepository, WebScraperApi.Data.Repositories.ScraperRepository>();
 
 // Register factory services
 builder.Services.AddScraperFactories();
@@ -145,8 +167,6 @@ builder.Services.AddSwaggerGen(c =>
 
     // Use fully qualified object names to avoid conflicts
     c.CustomSchemaIds(type => type.FullName);
-
-    // No need for EnableAnnotations() as it's not available in the current version
 });
 
 var app = builder.Build();
@@ -158,16 +178,40 @@ if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
     {
         using (var scope = app.Services.CreateScope())
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            dbContext.Database.Migrate();
+            try
+            {
+                // Apply PostgreSQL migrations if configured
+                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                if (dbContext.Database.ProviderName != null && !dbContext.Database.ProviderName.Contains("InMemory"))
+                {
+                    dbContext.Database.Migrate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to apply PostgreSQL migrations: {ex.Message}");
+            }
+
+            try
+            {
+                // Apply MySQL migrations if configured
+                var webScraperDbContext = scope.ServiceProvider.GetRequiredService<WebScraperDbContext>();
+                if (webScraperDbContext.Database.ProviderName != null && !webScraperDbContext.Database.ProviderName.Contains("InMemory"))
+                {
+                    webScraperDbContext.Database.Migrate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to apply MySQL migrations: {ex.Message}");
+            }
         }
-        Console.WriteLine("Database migrations applied successfully");
+        Console.WriteLine("Database setup completed");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Warning: Failed to apply database migrations: {ex.Message}");
-        Console.WriteLine("The application will continue without database support");
-        // Continue execution without database support
+        Console.WriteLine($"Warning: Failed to set up database: {ex.Message}");
+        Console.WriteLine("The application will continue with limited functionality");
     }
 }
 

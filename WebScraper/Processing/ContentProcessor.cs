@@ -1,5 +1,6 @@
 using HtmlAgilityPack;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using WebScraper.Interfaces;
 using WebScraper.RegulatoryContent;
@@ -23,8 +24,10 @@ namespace WebScraper.Processing
             _classifier = new RegulatoryDocumentClassifier(_logger);
         }
 
-        // Fix ProcessHtmlAsync parameter types
-        public async Task<ProcessingResult<ContentItem>> ProcessHtmlAsync(HtmlDocument htmlDoc, string url)
+        /// <summary>
+        /// Process HTML document and extract content
+        /// </summary>
+        public async Task<ProcessingResult<WebScraper.ContentItem>> ProcessHtmlAsync(HtmlDocument htmlDoc, string url)
         {
             try
             {
@@ -32,9 +35,9 @@ namespace WebScraper.Processing
 
                 // Extract text content
                 string textContent = htmlDoc.DocumentNode.InnerText;
-                
-                // Create content item
-                var contentItem = new ContentItem
+
+                // Create content item using the canonical implementation
+                var contentItem = new WebScraper.ContentItem
                 {
                     Url = url,
                     Title = htmlDoc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim() ?? "Untitled",
@@ -42,6 +45,7 @@ namespace WebScraper.Processing
                     ContentType = "text/html",
                     IsReachable = true,
                     RawContent = htmlDoc.DocumentNode.OuterHtml,
+                    TextContent = textContent,
                     ContentHash = ComputeHash(htmlDoc.DocumentNode.OuterHtml),
                     CapturedAt = DateTime.Now
                 };
@@ -49,8 +53,8 @@ namespace WebScraper.Processing
                 // Determine if this is regulatory content
                 var isRegulatory = await _documentHandler.IsRegulatoryDocument(url, htmlDoc);
                 contentItem.IsRegulatoryContent = isRegulatory;
-                
-                return new ProcessingResult<ContentItem> 
+
+                return new ProcessingResult<WebScraper.ContentItem>
                 {
                     ContentItem = contentItem,
                     Success = true
@@ -59,24 +63,26 @@ namespace WebScraper.Processing
             catch (Exception ex)
             {
                 _logger($"Error processing HTML content: {ex.Message}");
-                return new ProcessingResult<ContentItem> { Success = false };
+                return new ProcessingResult<WebScraper.ContentItem> { Success = false };
             }
         }
 
-        // Fix ProcessStringHtmlAsync to use correct parameter types
-        public async Task<ProcessingResult<ContentItem>> ProcessHtmlStringAsync(string htmlContent, string url)
+        /// <summary>
+        /// Process HTML string and extract content
+        /// </summary>
+        public async Task<ProcessingResult<WebScraper.ContentItem>> ProcessHtmlStringAsync(string htmlContent, string url)
         {
             try
             {
                 var htmlDoc = new HtmlDocument();
                 htmlDoc.LoadHtml(htmlContent);
-                
+
                 return await ProcessHtmlAsync(htmlDoc, url);
             }
             catch (Exception ex)
             {
                 _logger($"Error processing HTML string: {ex.Message}");
-                return new ProcessingResult<ContentItem> { Success = false };
+                return new ProcessingResult<WebScraper.ContentItem> { Success = false };
             }
         }
 

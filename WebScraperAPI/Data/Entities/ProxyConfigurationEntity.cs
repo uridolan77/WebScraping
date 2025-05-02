@@ -12,19 +12,15 @@ namespace WebScraperApi.Data.Entities
         public string ScraperId { get; set; }
         
         [Required]
-        public string Host { get; set; }
-        
-        public int Port { get; set; }
+        public string ProxyUrl { get; set; }
         
         public string Username { get; set; }
         
         public string Password { get; set; }
         
-        public string Protocol { get; set; }
+        public bool IsActive { get; set; } = true;
         
-        public bool IsActive { get; set; }
-        
-        public int FailureCount { get; set; }
+        public int FailureCount { get; set; } = 0;
         
         public DateTime? LastUsed { get; set; }
 

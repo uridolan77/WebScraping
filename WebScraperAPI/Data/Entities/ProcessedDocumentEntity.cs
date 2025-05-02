@@ -21,7 +21,7 @@ namespace WebScraperApi.Data.Entities
         public string DocumentType { get; set; }
         
         [Required]
-        public DateTime ProcessedAt { get; set; }
+        public DateTime ProcessedAt { get; set; } = DateTime.Now;
         
         public long ContentSizeBytes { get; set; }
         

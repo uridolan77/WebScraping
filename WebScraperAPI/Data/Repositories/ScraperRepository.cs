@@ -7,13 +7,34 @@ using WebScraperApi.Data.Entities;
 
 namespace WebScraperApi.Data.Repositories
 {
+    /// <summary>
+    /// Repository implementation for scraper operations using Entity Framework Core
+    /// </summary>
     public class ScraperRepository : IScraperRepository
     {
         private readonly WebScraperDbContext _context;
 
         public ScraperRepository(WebScraperDbContext context)
         {
-            _context = context;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+        }
+
+        /// <summary>
+        /// Tests the database connection
+        /// </summary>
+        /// <returns>True if the connection is successful, false otherwise</returns>
+        public bool TestDatabaseConnection()
+        {
+            try
+            {
+                // Try to connect to the database
+                return _context.Database.CanConnect();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Database connection error: {ex.Message}");
+                return false;
+            }
         }
 
         #region Scraper Config Operations
@@ -44,20 +65,44 @@ namespace WebScraperApi.Data.Repositories
         {
             scraper.CreatedAt = DateTime.Now;
             scraper.LastModified = DateTime.Now;
-            
+
             _context.ScraperConfigs.Add(scraper);
             await _context.SaveChangesAsync();
-            
+
             return scraper;
         }
 
         public async Task<ScraperConfigEntity> UpdateScraperAsync(ScraperConfigEntity scraper)
         {
             scraper.LastModified = DateTime.Now;
-            
+
+            // First, remove existing related entities to avoid duplicates
+            var existingStartUrls = await _context.ScraperStartUrls
+                .Where(s => s.ScraperId == scraper.Id)
+                .ToListAsync();
+            _context.ScraperStartUrls.RemoveRange(existingStartUrls);
+
+            var existingSelectors = await _context.ContentExtractorSelectors
+                .Where(s => s.ScraperId == scraper.Id)
+                .ToListAsync();
+            _context.ContentExtractorSelectors.RemoveRange(existingSelectors);
+
+            var existingKeywords = await _context.KeywordAlerts
+                .Where(k => k.ScraperId == scraper.Id)
+                .ToListAsync();
+            _context.KeywordAlerts.RemoveRange(existingKeywords);
+
+            var existingWebhooks = await _context.WebhookTriggers
+                .Where(w => w.ScraperId == scraper.Id)
+                .ToListAsync();
+            _context.WebhookTriggers.RemoveRange(existingWebhooks);
+
+            // Update the main entity
             _context.Entry(scraper).State = EntityState.Modified;
+
+            // Save changes so far
             await _context.SaveChangesAsync();
-            
+
             return scraper;
         }
 
@@ -66,10 +111,10 @@ namespace WebScraperApi.Data.Repositories
             var scraper = await _context.ScraperConfigs.FindAsync(id);
             if (scraper == null)
                 return false;
-                
+
             _context.ScraperConfigs.Remove(scraper);
             await _context.SaveChangesAsync();
-            
+
             return true;
         }
 
@@ -86,10 +131,10 @@ namespace WebScraperApi.Data.Repositories
         public async Task<ScraperStatusEntity> UpdateScraperStatusAsync(ScraperStatusEntity status)
         {
             status.LastUpdate = DateTime.Now;
-            
+
             var existingStatus = await _context.ScraperStatuses
                 .FirstOrDefaultAsync(s => s.ScraperId == status.ScraperId);
-                
+
             if (existingStatus == null)
             {
                 _context.ScraperStatuses.Add(status);
@@ -98,9 +143,9 @@ namespace WebScraperApi.Data.Repositories
             {
                 _context.Entry(existingStatus).CurrentValues.SetValues(status);
             }
-            
+
             await _context.SaveChangesAsync();
-            
+
             return status;
         }
 
@@ -120,9 +165,9 @@ namespace WebScraperApi.Data.Repositories
         public async Task<ScraperRunEntity> GetScraperRunByIdAsync(string runId)
         {
             return await _context.ScraperRuns
-                .Include(r => r.LogEntries.OrderByDescending(l => l.Timestamp).Take(100))
-                .Include(r => r.ContentChangeRecords.OrderByDescending(c => c.DetectedAt).Take(50))
-                .Include(r => r.ProcessedDocuments.OrderByDescending(p => p.ProcessedAt).Take(50))
+                .Include(r => r.LogEntries)
+                .Include(r => r.ContentChangeRecords)
+                .Include(r => r.ProcessedDocuments)
                 .FirstOrDefaultAsync(r => r.Id == runId);
         }
 
@@ -130,7 +175,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.ScraperRuns.Add(run);
             await _context.SaveChangesAsync();
-            
+
             // Update the scraper's LastRun property
             var scraper = await _context.ScraperConfigs.FindAsync(run.ScraperId);
             if (scraper != null)
@@ -139,7 +184,7 @@ namespace WebScraperApi.Data.Repositories
                 scraper.RunCount++;
                 await _context.SaveChangesAsync();
             }
-            
+
             return run;
         }
 
@@ -147,7 +192,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.Entry(run).State = EntityState.Modified;
             await _context.SaveChangesAsync();
-            
+
             return run;
         }
 
@@ -168,7 +213,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.LogEntries.Add(logEntry);
             await _context.SaveChangesAsync();
-            
+
             return logEntry;
         }
 
@@ -189,7 +234,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.ContentChangeRecords.Add(change);
             await _context.SaveChangesAsync();
-            
+
             return change;
         }
 
@@ -217,7 +262,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.ProcessedDocuments.Add(document);
             await _context.SaveChangesAsync();
-            
+
             return document;
         }
 
@@ -229,12 +274,12 @@ namespace WebScraperApi.Data.Repositories
         {
             var query = _context.ScraperMetrics
                 .Where(m => m.ScraperId == scraperId && m.Timestamp >= from && m.Timestamp <= to);
-                
+
             if (!string.IsNullOrEmpty(metricName))
             {
                 query = query.Where(m => m.MetricName == metricName);
             }
-            
+
             return await query
                 .OrderBy(m => m.Timestamp)
                 .ToListAsync();
@@ -244,7 +289,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.ScraperMetrics.Add(metric);
             await _context.SaveChangesAsync();
-            
+
             return metric;
         }
 
@@ -264,7 +309,7 @@ namespace WebScraperApi.Data.Repositories
         {
             _context.PipelineMetrics.Add(metric);
             await _context.SaveChangesAsync();
-            
+
             return metric;
         }
 

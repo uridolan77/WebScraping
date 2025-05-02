@@ -11,9 +11,9 @@ namespace WebScraperApi.Data.Entities
         public string DocumentId { get; set; }
         
         [Required]
-        public string MetaKey { get; set; }
+        public string MetadataKey { get; set; }
         
-        public string MetaValue { get; set; }
+        public string MetadataValue { get; set; }
 
         // Navigation property
         public virtual ProcessedDocumentEntity ProcessedDocument { get; set; }

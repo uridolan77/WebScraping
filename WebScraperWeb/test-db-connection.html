@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Database Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Database Connection</h1>
+
+    <div>
+        <button id="pingApi">Ping API</button>
+        <button id="healthCheck">Health Check</button>
+        <button id="dbInfo">DB Info</button>
+        <button id="configInfo">Config Info</button>
+        <button id="testConnection">Test Database Connection</button>
+        <button id="getAllScrapers">Get All Scrapers</button>
+        <button id="createTestScraper">Create Test Scraper</button>
+    </div>
+
+    <h2>Result:</h2>
+    <pre id="result">Click a button to test...</pre>
+
+    <script>
+        document.getElementById('pingApi').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Pinging API...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Scraper/ping', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('healthCheck').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Checking API health...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Health', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('dbInfo').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Getting database info...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Health/db-info', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('configInfo').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Getting configuration info...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Scraper/config-info', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('testConnection').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing database connection...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Scraper/test-connection', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = data.isConnected ? 'success' : 'error';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('getAllScrapers').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Getting all scrapers...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Scraper', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+        document.getElementById('createTestScraper').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Creating test scraper...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('https://localhost:7143/api/Scraper/create-test', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `Error: ${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>

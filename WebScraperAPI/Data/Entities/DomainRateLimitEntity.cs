@@ -13,9 +13,7 @@ namespace WebScraperApi.Data.Entities
         [Required]
         public string Domain { get; set; }
         
-        public int MaxRequestsPerMinute { get; set; }
-        
-        public int DelayBetweenRequests { get; set; }
+        public int RequestsPerMinute { get; set; } = 60;
 
         // Navigation property
         public virtual ScraperConfigEntity ScraperConfig { get; set; }

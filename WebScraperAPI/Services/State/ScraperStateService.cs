@@ -45,7 +45,7 @@ namespace WebScraperApi.Services.State
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <returns>Scraper instance if found, null otherwise</returns>
-        public ScraperInstance GetScraperInstance(string id)
+        public ScraperInstance? GetScraperInstance(string id)
         {
             lock (_lock)
             {
@@ -146,7 +146,7 @@ namespace WebScraperApi.Services.State
         /// <summary>
         /// Helper method to compress a folder
         /// </summary>
-        private async Task<string> CompressContentFolderAsync(string id, string folderPath)
+        private async Task<string?> CompressContentFolderAsync(string id, string folderPath)
         {
             if (!Directory.Exists(folderPath))
             {
@@ -154,8 +154,15 @@ namespace WebScraperApi.Services.State
                 return null;
             }
 
+            var directoryName = Path.GetDirectoryName(folderPath);
+            if (directoryName == null)
+            {
+                _logger.LogWarning($"Invalid folder path: {folderPath}");
+                return null;
+            }
+
             var compressedFile = Path.Combine(
-                Path.GetDirectoryName(folderPath),
+                directoryName,
                 $"scraper_{id}_content_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
 
             await Task.Run(() =>
@@ -187,8 +194,11 @@ namespace WebScraperApi.Services.State
                 instance.Config.WebhookUrl = config.WebhookUrl;
                 instance.Config.WebhookEnabled = config.Enabled;
                 instance.Config.WebhookFormat = config.Format;
-                instance.Config.WebhookTriggers = config.Triggers;
+                instance.Config.WebhookTriggers = config.Triggers != null ? config.Triggers.ToList() : new List<string>();
 
+                // Save the state - simulate an async operation
+                await Task.Yield();
+                
                 _logger.LogInformation($"Updated webhook configuration for scraper {id}");
 
                 return true;
@@ -317,50 +327,41 @@ namespace WebScraperApi.Services.State
         /// <param name="page">Page number (1-based)</param>
         /// <param name="pageSize">Page size</param>
         /// <returns>Paged list of documents</returns>
-        public async Task<PagedDocumentResult> GetProcessedDocumentsAsync(string id, string documentType = null, int page = 1, int pageSize = 20)
+        public async Task<PagedDocumentResult> GetProcessedDocumentsAsync(string id, string? documentType = null, int page = 1, int pageSize = 20)
         {
             var instance = GetScraperInstance(id);
             if (instance == null)
             {
                 _logger.LogWarning($"Cannot get processed documents: scraper {id} not found");
-                return new PagedDocumentResult { TotalCount = 0 };
+                return new PagedDocumentResult { TotalCount = 0, Documents = new List<object>() };
             }
 
             if (instance.StateManager == null)
             {
                 _logger.LogWarning($"Cannot get processed documents: scraper {id} has no state manager");
-                return new PagedDocumentResult { TotalCount = 0 };
+                return new PagedDocumentResult { TotalCount = 0, Documents = new List<object>() };
             }
 
             try
             {
-                // Use the persistent state manager to get processed documents
-                var result = await Task.Run(() =>
-                {
-                    try
-                    {
-                        var docs = instance.StateManager.GetProcessedDocuments(documentType, page, pageSize);
-
-                        // Convert to a format suitable for API
-                        return new PagedDocumentResult
-                        {
-                            TotalCount = docs.TotalCount,
-                            Documents = docs.Documents.Select(d => d.ToProcessedDocument()).Cast<object>().ToList()
-                        };
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Error getting processed documents for scraper {id}");
-                        return new PagedDocumentResult { TotalCount = 0 };
-                    }
+                // Pass documentType only if it's not null and get documents asynchronously
+                var docs = await Task.Run(() => {
+                    return documentType == null
+                        ? instance.StateManager.GetProcessedDocuments(page: page, pageSize: pageSize)
+                        : instance.StateManager.GetProcessedDocuments(documentType: documentType, page: page, pageSize: pageSize);
                 });
 
-                return result;
+                // Convert to a format suitable for API
+                return new PagedDocumentResult
+                {
+                    TotalCount = docs.TotalCount,
+                    Documents = docs.Documents.Select(d => d.ToProcessedDocument()).Cast<object>().ToList()
+                };
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error getting processed documents for scraper {id}");
-                return new PagedDocumentResult { TotalCount = 0 };
+                return new PagedDocumentResult { TotalCount = 0, Documents = new List<object>() };
             }
         }
 

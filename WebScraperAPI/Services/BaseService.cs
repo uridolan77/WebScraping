@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Extensions.Logging;
 using WebScraperApi.Data.Repositories;
 
 namespace WebScraperApi.Services

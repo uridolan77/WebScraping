@@ -5,13 +5,48 @@ import memoryCache, { generateCacheKey } from '../utils/cacheUtils';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5203/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://localhost:7143/api',
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json'
   },
   timeout: 30000, // 30 seconds
   withCredentials: false, // Set to true if your API uses cookies for auth
 });
+
+// Debug API calls in development
+if (import.meta.env.DEV) {
+  apiClient.interceptors.request.use(request => {
+    console.log('API Request:', {
+      url: request.url,
+      method: request.method,
+      baseURL: request.baseURL,
+      data: request.data,
+      params: request.params
+    });
+    return request;
+  });
+
+  apiClient.interceptors.response.use(
+    response => {
+      console.log('API Response:', {
+        url: response.config.url,
+        status: response.status,
+        data: response.data
+      });
+      return response;
+    },
+    error => {
+      console.error('API Error:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        message: error.message,
+        response: error.response?.data
+      });
+      return Promise.reject(error);
+    }
+  );
+}
 
 // Add request interceptor for auth
 apiClient.interceptors.request.use(

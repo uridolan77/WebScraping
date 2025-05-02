@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using WebScraper.StateManagement;
 
 namespace WebScraper.Scraping.Components
 {
@@ -11,26 +10,26 @@ namespace WebScraper.Scraping.Components
     /// </summary>
     public class StateManagerComponent : ScraperComponentBase, IStateManager
     {
-        private PersistentStateManager _stateManager;
+        private StateManagement.PersistentStateManager _stateManager;
         private string _scraperInstanceId;
         private string _dbConnectionString;
-        
+
         /// <summary>
         /// Initializes the component
         /// </summary>
         public override async Task InitializeAsync(ScraperCore core)
         {
             await base.InitializeAsync(core);
-            
+
             if (!Config.EnablePersistentState)
             {
                 LogInfo("Persistent state management not enabled, component will operate in limited mode");
                 return;
             }
-            
+
             await InitializeStateManagerAsync();
         }
-        
+
         /// <summary>
         /// Initializes the state manager
         /// </summary>
@@ -39,21 +38,21 @@ namespace WebScraper.Scraping.Components
             try
             {
                 LogInfo("Initializing persistent state manager...");
-                
+
                 // Ensure output directory exists
                 if (!Directory.Exists(Config.OutputDirectory))
                 {
                     Directory.CreateDirectory(Config.OutputDirectory);
                 }
-                
+
                 // Create connection string
                 _dbConnectionString = $"Data Source={Path.Combine(Config.OutputDirectory, "scraper_state.db")}";
                 _scraperInstanceId = Config.Name ?? "default";
-                
+
                 // Create state manager
-                _stateManager = new PersistentStateManager(_dbConnectionString, LogInfo);
+                _stateManager = new StateManagement.PersistentStateManager(_dbConnectionString, LogInfo);
                 await _stateManager.InitializeAsync();
-                
+
                 // Save initial scraper state
                 var initialState = new StateManagement.ScraperState
                 {
@@ -63,9 +62,9 @@ namespace WebScraper.Scraping.Components
                     ProgressData = "{}",
                     ConfigSnapshot = JsonSerializer.Serialize(Config)
                 };
-                
+
                 await _stateManager.SaveScraperStateAsync(initialState);
-                
+
                 LogInfo("Persistent state manager initialized successfully");
             }
             catch (Exception ex)
@@ -73,7 +72,7 @@ namespace WebScraper.Scraping.Components
                 LogError(ex, "Failed to initialize persistent state manager");
             }
         }
-        
+
         /// <summary>
         /// Called when scraping starts
         /// </summary>
@@ -81,7 +80,7 @@ namespace WebScraper.Scraping.Components
         {
             await SaveStateAsync("Running");
         }
-        
+
         /// <summary>
         /// Called when scraping completes
         /// </summary>
@@ -89,7 +88,7 @@ namespace WebScraper.Scraping.Components
         {
             await SaveStateAsync("Completed");
         }
-        
+
         /// <summary>
         /// Called when scraping is stopped
         /// </summary>
@@ -97,7 +96,7 @@ namespace WebScraper.Scraping.Components
         {
             await SaveStateAsync("Stopped");
         }
-        
+
         /// <summary>
         /// Saves the state of the scraper
         /// </summary>
@@ -105,7 +104,7 @@ namespace WebScraper.Scraping.Components
         {
             if (_stateManager == null)
                 return;
-                
+
             try
             {
                 var state = new StateManagement.ScraperState
@@ -117,7 +116,7 @@ namespace WebScraper.Scraping.Components
                     LastSuccessfulRunTime = status == "Completed" ? DateTime.Now : (DateTime?)null,
                     ProgressData = "{}"
                 };
-                
+
                 await _stateManager.SaveScraperStateAsync(state);
             }
             catch (Exception ex)
@@ -125,7 +124,7 @@ namespace WebScraper.Scraping.Components
                 LogError(ex, $"Failed to save state: {status}");
             }
         }
-        
+
         /// <summary>
         /// Marks a URL as visited
         /// </summary>
@@ -133,7 +132,7 @@ namespace WebScraper.Scraping.Components
         {
             if (_stateManager == null)
                 return;
-                
+
             try
             {
                 await _stateManager.MarkUrlVisitedAsync(_scraperInstanceId, url, statusCode, 0);
@@ -143,7 +142,7 @@ namespace WebScraper.Scraping.Components
                 LogError(ex, $"Failed to mark URL as visited: {url}");
             }
         }
-        
+
         /// <summary>
         /// Checks if a URL has been visited
         /// </summary>
@@ -151,7 +150,7 @@ namespace WebScraper.Scraping.Components
         {
             if (_stateManager == null)
                 return false;
-                
+
             try
             {
                 return await _stateManager.HasUrlBeenVisitedAsync(_scraperInstanceId, url);
@@ -162,7 +161,7 @@ namespace WebScraper.Scraping.Components
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Saves content for a URL
         /// </summary>
@@ -170,21 +169,23 @@ namespace WebScraper.Scraping.Components
         {
             if (_stateManager == null || !Config.StoreContentInDatabase)
                 return;
-                
+
             try
             {
-                var item = new ContentItemImpl
+                var item = new WebScraper.ContentItem
                 {
                     Url = url,
                     ContentType = contentType,
                     RawContent = content,
+                    TextContent = ExtractTextContent(content),
                     ScraperId = _scraperInstanceId,
                     LastStatusCode = 200,
                     IsReachable = true,
                     ContentHash = ComputeHash(content),
-                    Title = ExtractTitle(content)
+                    Title = ExtractTitle(content),
+                    CapturedAt = DateTime.Now
                 };
-                
+
                 await _stateManager.SaveContentItemAsync(item);
             }
             catch (Exception ex)
@@ -192,7 +193,7 @@ namespace WebScraper.Scraping.Components
                 LogError(ex, $"Failed to save content for URL: {url}");
             }
         }
-        
+
         /// <summary>
         /// Computes a hash for content
         /// </summary>
@@ -200,7 +201,7 @@ namespace WebScraper.Scraping.Components
         {
             if (string.IsNullOrEmpty(content))
                 return string.Empty;
-                
+
             using (var sha = System.Security.Cryptography.SHA256.Create())
             {
                 var bytes = System.Text.Encoding.UTF8.GetBytes(content);
@@ -208,7 +209,7 @@ namespace WebScraper.Scraping.Components
                 return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
             }
         }
-        
+
         /// <summary>
         /// Extracts the title from HTML content
         /// </summary>
@@ -216,19 +217,59 @@ namespace WebScraper.Scraping.Components
         {
             if (string.IsNullOrEmpty(content))
                 return string.Empty;
-                
+
             try
             {
                 var htmlDoc = new HtmlAgilityPack.HtmlDocument();
                 htmlDoc.LoadHtml(content);
-                
+
                 var titleNode = htmlDoc.DocumentNode.SelectSingleNode("//title");
                 if (titleNode != null)
                 {
                     return titleNode.InnerText.Trim();
                 }
-                
+
                 return string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Extracts text content from HTML
+        /// </summary>
+        private string ExtractTextContent(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return string.Empty;
+
+            try
+            {
+                var htmlDoc = new HtmlAgilityPack.HtmlDocument();
+                htmlDoc.LoadHtml(content);
+
+                // Remove script and style elements
+                var scriptNodes = htmlDoc.DocumentNode.SelectNodes("//script|//style");
+                if (scriptNodes != null)
+                {
+                    foreach (var node in scriptNodes)
+                    {
+                        node.Remove();
+                    }
+                }
+
+                // Get and clean text content
+                string text = htmlDoc.DocumentNode.InnerText;
+
+                // Replace multiple whitespace with a single space
+                text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
+
+                // Trim whitespace
+                text = text.Trim();
+
+                return text;
             }
             catch
             {

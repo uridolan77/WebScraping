@@ -4,8 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using WebScraper.Interfaces;
-using WebScraper.Processing;
-using WebScraper.StateManagement;
 
 namespace WebScraper.StateManagement
 {
@@ -17,14 +15,14 @@ namespace WebScraper.StateManagement
         private readonly PersistentStateManager _stateManager;
         private readonly Action<string> _logAction;
         private readonly string _connectionString;
-        
+
         public EnhancedStateManager(string connectionString, Action<string> logAction)
         {
             _connectionString = connectionString;
             _logAction = logAction ?? (msg => { });
             _stateManager = new PersistentStateManager(Path.GetDirectoryName(connectionString), logAction);
         }
-        
+
         public async Task InitializeAsync()
         {
             try
@@ -38,7 +36,7 @@ namespace WebScraper.StateManagement
                 throw;
             }
         }
-        
+
         public Task SaveScraperStateAsync(WebScraper.StateManagement.ScraperState state)
         {
             try
@@ -51,7 +49,7 @@ namespace WebScraper.StateManagement
                 return Task.CompletedTask;
             }
         }
-        
+
         public Task<WebScraper.StateManagement.ScraperState> GetScraperStateAsync(string scraperId)
         {
             try
@@ -64,7 +62,7 @@ namespace WebScraper.StateManagement
                 return Task.FromResult(new WebScraper.StateManagement.ScraperState { ScraperId = scraperId, Status = "Error" });
             }
         }
-        
+
         public async Task<bool> HasUrlBeenVisitedAsync(string scraperId, string url)
         {
             try
@@ -77,7 +75,7 @@ namespace WebScraper.StateManagement
                 return false;
             }
         }
-        
+
         public async Task MarkUrlVisitedAsync(string scraperId, string url, int statusCode, int responseTimeMs)
         {
             try
@@ -89,29 +87,15 @@ namespace WebScraper.StateManagement
                 _logAction($"Error marking URL as visited: {ex.Message}");
             }
         }
-        
-        public async Task<bool> SaveContentItemAsync(Processing.ContentItem item)
+
+        public async Task<bool> SaveContentItemAsync(WebScraper.ContentItem item)
         {
             if (_stateManager != null)
             {
                 try
                 {
-                    // Convert the Processing.ContentItem to StateManagement.ContentItem for compatibility
-                    var convertedItem = new WebScraper.StateManagement.ContentItem
-                    {
-                        Url = item.Url,
-                        Title = item.Title,
-                        ScraperId = item.ScraperId,
-                        LastStatusCode = item.LastStatusCode,
-                        ContentType = item.ContentType,
-                        IsReachable = item.IsReachable,
-                        RawContent = item.RawContent,
-                        ContentHash = item.ContentHash,
-                        IsRegulatoryContent = item.IsRegulatoryContent
-                        // Note: CapturedAt is handled implicitly by the implementation
-                    };
-                    
-                    return await _stateManager.SaveContentItemAsync(convertedItem);
+                    // Use the canonical ContentItem directly
+                    return await _stateManager.SaveContentItemAsync(item);
                 }
                 catch (Exception ex)
                 {
@@ -119,21 +103,21 @@ namespace WebScraper.StateManagement
                     return false;
                 }
             }
-            
+
             return false;
         }
-        
+
         public async Task<(bool Found, WebScraper.Interfaces.ContentItem Version)> GetLatestContentVersionAsync(string url)
         {
             try
             {
                 var result = await _stateManager.GetLatestContentVersionAsync(url);
-                
+
                 if (!result.Found || result.Version == null)
                 {
                     return (false, null);
                 }
-                
+
                 // StateManagement.ContentItem already implements Interfaces.ContentItem,
                 // so we can just return it directly as the interface type
                 return (true, result.Version);
@@ -144,7 +128,7 @@ namespace WebScraper.StateManagement
                 return (false, null);
             }
         }
-        
+
         public async Task<Dictionary<string, object>> GetStorageStatisticsAsync()
         {
             try
@@ -156,7 +140,7 @@ namespace WebScraper.StateManagement
                     ["totalUrls"] = 0,
                     ["lastUpdated"] = DateTime.Now
                 };
-                
+
                 // Count the number of version files
                 if (_stateManager != null && Directory.Exists(Path.GetDirectoryName(_connectionString)))
                 {
@@ -165,7 +149,7 @@ namespace WebScraper.StateManagement
                     {
                         var versionFiles = Directory.GetFiles(stateDir, "*_*.json");
                         stats["totalVersions"] = versionFiles.Length;
-                        
+
                         // Estimate number of unique URLs
                         var uniqueUrlPrefixes = new HashSet<string>();
                         foreach (var file in versionFiles)
@@ -178,7 +162,7 @@ namespace WebScraper.StateManagement
                             }
                         }
                         stats["totalUrls"] = uniqueUrlPrefixes.Count;
-                        
+
                         // Get storage size
                         var directoryInfo = new DirectoryInfo(stateDir);
                         var size = directoryInfo.GetFiles("*.json", SearchOption.AllDirectories)
@@ -187,7 +171,7 @@ namespace WebScraper.StateManagement
                         stats["storageSizeMB"] = Math.Round(size / 1024.0 / 1024.0, 2);
                     }
                 }
-                
+
                 return stats;
             }
             catch (Exception ex)
@@ -200,28 +184,27 @@ namespace WebScraper.StateManagement
             }
         }
 
-        // Fix for method signature - Changing return type to Task instead of Task<bool>
+        /// <summary>
+        /// Saves a content version
+        /// </summary>
         public Task SaveContentVersionAsync(WebScraper.Interfaces.ContentItem item, int maxVersions = 10)
         {
             if (_stateManager != null)
             {
                 try
                 {
-                    // Convert interface ContentItem to concrete ContentItem
-                    var contentItem = new WebScraper.StateManagement.ContentItem
+                    // Convert interface ContentItem to canonical ContentItem if needed
+                    WebScraper.ContentItem contentItem;
+
+                    if (item is WebScraper.ContentItem canonicalItem)
                     {
-                        Url = item.Url,
-                        Title = item.Title,
-                        ScraperId = item.ScraperId,
-                        LastStatusCode = item.LastStatusCode,
-                        ContentType = item.ContentType,
-                        IsReachable = item.IsReachable,
-                        RawContent = item.RawContent,
-                        ContentHash = item.ContentHash,
-                        IsRegulatoryContent = item.IsRegulatoryContent,
-                        CapturedAt = DateTime.Now // Set current time as capture time
-                    };
-                    
+                        contentItem = canonicalItem;
+                    }
+                    else
+                    {
+                        contentItem = WebScraper.ContentItem.FromInterface(item);
+                    }
+
                     return _stateManager.SaveContentVersionAsync(contentItem, maxVersions);
                 }
                 catch (Exception ex)
@@ -230,7 +213,7 @@ namespace WebScraper.StateManagement
                     return Task.CompletedTask;
                 }
             }
-            
+
             return Task.CompletedTask;
         }
     }

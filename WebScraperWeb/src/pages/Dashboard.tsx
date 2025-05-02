@@ -67,8 +67,8 @@ const Dashboard: React.FC = () => {
   const [recentScrapers] = useState(mockScrapers);
 
   const handleCreateScraper = () => {
-    // This would navigate to the scraper creation page
-    alert('Create scraper functionality will be implemented soon');
+    // Navigate to the scraper creation page
+    navigate('/scrapers/create');
   };
 
   const handleViewScraper = (id: string) => {

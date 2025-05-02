@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using WebScraperApi.Data;
+using WebScraperApi.Data.Entities;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Models;
 
@@ -21,7 +22,7 @@ namespace WebScraperApi.Services
             try
             {
                 var scrapers = await _repository.GetAllScrapersAsync();
-                return scrapers.Select(e => MapToModel(e)).ToList();
+                return scrapers.Select(e => MapToModel(e)).Where(m => m != null).Select(m => m!).ToList();
             }
             catch (Exception ex)
             {
@@ -30,7 +31,7 @@ namespace WebScraperApi.Services
             }
         }
 
-        public async Task<ScraperConfigModel> GetScraperByIdAsync(string id)
+        public async Task<ScraperConfigModel?> GetScraperByIdAsync(string id)
         {
             try
             {
@@ -53,8 +54,12 @@ namespace WebScraperApi.Services
             try
             {
                 var entity = MapToEntity(model);
-                var result = await _repository.CreateScraperAsync(entity);
-                return MapToModel(result);
+                if (entity != null)
+                {
+                    var result = await _repository.CreateScraperAsync(entity);
+                    return MapToModel(result) ?? new ScraperConfigModel(); // Ensure we never return null
+                }
+                return new ScraperConfigModel(); // Create an empty model if mapping failed
             }
             catch (Exception ex)
             {
@@ -63,7 +68,7 @@ namespace WebScraperApi.Services
             }
         }
 
-        public async Task<ScraperConfigModel> UpdateScraperAsync(string id, ScraperConfigModel model)
+        public async Task<ScraperConfigModel?> UpdateScraperAsync(string id, ScraperConfigModel model)
         {
             try
             {
@@ -74,7 +79,16 @@ namespace WebScraperApi.Services
                 // Update properties but preserve the ID
                 model.Id = id;
                 var entity = MapToEntity(model);
-                entity.CreatedAt = existingScraper.CreatedAt;
+                if (entity == null)
+                {
+                    _logger.LogError("Failed to map model to entity for scraper with ID {ScraperId}", id);
+                    return null;
+                }
+                
+                if (existingScraper != null)
+                {
+                    entity.CreatedAt = existingScraper.CreatedAt;
+                }
 
                 var result = await _repository.UpdateScraperAsync(entity);
                 return MapToModel(result);
@@ -101,7 +115,7 @@ namespace WebScraperApi.Services
 
         #region Mapping Methods
 
-        private ScraperConfigModel MapToModel(WebScraperApi.Data.ScraperConfigEntity entity)
+        private ScraperConfigModel? MapToModel(WebScraperApi.Data.ScraperConfigEntity entity)
         {
             if (entity == null)
                 return null;
@@ -203,7 +217,7 @@ namespace WebScraperApi.Services
 
             if (entity.WebhookTriggers != null)
             {
-                model.WebhookTriggers = entity.WebhookTriggers.Select(t => t.TriggerName).ToArray();
+                model.WebhookTriggers = entity.WebhookTriggers.Select(t => t.TriggerName).ToList();
             }
 
             if (entity.Schedules != null)
@@ -213,9 +227,9 @@ namespace WebScraperApi.Services
                     ["name"] = s.Name,
                     ["cronExpression"] = s.CronExpression,
                     ["isActive"] = s.IsActive,
-                    ["lastRun"] = s.LastRun,
-                    ["nextRun"] = s.NextRun,
-                    ["maxRuntimeMinutes"] = s.MaxRuntimeMinutes,
+                    ["lastRun"] = s.LastRun ?? DateTime.MinValue,
+                    ["nextRun"] = s.NextRun ?? DateTime.MinValue,
+                    ["maxRuntimeMinutes"] = s.MaxRuntimeMinutes ?? 0,
                     ["notificationEmail"] = s.NotificationEmail
                 }).ToList();
             }
@@ -223,12 +237,12 @@ namespace WebScraperApi.Services
             return model;
         }
 
-        private WebScraperApi.Data.ScraperConfigEntity MapToEntity(ScraperConfigModel model)
+        private WebScraperApi.Data.ScraperConfigEntity? MapToEntity(ScraperConfigModel model)
         {
             if (model == null)
                 return null;
 
-            var entity = new ScraperConfigEntity
+            var entity = new WebScraperApi.Data.ScraperConfigEntity
             {
                 Id = string.IsNullOrEmpty(model.Id) ? Guid.NewGuid().ToString() : model.Id,
                 Name = model.Name,
@@ -268,7 +282,7 @@ namespace WebScraperApi.Services
                 EnableContinuousMonitoring = model.EnableContinuousMonitoring,
                 MonitoringIntervalMinutes = model.MonitoringIntervalMinutes,
                 NotifyOnChanges = model.NotifyOnChanges,
-                NotificationEmail = model.NotificationEmail,
+                NotificationEmail = model.NotificationEmail ?? string.Empty,
                 TrackChangesHistory = model.TrackChangesHistory,
                 EnableRegulatoryContentAnalysis = model.EnableRegulatoryContentAnalysis,
                 TrackRegulatoryChanges = model.TrackRegulatoryChanges,
@@ -278,15 +292,15 @@ namespace WebScraperApi.Services
                 MonitorHighImpactChanges = model.MonitorHighImpactChanges,
                 ExtractMetadata = model.ExtractMetadata,
                 ExtractStructuredData = model.ExtractStructuredData,
-                CustomJsExtractor = model.CustomJsExtractor,
-                WaitForSelector = model.WaitForSelector,
+                CustomJsExtractor = model.CustomJsExtractor ?? string.Empty,
+                WaitForSelector = model.WaitForSelector ?? string.Empty,
                 IsUKGCWebsite = model.IsUKGCWebsite,
                 PrioritizeEnforcementActions = model.PrioritizeEnforcementActions,
                 PrioritizeLCCP = model.PrioritizeLCCP,
                 PrioritizeAML = model.PrioritizeAML,
-                NotificationEndpoint = model.NotificationEndpoint,
+                NotificationEndpoint = model.NotificationEndpoint ?? string.Empty,
                 WebhookEnabled = model.WebhookEnabled,
-                WebhookUrl = model.WebhookUrl,
+                WebhookUrl = model.WebhookUrl ?? string.Empty,
                 NotifyOnContentChanges = model.NotifyOnContentChanges,
                 NotifyOnDocumentProcessed = model.NotifyOnDocumentProcessed,
                 NotifyOnScraperStatusChange = model.NotifyOnScraperStatusChange,
@@ -297,17 +311,17 @@ namespace WebScraperApi.Services
                 MetricsReportingIntervalSeconds = model.MetricsReportingIntervalSeconds,
                 TrackDomainMetrics = model.TrackDomainMetrics,
                 ScraperType = model.ScraperType,
-                StartUrls = new List<ScraperStartUrlEntity>(),
-                ContentExtractorSelectors = new List<ContentExtractorSelectorEntity>(),
-                KeywordAlerts = new List<KeywordAlertEntity>(),
-                WebhookTriggers = new List<WebhookTriggerEntity>(),
-                Schedules = new List<ScraperScheduleEntity>()
+                StartUrls = new List<WebScraperApi.Data.ScraperStartUrlEntity>(),
+                ContentExtractorSelectors = new List<WebScraperApi.Data.ContentExtractorSelectorEntity>(),
+                KeywordAlerts = new List<WebScraperApi.Data.KeywordAlertEntity>(),
+                WebhookTriggers = new List<WebScraperApi.Data.WebhookTriggerEntity>(),
+                Schedules = new List<WebScraperApi.Data.ScraperScheduleEntity>()
             };
 
             // Map collections
             if (model.StartUrls != null)
             {
-                entity.StartUrls = model.StartUrls.Select(url => new ScraperStartUrlEntity
+                entity.StartUrls = model.StartUrls.Select(url => new WebScraperApi.Data.ScraperStartUrlEntity
                 {
                     ScraperId = entity.Id,
                     Url = url
@@ -318,7 +332,7 @@ namespace WebScraperApi.Services
             {
                 foreach (var selector in model.ContentExtractorSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,
@@ -331,7 +345,7 @@ namespace WebScraperApi.Services
             {
                 foreach (var selector in model.ContentExtractorExcludeSelectors)
                 {
-                    entity.ContentExtractorSelectors.Add(new ContentExtractorSelectorEntity
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
                     {
                         ScraperId = entity.Id,
                         Selector = selector,
@@ -342,7 +356,7 @@ namespace WebScraperApi.Services
 
             if (model.KeywordAlertList != null)
             {
-                entity.KeywordAlerts = model.KeywordAlertList.Select(keyword => new KeywordAlertEntity
+                entity.KeywordAlerts = model.KeywordAlertList.Select(keyword => new WebScraperApi.Data.KeywordAlertEntity
                 {
                     ScraperId = entity.Id,
                     Keyword = keyword
@@ -351,7 +365,7 @@ namespace WebScraperApi.Services
 
             if (model.WebhookTriggers != null)
             {
-                entity.WebhookTriggers = model.WebhookTriggers.Select(trigger => new WebhookTriggerEntity
+                entity.WebhookTriggers = model.WebhookTriggers.Select(trigger => new WebScraperApi.Data.WebhookTriggerEntity
                 {
                     ScraperId = entity.Id,
                     TriggerName = trigger
@@ -362,16 +376,16 @@ namespace WebScraperApi.Services
             {
                 foreach (var schedule in model.Schedules)
                 {
-                    entity.Schedules.Add(new ScraperScheduleEntity
+                    entity.Schedules.Add(new WebScraperApi.Data.ScraperScheduleEntity
                     {
                         ScraperId = entity.Id,
-                        Name = schedule.ContainsKey("name") ? schedule["name"].ToString() : "Default Schedule",
-                        CronExpression = schedule.ContainsKey("cronExpression") ? schedule["cronExpression"].ToString() : "0 0 * * *",
+                        Name = schedule.ContainsKey("name") ? schedule["name"]?.ToString() ?? "Default Schedule" : "Default Schedule",
+                        CronExpression = schedule.ContainsKey("cronExpression") ? schedule["cronExpression"]?.ToString() ?? "0 0 * * *" : "0 0 * * *",
                         IsActive = schedule.ContainsKey("isActive") && schedule["isActive"] is bool isActive ? isActive : true,
                         LastRun = schedule.ContainsKey("lastRun") && schedule["lastRun"] is DateTime lastRun ? lastRun : null,
                         NextRun = schedule.ContainsKey("nextRun") && schedule["nextRun"] is DateTime nextRun ? nextRun : null,
                         MaxRuntimeMinutes = schedule.ContainsKey("maxRuntimeMinutes") && schedule["maxRuntimeMinutes"] is int maxRuntime ? maxRuntime : null,
-                        NotificationEmail = schedule.ContainsKey("notificationEmail") ? schedule["notificationEmail"].ToString() : null
+                        NotificationEmail = schedule.ContainsKey("notificationEmail") ? schedule["notificationEmail"]?.ToString() ?? string.Empty : string.Empty
                     });
                 }
             }

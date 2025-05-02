@@ -10,7 +10,7 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
   // Check if it's an Axios error with a response
   if (error.response) {
     const { status, data } = error.response;
-    
+
     // Handle different status codes
     switch (status) {
       case 400:
@@ -66,9 +66,10 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
       case 502:
       case 503:
       case 504:
+        console.error('Server error details:', data);
         return {
-          message: 'Server error, please try again later',
-          details: null,
+          message: data.message || 'Server error, please try again later',
+          details: data.errors || data.detail || data || null,
           status,
           type: 'server'
         };
@@ -81,7 +82,7 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
         };
     }
   }
-  
+
   // Handle network errors
   if (error.request && !error.response) {
     return {
@@ -91,7 +92,7 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
       type: 'network'
     };
   }
-  
+
   // Handle other errors
   return {
     message: error.message || defaultMessage,
@@ -108,12 +109,12 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
  */
 export const formatValidationErrors = (errors) => {
   if (!errors) return {};
-  
+
   // If errors is already in the right format, return it
   if (typeof errors === 'object' && !Array.isArray(errors)) {
     return errors;
   }
-  
+
   // If errors is an array of objects with field and message properties
   if (Array.isArray(errors)) {
     return errors.reduce((acc, error) => {
@@ -123,7 +124,7 @@ export const formatValidationErrors = (errors) => {
       return acc;
     }, {});
   }
-  
+
   // If we can't format the errors, return an empty object
   return {};
 };
@@ -137,11 +138,11 @@ export const formatValidationErrors = (errors) => {
 export const logError = (error, context = '', additionalData = {}) => {
   // Log to console
   console.error(`Error in ${context}:`, error);
-  
+
   if (additionalData && Object.keys(additionalData).length > 0) {
     console.error('Additional data:', additionalData);
   }
-  
+
   // Here you would integrate with an error reporting service like Sentry
   // Example:
   // if (window.Sentry) {
@@ -182,22 +183,22 @@ export const isAuthError = (error) => {
  */
 export const getUserFriendlyErrorMessage = (error, fallback = 'An error occurred') => {
   if (!error) return fallback;
-  
+
   // If it's already a string, return it
   if (typeof error === 'string') return error;
-  
+
   // If it's an error object from our handleApiError function
   if (error.message) return error.message;
-  
+
   // If it's an Axios error with a response
   if (error.response && error.response.data) {
     const { data } = error.response;
     return data.message || data.error || fallback;
   }
-  
+
   // If it's a standard Error object
   if (error instanceof Error) return error.message;
-  
+
   // Fallback
   return fallback;
 };

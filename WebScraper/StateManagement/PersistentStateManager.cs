@@ -23,7 +23,7 @@ namespace WebScraper.StateManagement
         {
             _stateDirectory = Path.Combine(baseDirectory, "state");
             _logAction = logAction ?? (msg => Console.WriteLine(msg));
-            
+
             if (!Directory.Exists(_stateDirectory))
             {
                 Directory.CreateDirectory(_stateDirectory);
@@ -45,7 +45,7 @@ namespace WebScraper.StateManagement
         public async Task<ScraperState> GetScraperStateAsync(string scraperId)
         {
             var stateFile = Path.Combine(_stateDirectory, $"{scraperId}.json");
-            
+
             if (!File.Exists(stateFile))
             {
                 return new ScraperState
@@ -58,7 +58,7 @@ namespace WebScraper.StateManagement
             try
             {
                 var json = await File.ReadAllTextAsync(stateFile);
-                return JsonSerializer.Deserialize<ScraperState>(json) ?? 
+                return JsonSerializer.Deserialize<ScraperState>(json) ??
                     new ScraperState { ScraperId = scraperId, Status = "Error" };
             }
             catch (Exception ex)
@@ -78,7 +78,7 @@ namespace WebScraper.StateManagement
         public async Task SaveScraperStateAsync(ScraperState state)
         {
             var stateFile = Path.Combine(_stateDirectory, $"{state.ScraperId}.json");
-            
+
             try
             {
                 var json = JsonSerializer.Serialize(state);
@@ -113,21 +113,21 @@ namespace WebScraper.StateManagement
         public async Task MarkUrlVisitedAsync(string scraperId, string url, int statusCode, int responseTimeMs)
         {
             var state = await GetScraperStateAsync(scraperId);
-            
+
             if (state.ProcessedUrls == null)
             {
                 state.ProcessedUrls = new HashSet<string>();
             }
-            
+
             state.ProcessedUrls.Add(url);
             state.PagesScraped = state.ProcessedUrls.Count;
-            
+
             if (statusCode >= 400)
             {
                 state.ErrorCount++;
                 state.LastError = $"Error {statusCode} at {url}";
             }
-            
+
             await SaveScraperStateAsync(state);
         }
 
@@ -147,7 +147,7 @@ namespace WebScraper.StateManagement
         public async Task<RegulatoryFramework.Interfaces.PageVersion> GetLatestVersionAsync(string url)
         {
             var contentFile = Path.Combine(_stateDirectory, $"{ComputeHash(url)}_latest.json");
-            
+
             if (!File.Exists(contentFile))
             {
                 return null;
@@ -157,7 +157,7 @@ namespace WebScraper.StateManagement
             {
                 var json = await File.ReadAllTextAsync(contentFile);
                 var localVersion = JsonSerializer.Deserialize<WebScraper.StateManagement.PageVersion>(json);
-                
+
                 // Convert to the interface's PageVersion type
                 if (localVersion != null)
                 {
@@ -169,7 +169,7 @@ namespace WebScraper.StateManagement
                         FullContent = localVersion.Content,
                         TextContent = localVersion.TextContent,
                         ContentSummary = localVersion.TextContent?.Substring(0, Math.Min(200, localVersion.TextContent?.Length ?? 0)) ?? "",
-                        Metadata = new Dictionary<string, object>(localVersion.Metadata ?? 
+                        Metadata = new Dictionary<string, object>(localVersion.Metadata ??
                             new Dictionary<string, object>())
                     };
                 }
@@ -185,25 +185,26 @@ namespace WebScraper.StateManagement
         /// <summary>
         /// Gets the latest content version tuple for backwards compatibility
         /// </summary>
-        public async Task<(bool Found, ContentItem? Version)> GetLatestContentVersionAsync(string url)
+        public async Task<(bool Found, WebScraper.ContentItem? Version)> GetLatestContentVersionAsync(string url)
         {
             var version = await GetLatestVersionAsync(url);
-            
+
             if (version == null)
             {
                 return (false, null);
             }
-            
+
             // Convert the PageVersion to ContentItem
-            var contentItem = new ContentItem
+            var contentItem = new WebScraper.ContentItem
             {
                 Url = version.Url,
                 ContentHash = version.Hash,
                 RawContent = version.FullContent,
+                TextContent = version.TextContent,
                 Title = version.Metadata?.ContainsKey("title") == true ? version.Metadata["title"]?.ToString() ?? string.Empty : string.Empty,
                 ScraperId = version.Metadata?.ContainsKey("scraperId") == true ? version.Metadata["scraperId"]?.ToString() ?? string.Empty : string.Empty
             };
-            
+
             return (true, contentItem);
         }
 
@@ -213,7 +214,7 @@ namespace WebScraper.StateManagement
         public async Task SaveVersionAsync(RegulatoryFramework.Interfaces.PageVersion version)
         {
             if (version == null) throw new ArgumentNullException(nameof(version));
-            
+
             // Convert to our internal PageVersion structure
             var localVersion = new WebScraper.StateManagement.PageVersion
             {
@@ -224,9 +225,9 @@ namespace WebScraper.StateManagement
                 TextContent = version.TextContent,
                 Metadata = version.Metadata
             };
-            
+
             var contentFile = Path.Combine(_stateDirectory, $"{ComputeHash(version.Url)}_latest.json");
-            
+
             try
             {
                 var json = JsonSerializer.Serialize(localVersion);
@@ -241,7 +242,7 @@ namespace WebScraper.StateManagement
                 _logAction($"Error saving content version: {ex.Message}");
             }
         }
-        
+
         /// <summary>
         /// Gets version history for a URL - implementation for IStateStore
         /// </summary>
@@ -252,16 +253,16 @@ namespace WebScraper.StateManagement
                 .Where(f => !f.EndsWith("_latest.json"))
                 .OrderByDescending(f => f)
                 .Take(maxVersions);
-                
+
             var result = new List<RegulatoryFramework.Interfaces.PageVersion>();
-            
+
             foreach (var file in historyFiles)
             {
                 try
                 {
                     var json = await File.ReadAllTextAsync(file);
                     var localVersion = JsonSerializer.Deserialize<WebScraper.StateManagement.PageVersion>(json);
-                    
+
                     if (localVersion != null)
                     {
                         result.Add(new RegulatoryFramework.Interfaces.PageVersion
@@ -272,7 +273,7 @@ namespace WebScraper.StateManagement
                             FullContent = localVersion.Content,
                             TextContent = localVersion.TextContent,
                             ContentSummary = localVersion.TextContent?.Substring(0, Math.Min(200, localVersion.TextContent?.Length ?? 0)) ?? "",
-                            Metadata = new Dictionary<string, object>(localVersion.Metadata ?? 
+                            Metadata = new Dictionary<string, object>(localVersion.Metadata ??
                                 new Dictionary<string, object>())
                         });
                     }
@@ -282,7 +283,7 @@ namespace WebScraper.StateManagement
                     _logAction($"Error loading version history: {ex.Message}");
                 }
             }
-            
+
             return result;
         }
 
@@ -292,12 +293,12 @@ namespace WebScraper.StateManagement
         public async Task<T> GetAsync<T>(string key)
         {
             var keyFile = Path.Combine(_stateDirectory, $"key_{ComputeHash(key)}.json");
-            
+
             if (!File.Exists(keyFile))
             {
                 return default!; // Use non-null assertion to match interface contract
             }
-            
+
             try
             {
                 var json = await File.ReadAllTextAsync(keyFile);
@@ -317,7 +318,7 @@ namespace WebScraper.StateManagement
         public async Task SetAsync<T>(string key, T value)
         {
             var keyFile = Path.Combine(_stateDirectory, $"key_{ComputeHash(key)}.json");
-            
+
             try
             {
                 var json = JsonSerializer.Serialize(value);
@@ -328,7 +329,7 @@ namespace WebScraper.StateManagement
                 _logAction($"Error saving value for key {key}: {ex.Message}");
             }
         }
-        
+
         /// <summary>
         /// Computes a safe filename hash from a string
         /// </summary>
@@ -343,54 +344,18 @@ namespace WebScraper.StateManagement
                     .Replace("=", "");
             }
         }
-        
+
         /// <summary>
-        /// Add CapturedAt property check and conversion
+        /// Get CapturedAt property from ContentItem
         /// </summary>
-        private DateTime GetCapturedAt(WebScraper.StateManagement.ContentItem item)
+        private DateTime GetCapturedAt(WebScraper.ContentItem item)
         {
             if (item == null)
                 return DateTime.Now;
-                
-            // ContentItem from our namespace already has CapturedAt
+
             return item.CapturedAt;
         }
-        
-        /// <summary>
-        /// Add CapturedAt property check and conversion for interface type
-        /// </summary>
-        private DateTime GetCapturedAtFromInterface(WebScraper.Interfaces.ContentItem item)
-        {
-            if (item == null)
-                return DateTime.Now;
-                
-            // Use Type check instead of pattern matching
-            var itemType = item.GetType();
-            if (itemType.FullName?.Contains("Processing.ContentItem") == true)
-            {
-                // Use reflection to avoid direct dependency
-                var capturedAtProperty = itemType.GetProperty("CapturedAt");
-                if (capturedAtProperty != null)
-                {
-                    var value = capturedAtProperty.GetValue(item);
-                    if (value != null && value is DateTime capturedAt)
-                        return capturedAt;
-                }
-            }
-            
-            // Use reflection to check for property on any type
-            var propInfo = itemType.GetProperty("CapturedAt");
-            if (propInfo != null)
-            {
-                var value = propInfo.GetValue(item);
-                if (value != null && value is DateTime capturedAt)
-                    return capturedAt;
-            }
-            
-            // Fallback to current time
-            return DateTime.Now;
-        }
-        
+
         /// <summary>
         /// Saves a content item to the storage
         /// </summary>
@@ -403,22 +368,19 @@ namespace WebScraper.StateManagement
                     _logAction($"Cannot save null content item");
                     return false;
                 }
-                
-                // Convert to our internal ContentItem type
-                var contentItem = new WebScraper.StateManagement.ContentItem
+
+                // Convert to canonical ContentItem if needed
+                WebScraper.ContentItem contentItem;
+
+                if (item is WebScraper.ContentItem canonicalItem)
                 {
-                    Url = item.Url,
-                    Title = item.Title,
-                    ScraperId = item.ScraperId,
-                    LastStatusCode = item.LastStatusCode,
-                    ContentType = item.ContentType,
-                    IsReachable = item.IsReachable,
-                    RawContent = item.RawContent,
-                    ContentHash = item.ContentHash,
-                    IsRegulatoryContent = item.IsRegulatoryContent,
-                    CapturedAt = GetCapturedAtFromInterface(item)
-                };
-                
+                    contentItem = canonicalItem;
+                }
+                else
+                {
+                    contentItem = WebScraper.ContentItem.FromInterface(item);
+                }
+
                 // Use the existing method to save the content
                 return await SaveContentVersionAsync(contentItem);
             }
@@ -432,7 +394,7 @@ namespace WebScraper.StateManagement
         /// <summary>
         /// Saves a content version with max versions parameter
         /// </summary>
-        public async Task SaveContentVersionAsync(ContentItem contentItem, int maxVersions = 10)
+        public async Task SaveContentVersionAsync(WebScraper.ContentItem contentItem, int maxVersions = 10)
         {
             string versionFolder = GetVersionFolder(contentItem.Url);
             Directory.CreateDirectory(versionFolder);
@@ -454,13 +416,13 @@ namespace WebScraper.StateManagement
             string versionFilePath = GetVersionFilePath(version);
             string versionFileName = Path.GetFileName(versionFilePath);
             string metaFilePath = Path.Combine(versionFolder, $"{versionFileName}.meta.json");
-            
+
             File.WriteAllText(versionFilePath, contentItem.RawContent);
-            
+
             // Save metadata
             string json = System.Text.Json.JsonSerializer.Serialize(version);
             File.WriteAllText(metaFilePath, json);
-            
+
             _logAction?.Invoke($"Saved version {versionFilePath}");
         }
 
@@ -490,13 +452,13 @@ namespace WebScraper.StateManagement
             try
             {
                 string versionFolder = GetVersionFolder(url);
-                
+
                 // Get existing versions sorted by date (newest first)
                 var versionFiles = Directory.GetFiles(versionFolder, "*.html")
                     .OrderByDescending(f => Path.GetFileName(f))
                     .Skip(maxVersions - 1) // Keep the newest (maxVersions - 1)
                     .ToList();
-                
+
                 // Delete old versions beyond the limit
                 foreach (var oldFile in versionFiles)
                 {
@@ -546,7 +508,7 @@ namespace WebScraper.StateManagement
         public HashSet<string> ProcessedUrls { get; set; } = new HashSet<string>();
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
     }
-    
+
     /// <summary>
     /// Internal PageVersion class for state management
     /// </summary>
@@ -557,7 +519,7 @@ namespace WebScraper.StateManagement
         public string TextContent { get; set; } = string.Empty;
         public string ContentHash { get; set; } = string.Empty;
         public DateTime VersionDate { get; set; }
-        public DateTime Timestamp { get; set; } = DateTime.Now; 
+        public DateTime Timestamp { get; set; } = DateTime.Now;
         public string VersionId { get; set; } = Guid.NewGuid().ToString();
         public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
     }

@@ -34,21 +34,40 @@ namespace WebScraperApi.Data
 
             // Configure table names (to match the SQL script)
             modelBuilder.Entity<ScraperConfigEntity>().ToTable("scraper_config");
-            modelBuilder.Entity<ScraperStartUrlEntity>().ToTable("scraper_start_urls");
-            modelBuilder.Entity<ContentExtractorSelectorEntity>().ToTable("content_extractor_selectors");
-            modelBuilder.Entity<KeywordAlertEntity>().ToTable("keyword_alert_list");
-            modelBuilder.Entity<WebhookTriggerEntity>().ToTable("webhook_triggers");
-            modelBuilder.Entity<DomainRateLimitEntity>().ToTable("domain_rate_limits");
-            modelBuilder.Entity<ProxyConfigurationEntity>().ToTable("proxy_configurations");
-            modelBuilder.Entity<ScraperScheduleEntity>().ToTable("scraper_schedules");
-            modelBuilder.Entity<ScraperRunEntity>().ToTable("scraper_runs");
+            modelBuilder.Entity<ScraperStartUrlEntity>().ToTable("scraper_start_url");
+            modelBuilder.Entity<ContentExtractorSelectorEntity>().ToTable("content_extractor_selector");
+            modelBuilder.Entity<KeywordAlertEntity>().ToTable("keyword_alert");
+            modelBuilder.Entity<WebhookTriggerEntity>().ToTable("webhook_trigger");
+            modelBuilder.Entity<DomainRateLimitEntity>().ToTable("domain_rate_limit");
+            modelBuilder.Entity<ProxyConfigurationEntity>().ToTable("proxy_configuration");
+            modelBuilder.Entity<ScraperScheduleEntity>().ToTable("scraper_schedule");
+            modelBuilder.Entity<ScraperRunEntity>().ToTable("scraper_run");
             modelBuilder.Entity<ScraperStatusEntity>().ToTable("scraper_status");
-            modelBuilder.Entity<PipelineMetricEntity>().ToTable("pipeline_metrics");
-            modelBuilder.Entity<LogEntryEntity>().ToTable("log_entries");
-            modelBuilder.Entity<ContentChangeRecordEntity>().ToTable("content_change_records");
-            modelBuilder.Entity<ProcessedDocumentEntity>().ToTable("processed_documents");
+            modelBuilder.Entity<PipelineMetricEntity>().ToTable("pipeline_metric");
+            modelBuilder.Entity<LogEntryEntity>().ToTable("log_entry");
+            modelBuilder.Entity<ContentChangeRecordEntity>().ToTable("content_change_record");
+            modelBuilder.Entity<ProcessedDocumentEntity>().ToTable("processed_document");
             modelBuilder.Entity<DocumentMetadataEntity>().ToTable("document_metadata");
             modelBuilder.Entity<ScraperMetricEntity>().ToTable("scraper_metrics");
+
+            // Configure case-sensitive column names for MySQL
+            foreach (var entity in modelBuilder.Model.GetEntityTypes())
+            {
+                // Replace camel case property names with snake_case column names
+                foreach (var property in entity.GetProperties())
+                {
+                    property.SetColumnName(SnakeCase(property.Name));
+                }
+
+                // Replace camel case navigation/foreign key names with snake_case
+                foreach (var key in entity.GetForeignKeys())
+                {
+                    foreach (var column in key.Properties)
+                    {
+                        column.SetColumnName(SnakeCase(column.Name));
+                    }
+                }
+            }
 
             // Configure relationships
             modelBuilder.Entity<ScraperStartUrlEntity>()
@@ -143,6 +162,28 @@ namespace WebScraperApi.Data
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.Metrics)
                 .HasForeignKey(s => s.ScraperId);
+        }
+
+        // Helper method to convert CamelCase to snake_case for MySQL compatibility
+        private string SnakeCase(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+
+            var result = input.ToString();
+            
+            // Handle common ID abbreviation
+            result = System.Text.RegularExpressions.Regex.Replace(result, "ID$", "_id");
+            
+            // Convert other camel case
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result, 
+                "(?<!^)([A-Z][a-z]|(?<=[a-z])[A-Z])", 
+                "_$1", 
+                System.Text.RegularExpressions.RegexOptions.Compiled)
+                .ToLower();
+            
+            return result;
         }
     }
 }

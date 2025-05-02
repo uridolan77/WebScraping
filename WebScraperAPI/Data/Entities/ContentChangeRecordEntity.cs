@@ -15,14 +15,18 @@ namespace WebScraperApi.Data.Entities
         public string Url { get; set; }
         
         [Required]
-        public string ChangeType { get; set; }
+        public DateTime DetectedAt { get; set; } = DateTime.Now;
         
         [Required]
-        public DateTime DetectedAt { get; set; }
+        public string ChangeType { get; set; }
         
-        public int Significance { get; set; }
+        public float SignificanceScore { get; set; }
         
-        public string ChangeDetails { get; set; }
+        public string ChangeSummary { get; set; }
+        
+        public string PreviousVersionHash { get; set; }
+        
+        public string CurrentVersionHash { get; set; }
         
         public string RunId { get; set; }
 

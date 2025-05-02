@@ -92,16 +92,8 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 if (_config.EnableHierarchicalExtraction && _contentExtractor != null)
                 {
                     var extractedContent = _contentExtractor.ExtractStructuredContent(document);
-                    // Convert ContentNode from framework to WebScraper namespace
-                    if (_contentExtractor is StructureAwareExtractor structureAwareExtractor)
-                    {
-                        structuredContent = structureAwareExtractor.ConvertToWebScraperContentNodes(extractedContent);
-                    }
-                    else
-                    {
-                        // Fallback to our local conversion method if not using StructureAwareExtractor
-                        structuredContent = SafeConvertToWebScraperContentNodes(extractedContent);
-                    }
+                    // Use the extracted content directly since we now have a unified ContentNode class
+                    structuredContent = extractedContent;
                     textContent = _contentExtractor.ExtractTextContent(document);
                 }
                 else
@@ -190,121 +182,16 @@ namespace WebScraper.RegulatoryFramework.Implementation
             }
         }
 
-        // Helper methods for ContentNode conversion between different namespaces
-        private List<WebScraper.ContentNode> SafeConvertToWebScraperContentNodes(List<WebScraper.RegulatoryFramework.Interfaces.ContentNode> nodes)
+        // Helper method to create a default ContentNode
+        private WebScraper.ContentNode CreateDefaultContentNode()
         {
-            if (nodes == null || nodes.Count == 0)
-                return new List<WebScraper.ContentNode>();
-
-            return nodes.Select(n => ConvertToWebScraperContentNode(n)).ToList();
-        }
-
-        private WebScraper.ContentNode ConvertToWebScraperContentNode(WebScraper.RegulatoryFramework.Interfaces.ContentNode? node)
-        {
-            if (node == null)
-                return new WebScraper.ContentNode
-                {
-                    NodeType = "Unknown",
-                    Content = string.Empty,
-                    Depth = 0,
-                    Title = string.Empty
-                };
-
-            var convertedNode = new WebScraper.ContentNode
+            return new WebScraper.ContentNode
             {
-                NodeType = node.Type ?? "Unknown",
-                Content = node.Content ?? string.Empty,
-                Depth = node.Level,
-                Title = node.Title ?? string.Empty,
-                RelevanceScore = node.RelevanceScore
+                NodeType = "Unknown",
+                Content = string.Empty,
+                Depth = 0,
+                Title = string.Empty
             };
-
-            // Copy attributes
-            if (node.Attributes != null)
-            {
-                foreach (var kvp in node.Attributes)
-                {
-                    convertedNode.Attributes[kvp.Key] = kvp.Value;
-                }
-            }
-
-            // Convert children recursively
-            if (node.Children != null && node.Children.Count > 0)
-            {
-                convertedNode.Children = new List<WebScraper.ContentNode>();
-                foreach (var child in node.Children)
-                {
-                    // Cast the child to WebScraper.RegulatoryFramework.Interfaces.ContentNode since that's what the method expects
-                    var convertedChild = ConvertToWebScraperContentNode((WebScraper.RegulatoryFramework.Interfaces.ContentNode)child);
-                    if (convertedChild != null)
-                    {
-                        convertedNode.Children.Add(convertedChild);
-                    }
-                }
-            }
-
-            // Copy metadata
-            if (node.Metadata != null)
-            {
-                foreach (var kvp in node.Metadata)
-                {
-                    convertedNode.Metadata[kvp.Key] = kvp.Value;
-                }
-            }
-
-            return convertedNode;
-        }
-
-        private ContentNode ConvertToFrameworkContentNode(WebScraper.ContentNode? node)
-        {
-            if (node == null)
-                return new ContentNode
-                {
-                    Type = "Unknown",
-                    Content = string.Empty,
-                    Level = 0,
-                    Title = string.Empty
-                };
-
-            var convertedNode = new ContentNode
-            {
-                Type = node.NodeType ?? "Unknown",
-                Content = node.Content ?? string.Empty,
-                Level = node.Depth,
-                Title = node.Title ?? string.Empty,
-                RelevanceScore = node.RelevanceScore
-            };
-
-            // Copy attributes
-            if (node.Attributes != null)
-            {
-                foreach (var kvp in node.Attributes)
-                {
-                    convertedNode.Attributes[kvp.Key] = kvp.Value;
-                }
-            }
-
-            // Convert children recursively
-            if (node.Children != null)
-            {
-                foreach (var child in node.Children)
-                {
-                    // Use a local variable to hold the result of the conversion
-                    var convertedChild = ConvertToFrameworkContentNode(child);
-                    convertedNode.Children.Add(convertedChild);
-                }
-            }
-
-            // Copy metadata
-            if (node.Metadata != null)
-            {
-                foreach (var kvp in node.Metadata)
-                {
-                    convertedNode.Metadata[kvp.Key] = kvp.Value;
-                }
-            }
-
-            return convertedNode;
         }
 
         // Helper method to get primary category from classification
@@ -332,7 +219,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
         }
 
         // For backward compatibility with code that needs to get state
-        public async Task<ScraperState> GetStateAsync()
+        public Task<ScraperState> GetStateAsync()
         {
             var state = new ScraperState
             {
@@ -351,10 +238,7 @@ namespace WebScraper.RegulatoryFramework.Implementation
                 state.CrawlStrategyMetadata = _crawlStrategy.GetPageMetadata();
             }
 
-            // Add an await operation to properly use the async keyword
-            await Task.Delay(1); // Minimal delay to make the async keyword meaningful
-
-            return state;
+            return Task.FromResult(state);
         }
     }
 

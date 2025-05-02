@@ -210,38 +210,41 @@ namespace WebScraper.RegulatoryContent
         {
             try
             {
-                // Extract basic metadata
-                var metadata = new DocumentMetadata
-                {
-                    Title = htmlDoc.DocumentNode.SelectSingleNode("//title")?.InnerText ?? "Unknown Title",
-                    ContentHash = ComputeContentHash(htmlDoc.DocumentNode.OuterHtml)
-                };
-
-                // Extract text content
-                metadata.TextContent = htmlDoc.DocumentNode.InnerText;
-
+                // Extract basic metadata and text content
+                string textContent = htmlDoc.DocumentNode.InnerText;
+                
                 // Classify the content
-                var classification = _contentClassifier.ClassifyContent("file://document", metadata.TextContent, htmlDoc);
-                metadata.Classification = new ClassificationResult
-                {
-                    PrimaryCategory = classification.PrimaryCategory ?? "Unknown",
-                    Category = classification.Category ?? "Unknown",
-                    Confidence = classification.ConfidenceScore,
-                    Impact = (WebScraper.RegulatoryImpact)classification.Impact, // Explicit cast with full namespace
-                    MatchedKeywords = classification.Topics?.ToList() ?? new List<string>()
-                };
-
-                // Find publication date if available
+                var classification = _contentClassifier.ClassifyContent("file://document", textContent, htmlDoc);
+                
+                // Extract publication date if available
+                DateTime? publishDate = null;
                 var dateNodes = htmlDoc.DocumentNode.SelectNodes("//meta[@name='date' or @property='article:published_time']");
                 if (dateNodes != null && dateNodes.Count > 0)
                 {
                     var dateString = dateNodes[0].GetAttributeValue("content", null);
                     if (!string.IsNullOrEmpty(dateString) && DateTime.TryParse(dateString, out var pubDate))
                     {
-                        metadata.PublishDate = pubDate;
-                        metadata.PublicationDate = pubDate;
+                        publishDate = pubDate;
                     }
                 }
+                
+                // Create metadata with all properties initialized at once
+                var metadata = new DocumentMetadata
+                {
+                    Title = htmlDoc.DocumentNode.SelectSingleNode("//title")?.InnerText ?? "Unknown Title",
+                    ContentHash = ComputeContentHash(htmlDoc.DocumentNode.OuterHtml),
+                    TextContent = textContent,
+                    Classification = new ClassificationResult
+                    {
+                        PrimaryCategory = classification.PrimaryCategory ?? "Unknown",
+                        Category = classification.Category ?? "Unknown",
+                        Confidence = classification.ConfidenceScore,
+                        Impact = (WebScraper.RegulatoryImpact)classification.Impact,
+                        MatchedKeywords = classification.Topics?.ToList() ?? new List<string>()
+                    },
+                    PublishDate = publishDate,
+                    PublicationDate = publishDate
+                };
 
                 return metadata;
             }

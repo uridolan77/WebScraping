@@ -11,6 +11,9 @@ namespace WebScraperApi.Data.Entities
         [Required]
         public string ScraperId { get; set; }
         
+        [Required]
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        
         public int ProcessingItems { get; set; }
         
         public int QueuedItems { get; set; }
@@ -21,10 +24,10 @@ namespace WebScraperApi.Data.Entities
         
         public double AverageProcessingTimeMs { get; set; }
         
-        [Required]
-        public DateTime Timestamp { get; set; }
+        public string RunId { get; set; }
 
-        // Navigation property
+        // Navigation properties
         public virtual ScraperConfigEntity ScraperConfig { get; set; }
+        public virtual ScraperRunEntity Run { get; set; }
     }
 }

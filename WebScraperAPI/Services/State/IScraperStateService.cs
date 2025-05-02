@@ -21,7 +21,7 @@ namespace WebScraperApi.Services.State
         /// </summary>
         /// <param name="id">Scraper ID</param>
         /// <returns>Scraper instance if found, null otherwise</returns>
-        ScraperInstance GetScraperInstance(string id);
+        ScraperInstance? GetScraperInstance(string id);
 
         /// <summary>
         /// Adds or updates a scraper instance

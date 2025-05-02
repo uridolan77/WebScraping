@@ -9,7 +9,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
     /// <summary>
     /// Core interfaces for the regulatory scraping framework
     /// </summary>
-    
+
     /// <summary>
     /// Strategy for prioritizing and managing crawl operations
     /// </summary>
@@ -21,16 +21,16 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         Dictionary<string, object> GetPageMetadata();
         bool ShouldCrawl(string url);
     }
-    
+
     /// <summary>
     /// Extracts content from HTML documents
     /// </summary>
     public interface IContentExtractor
     {
         string ExtractTextContent(HtmlDocument document);
-        List<ContentNode> ExtractStructuredContent(HtmlDocument document);
+        List<WebScraper.ContentNode> ExtractStructuredContent(HtmlDocument document);
     }
-    
+
     /// <summary>
     /// Processes documents like PDFs and Office files
     /// </summary>
@@ -39,7 +39,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         Task<WebScraper.RegulatoryFramework.Implementation.DocumentMetadata> ProcessDocumentAsync(string url, string title, byte[] content);
         Task ProcessLinkedDocumentsAsync(string pageUrl, HtmlDocument document);
     }
-    
+
     /// <summary>
     /// Detects and analyzes changes in content
     /// </summary>
@@ -49,7 +49,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         SignificantChangesResult DetectSignificantChanges(string oldContent, string newContent);
         Task<PageVersion> TrackPageVersionAsync(string url, string content, string textContent);
     }
-    
+
     /// <summary>
     /// Classifies content into regulatory categories
     /// </summary>
@@ -57,7 +57,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
     {
         ClassificationResult ClassifyContent(string url, string textContent, HtmlDocument document = null);
     }
-    
+
     /// <summary>
     /// Renders dynamic content using a headless browser
     /// </summary>
@@ -66,7 +66,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         Task<string> GetRenderedHtmlAsync(string url);
         Task<HtmlDocument> GetRenderedDocumentAsync(string url);
     }
-    
+
     /// <summary>
     /// Sends alerts for significant changes
     /// </summary>
@@ -75,7 +75,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         Task ProcessAlertAsync(string url, SignificantChangesResult changes);
         Task SendNotificationAsync(string subject, string message, AlertImportance importance);
     }
-    
+
     /// <summary>
     /// Stores state information for the scraper
     /// </summary>
@@ -87,7 +87,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         Task SaveVersionAsync(PageVersion version);
         Task<List<PageVersion>> GetVersionHistoryAsync(string url, int maxVersions = 10);
     }
-    
+
     /// <summary>
     /// Enum for state store types
     /// </summary>
@@ -97,7 +97,7 @@ namespace WebScraper.RegulatoryFramework.Interfaces
         File,
         Database
     }
-    
+
     /// <summary>
     /// Importance level for alerts
     /// </summary>

@@ -2,18 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Linq;
 using WebScraperApi.Models;
 using WebScraperApi.Services;
-using WebScraperApi.Services.Analytics;
-using WebScraperApi.Services.Common;
-using WebScraperApi.Services.Configuration;
-using WebScraperApi.Services.Execution;
-using WebScraperApi.Services.Monitoring;
-using WebScraperApi.Services.Notifications;
-using WebScraperApi.Services.Scheduling;
-using WebScraperApi.Services.State;
-using WebScraper.StateManagement; // Add this for WebScraper.StateManagement.ScraperState
+using WebScraperApi.Data.Repositories;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using WebScraperApi.Data.Entities;
 
 namespace WebScraperApi.Controllers
 {
@@ -21,448 +15,537 @@ namespace WebScraperApi.Controllers
     [Route("api/[controller]")]
     public class ScraperController : ControllerBase
     {
-        private readonly ScraperManager _scraperManager;
-        private readonly IScraperConfigurationService _configService;
-        private readonly IScraperExecutionService _executionService;
-        private readonly IScraperMonitoringService _monitoringService;
-        private readonly IScraperStateService _stateService;
-        private readonly IScraperAnalyticsService _analyticsService;
-        private readonly IScraperSchedulingService _schedulingService;
-        private readonly IWebhookNotificationService _notificationService;
+        private readonly IScraperRepository _scraperRepository;
+        private readonly ILogger<ScraperController> _logger;
+        private readonly IConfiguration _configuration;
 
         public ScraperController(
-            ScraperManager scraperManager,
-            IScraperConfigurationService configService,
-            IScraperExecutionService executionService,
-            IScraperMonitoringService monitoringService,
-            IScraperStateService stateService,
-            IScraperAnalyticsService analyticsService,
-            IScraperSchedulingService schedulingService,
-            IWebhookNotificationService notificationService)
+            IScraperRepository scraperRepository,
+            ILogger<ScraperController> logger,
+            IConfiguration configuration)
         {
-            _scraperManager = scraperManager;
-            _configService = configService;
-            _executionService = executionService;
-            _monitoringService = monitoringService;
-            _stateService = stateService;
-            _analyticsService = analyticsService;
-            _schedulingService = schedulingService;
-            _notificationService = notificationService;
+            _scraperRepository = scraperRepository ?? throw new ArgumentNullException(nameof(scraperRepository));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
-        [HttpGet]
-        public async Task<IActionResult> GetAllScrapers()
+        /// <summary>
+        /// Test endpoint to check database connection
+        /// </summary>
+        /// <returns>Database connection status</returns>
+        [HttpGet("test-connection")]
+        [ProducesResponseType(typeof(object), 200)]
+        public IActionResult TestConnection()
         {
-            var scrapers = await _configService.GetAllScraperConfigsAsync();
-            return Ok(scrapers);
-        }
-
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetScraper(string id)
-        {
-            var config = await _configService.GetScraperConfigAsync(id);
-            if (config == null)
+            try
             {
-                return NotFound($"Scraper with ID {id} not found");
+                var isConnected = _scraperRepository.TestDatabaseConnection();
+                return Ok(new {
+                    IsConnected = isConnected,
+                    Message = isConnected ? "Database connection successful" : "Database connection failed",
+                    Timestamp = DateTime.Now
+                });
             }
-
-            return Ok(config);
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> CreateScraper([FromBody] ScraperConfigModel config)
-        {
-            if (!ModelState.IsValid)
+            catch (Exception ex)
             {
-                return BadRequest(ModelState);
-            }
-
-            var createdConfig = await _configService.CreateScraperConfigAsync(config);
-            return CreatedAtAction(nameof(GetScraper), new { id = createdConfig.Id }, createdConfig);
-        }
-
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateScraper(string id, [FromBody] ScraperConfigModel config)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            var success = await _configService.UpdateScraperConfigAsync(id, config);
-            if (!success)
-            {
-                return NotFound($"Scraper with ID {id} not found or is currently running");
-            }
-
-            // Update the state with the new configuration
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance != null)
-            {
-                instance.Config = config;
-                _stateService.AddOrUpdateScraper(id, instance);
-            }
-
-            return Ok(config);
-        }
-
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteScraper(string id)
-        {
-            var success = await _configService.DeleteScraperConfigAsync(id);
-            if (!success)
-            {
-                return NotFound($"Scraper with ID {id} not found or is currently running");
-            }
-
-            // Also remove from state
-            _stateService.RemoveScraper(id);
-
-            return NoContent();
-        }
-
-        [HttpGet("{id}/status")]
-        public async Task<IActionResult> GetScraperStatus(string id)
-        {
-            var status = _monitoringService.GetScraperStatus(id);
-            if (status == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            return Ok(new
-            {
-                ScraperId = id,
-                ScraperName = instance.Config.Name,
-                status.IsRunning,
-                status.StartTime,
-                status.EndTime,
-                status.ElapsedTime,
-                status.UrlsProcessed,
-                LastMonitorCheck = status.LastMonitorCheck,
-                IsMonitoring = instance.Config.EnableContinuousMonitoring,
-                MonitoringInterval = instance.Config.MonitoringIntervalMinutes
-            });
-        }
-
-        [HttpGet("{id}/logs")]
-        public IActionResult GetScraperLogs(string id, [FromQuery] int limit = 100)
-        {
-            var logs = _monitoringService.GetScraperLogs(id, limit);
-            return Ok(new { Logs = logs });
-        }
-
-        [HttpPost("{id}/start")]
-        public async Task<IActionResult> StartScraper(string id)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            if (instance.Status.IsRunning)
-            {
-                return BadRequest("Scraper is already running");
-            }
-
-            // Create log action to capture logs
-            void LogAction(string message) => _monitoringService.AddLogMessage(id, message);
-
-            // Start the scraper using the execution service
-            // Create a new WebScraper.StateManagement.ScraperState to match what the service expects
-            var scraperState = new WebScraperApi.Models.ScraperState {
-                Id = id,
-                Status = "Starting"
-            };
-
-            // Convert to the expected type
-            var coreScraperState = new WebScraper.StateManagement.ScraperState {
-                ScraperId = id,
-                Status = "Starting"
-            };
-
-            // Convert the WebScraper.StateManagement.ScraperState to WebScraperApi.Models.ScraperState
-            var apiScraperState = new WebScraperApi.Models.ScraperState
-            {
-                Id = coreScraperState.ScraperId,
-                Status = coreScraperState.Status,
-                IsRunning = coreScraperState.Status == "Running" || coreScraperState.Status == "Starting"
-            };
-
-            var success = await _executionService.StartScraperAsync(
-                instance.Config,
-                apiScraperState,
-                LogAction);
-
-            if (!success)
-            {
-                return BadRequest("Failed to start scraper");
-            }
-
-            // Update status in the state
-            instance.Status.IsRunning = true;
-            instance.Status.StartTime = DateTime.Now;
-            instance.Status.Message = "Scraper started successfully";
-            _stateService.AddOrUpdateScraper(id, instance);
-
-            // Send notification about status change
-            await _notificationService.NotifyScraperStatusAsync(id, instance.Status);
-
-            return Ok(new { Message = $"Scraper '{instance.Config.Name}' started successfully" });
-        }
-
-        [HttpPost("{id}/stop")]
-        public IActionResult StopScraper(string id)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            if (!instance.Status.IsRunning)
-            {
-                return BadRequest("Scraper is not running");
-            }
-
-            // Create log action
-            void LogAction(string message) => _monitoringService.AddLogMessage(id, message);
-
-            // Stop the scraper
-            _executionService.StopScraper(instance.Scraper, LogAction);
-
-            // Update status
-            instance.Status.IsRunning = false;
-            instance.Status.EndTime = DateTime.Now;
-            instance.Status.Message = "Stopped by user";
-            _stateService.AddOrUpdateScraper(id, instance);
-
-            // Send notification about status change
-            _notificationService.NotifyScraperStatusAsync(id, instance.Status);
-
-            return Ok(new { Message = $"Scraper '{instance.Config.Name}' stopped successfully" });
-        }
-
-        [HttpPost("{id}/monitor")]
-        public async Task<IActionResult> SetMonitoring(string id, [FromBody] Models.MonitoringSettings settings)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            // Update monitoring settings
-            instance.Config.EnableContinuousMonitoring = settings.Enabled;
-            instance.Config.MonitoringIntervalMinutes = settings.IntervalMinutes;
-            instance.Config.NotifyOnChanges = settings.NotifyOnChanges;
-            instance.Config.NotificationEmail = settings.NotificationEmail;
-            instance.Config.TrackChangesHistory = settings.TrackChangesHistory;
-
-            // Update the config
-            var success = await _configService.UpdateScraperConfigAsync(id, instance.Config);
-            if (!success)
-            {
-                return BadRequest("Failed to update monitoring settings");
-            }
-
-            _stateService.AddOrUpdateScraper(id, instance);
-
-            return Ok(new
-            {
-                Message = settings.Enabled
-                    ? $"Monitoring enabled for '{instance.Config.Name}' with {settings.IntervalMinutes} minute interval"
-                    : $"Monitoring disabled for '{instance.Config.Name}'"
-            });
-        }
-
-        [HttpGet("results")]
-        public async Task<IActionResult> GetResults([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string search = null, [FromQuery] string scraperId = null)
-        {
-            if (!string.IsNullOrEmpty(scraperId))
-            {
-                var results = await _stateService.GetProcessedDocumentsAsync(scraperId, null, page, pageSize);
-                return Ok(results);
-            }
-            else
-            {
-                // If no specific scraper ID, return a summary list of results
-                return Ok(new
-                {
-                    Results = new Dictionary<string, object>(),
-                    TotalCount = 0,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalPages = 0
+                _logger.LogError(ex, "Error testing database connection: {ErrorMessage}", ex.Message);
+                return StatusCode(500, new {
+                    Message = "Error testing database connection",
+                    Error = ex.Message,
+                    InnerError = ex.InnerException?.Message,
+                    StackTrace = ex.StackTrace
                 });
             }
         }
 
-        #region API endpoints for additional functionality
-
-        [HttpGet("{id}/changes")]
-        public async Task<IActionResult> GetDetectedChanges(string id, [FromQuery] DateTime? since = null, [FromQuery] int limit = 100)
+        /// <summary>
+        /// Simple ping endpoint to check if the API is running
+        /// </summary>
+        /// <returns>Ping response</returns>
+        [HttpGet("ping")]
+        [ProducesResponseType(typeof(object), 200)]
+        public IActionResult Ping()
         {
-            var changes = await _stateService.GetDetectedChangesAsync(id, since, limit);
-            return Ok(new { Changes = changes });
+            return Ok(new {
+                Message = "API is running",
+                Timestamp = DateTime.Now,
+                Version = "1.0.0"
+            });
         }
 
-        [HttpGet("{id}/documents")]
-        public async Task<IActionResult> GetProcessedDocuments(string id, [FromQuery] string documentType = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        /// <summary>
+        /// Get API and database configuration information
+        /// </summary>
+        /// <returns>Configuration information</returns>
+        [HttpGet("config-info")]
+        [ProducesResponseType(typeof(object), 200)]
+        public IActionResult GetConfigInfo()
         {
-            var documents = await _stateService.GetProcessedDocumentsAsync(id, documentType, page, pageSize);
-            return Ok(documents);
-        }
-
-        [HttpGet("{id}/analytics")]
-        public async Task<IActionResult> GetScraperAnalytics(string id)
-        {
-            var analytics = await _analyticsService.GetScraperAnalyticsAsync(id);
-            return Ok(analytics);
-        }
-
-        [HttpPost("{id}/webhook-test")]
-        public async Task<IActionResult> TestWebhook(string id)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
+            try
             {
-                return NotFound($"Scraper with ID {id} not found");
+                // Get connection string from configuration
+                var connectionString = _configuration.GetConnectionString("WebStraction");
+
+                // Mask password if present
+                var maskedConnectionString = connectionString;
+                if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Password="))
+                {
+                    var parts = connectionString.Split(';');
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        if (parts[i].StartsWith("Password=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            parts[i] = "Password=*****";
+                        }
+                    }
+                    maskedConnectionString = string.Join(";", parts);
+                }
+
+                // Get environment information
+                var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
+                // Get assembly information
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var assemblyName = assembly.GetName();
+                var version = assemblyName.Version?.ToString() ?? "Unknown";
+
+                return Ok(new {
+                    ApiVersion = version,
+                    Environment = environment,
+                    ConnectionString = maskedConnectionString ?? "Not configured",
+                    DatabaseProvider = "MySQL",
+                    ServerTime = DateTime.Now,
+                    ServerTimeUtc = DateTime.UtcNow
+                });
             }
-
-            // Send a test notification
-            var testData = new
+            catch (Exception ex)
             {
-                message = "This is a test notification",
-                timestamp = DateTime.Now
-            };
-
-            var success = await _notificationService.SendCustomNotificationAsync(id, "webhook_test", testData);
-
-            if (!success)
-            {
-                return BadRequest("Failed to send webhook notification. Please check the webhook URL and configuration.");
+                _logger.LogError(ex, "Error getting configuration information");
+                return StatusCode(500, new {
+                    Message = "Error getting configuration information",
+                    Error = ex.Message
+                });
             }
-
-            return Ok(new { Message = "Test webhook notification sent successfully" });
         }
 
-        [HttpPost("{id}/compress")]
-        public async Task<IActionResult> CompressStoredContent(string id)
+        /// <summary>
+        /// Create a test scraper with minimal data
+        /// </summary>
+        /// <returns>Created scraper</returns>
+        [HttpGet("create-test")]
+        [ProducesResponseType(typeof(ScraperConfigModel), 201)]
+        [ProducesResponseType(typeof(object), 500)]
+        public async Task<IActionResult> CreateTestScraper()
         {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
+            try
             {
-                return NotFound($"Scraper with ID {id} not found");
+                // Create a minimal scraper model
+                var model = new ScraperConfigModel
+                {
+                    Name = "Test Scraper " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    StartUrl = "https://www.gamblingcommission.gov.uk/licensees-and-businesses",
+                    BaseUrl = "https://www.gamblingcommission.gov.uk",
+                    OutputDirectory = "TestScraperData",
+                    MaxDepth = 5,
+                    MaxPages = 1000,
+                    MaxConcurrentRequests = 5,
+                    DelayBetweenRequests = 1000,
+                    FollowLinks = true,
+                    FollowExternalLinks = false
+                };
+
+                // Map to entity
+                var entity = MapModelToEntity(model);
+                if (entity == null)
+                {
+                    return StatusCode(500, new { Message = "Failed to map model to entity" });
+                }
+
+                // Set default values
+                entity.Id = Guid.NewGuid().ToString();
+                entity.CreatedAt = DateTime.UtcNow;
+                entity.LastModified = DateTime.UtcNow;
+
+                // Save to database
+                var result = await _scraperRepository.CreateScraperAsync(entity);
+
+                // Map back to model
+                var createdModel = MapEntityToModel(result);
+
+                return CreatedAtAction(nameof(GetScraper), new { id = createdModel.Id }, createdModel);
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating test scraper: {ErrorMessage}", ex.Message);
 
-            var result = await _stateService.CompressStoredContentAsync(id);
-            return Ok(result);
+                return StatusCode(500, new {
+                    Message = "An error occurred while creating the test scraper",
+                    Error = ex.Message,
+                    InnerError = ex.InnerException?.Message,
+                    StackTrace = ex.StackTrace
+                });
+            }
         }
 
-        [HttpGet("{id}/metrics")]
-        public async Task<IActionResult> GetScraperMetrics(string id)
+        /// <summary>
+        /// Get all scrapers
+        /// </summary>
+        /// <returns>List of all scrapers</returns>
+        [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<ScraperConfigModel>), 200)]
+        public async Task<IActionResult> GetAllScrapers()
         {
-            var metrics = await _analyticsService.GetScraperMetricsAsync(id);
-            return Ok(metrics);
+            try
+            {
+                var scraperConfigs = await _scraperRepository.GetAllScrapersAsync();
+                var models = new List<ScraperConfigModel>();
+
+                foreach (var config in scraperConfigs)
+                {
+                    models.Add(MapEntityToModel(config));
+                }
+
+                return Ok(models);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving scrapers");
+                return StatusCode(500, "An error occurred while retrieving scrapers");
+            }
         }
 
-        [HttpPost("{id}/schedule")]
-        public async Task<IActionResult> ScheduleScraper(string id, [FromBody] Models.ScheduleOptions options)
+        /// <summary>
+        /// Get a specific scraper by ID
+        /// </summary>
+        /// <param name="id">The ID of the scraper to retrieve</param>
+        /// <returns>The requested scraper</returns>
+        [HttpGet("{id}")]
+        [ProducesResponseType(typeof(ScraperConfigModel), 200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetScraper(string id)
+        {
+            try
+            {
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                var model = MapEntityToModel(scraperConfig);
+                return Ok(model);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while retrieving scraper {id}");
+            }
+        }
+
+        /// <summary>
+        /// Create a new scraper
+        /// </summary>
+        /// <param name="model">The scraper configuration to create</param>
+        /// <returns>The newly created scraper configuration</returns>
+        [HttpPost]
+        [ProducesResponseType(typeof(ScraperConfigModel), 201)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> CreateScraper([FromBody] ScraperConfigModel model)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
-
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            var scheduleConfig = new ScheduleConfig
-            {
-                Name = options.ScheduleName,
-                CronExpression = options.CronExpression,
-                Enabled = true
-            };
 
             try
             {
-                var scheduleItem = await _schedulingService.ScheduleScraper(id, scheduleConfig);
+                // Ensure we have a new ID if not provided
+                if (string.IsNullOrEmpty(model.Id))
+                {
+                    model.Id = Guid.NewGuid().ToString();
+                }
 
-                return Ok(new {
-                    Message = $"Scraper '{instance.Config.Name}' scheduled successfully",
-                    ScheduleId = scheduleItem.Id,
-                    NextRunTime = scheduleItem.NextRunTime
-                });
+                model.CreatedAt = DateTime.Now;
+                model.LastModified = DateTime.Now;
+
+                var entity = MapModelToEntity(model);
+                var result = await _scraperRepository.CreateScraperAsync(entity);
+
+                var createdModel = MapEntityToModel(result);
+                return CreatedAtAction(nameof(GetScraper), new { id = createdModel.Id }, createdModel);
             }
-            catch (ArgumentException ex)
+            catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Error creating scraper: {ErrorMessage}", ex.Message);
+
+                // Log the model for debugging
+                _logger.LogInformation("Scraper model: {@Model}", model);
+
+                // Return more detailed error information for debugging
+                var errorDetails = new
+                {
+                    Message = "An error occurred while creating the scraper",
+                    Error = ex.Message,
+                    InnerError = ex.InnerException?.Message,
+                    InnerStackTrace = ex.InnerException?.StackTrace,
+                    StackTrace = ex.StackTrace,
+                    ModelState = ModelState.IsValid ? "Valid" : "Invalid",
+                    ModelErrors = ModelState.IsValid ? null : ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList()
+                };
+
+                return StatusCode(500, errorDetails);
             }
         }
 
-        [HttpGet("{id}/schedules")]
-        public IActionResult GetScraperSchedules(string id)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            var schedules = _schedulingService.GetScheduledItems(id);
-            return Ok(new { Schedules = schedules });
-        }
-
-        [HttpDelete("{id}/schedules/{scheduleId}")]
-        public async Task<IActionResult> DeleteSchedule(string id, string scheduleId)
-        {
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
-            {
-                return NotFound($"Scraper with ID {id} not found");
-            }
-
-            var success = await _schedulingService.RemoveSchedule(scheduleId);
-            if (!success)
-            {
-                return NotFound($"Schedule with ID {scheduleId} not found");
-            }
-
-            return NoContent();
-        }
-
-        [HttpPut("{id}/webhook-config")]
-        public async Task<IActionResult> UpdateWebhookConfig(string id, [FromBody] Models.WebhookConfig config)
+        /// <summary>
+        /// Update an existing scraper
+        /// </summary>
+        /// <param name="id">The ID of the scraper to update</param>
+        /// <param name="model">The updated scraper configuration</param>
+        /// <returns>The updated scraper configuration</returns>
+        [HttpPut("{id}")]
+        [ProducesResponseType(typeof(ScraperConfigModel), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> UpdateScraper(string id, [FromBody] ScraperConfigModel model)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            var instance = _stateService.GetScraperInstance(id);
-            if (instance == null)
+            if (id != model.Id)
             {
-                return NotFound($"Scraper with ID {id} not found");
+                return BadRequest("ID in URL does not match ID in request body");
             }
 
-            var success = await _stateService.UpdateWebhookConfigAsync(id, config);
-            if (!success)
+            try
             {
-                return BadRequest("Failed to update webhook configuration");
+                var existingScraper = await _scraperRepository.GetScraperByIdAsync(id);
+                if (existingScraper == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                // Preserve creation date but update the modification date
+                model.CreatedAt = existingScraper.CreatedAt;
+                model.LastModified = DateTime.Now;
+
+                var entity = MapModelToEntity(model);
+                var result = await _scraperRepository.UpdateScraperAsync(entity);
+
+                var updatedModel = MapEntityToModel(result);
+                return Ok(updatedModel);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while updating scraper {id}");
+            }
+        }
+
+        /// <summary>
+        /// Delete a scraper
+        /// </summary>
+        /// <param name="id">The ID of the scraper to delete</param>
+        /// <returns>No content if successful</returns>
+        [HttpDelete("{id}")]
+        [ProducesResponseType(204)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> DeleteScraper(string id)
+        {
+            try
+            {
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                var result = await _scraperRepository.DeleteScraperAsync(id);
+                if (result)
+                {
+                    return NoContent();
+                }
+                else
+                {
+                    return StatusCode(500, $"Failed to delete scraper {id}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while deleting scraper {id}");
+            }
+        }
+
+        /// <summary>
+        /// Start a scraper
+        /// </summary>
+        /// <param name="id">The ID of the scraper to start</param>
+        /// <returns>Status information for the started scraper</returns>
+        [HttpPost("{id}/start")]
+        [ProducesResponseType(typeof(ScraperStatusEntity), 200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> StartScraper(string id)
+        {
+            try
+            {
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig == null)
+                {
+                    return NotFound($"Scraper with ID {id} not found");
+                }
+
+                // This will be implemented with the ScraperExecutionService
+                // For now, just return a simple status
+                var status = new ScraperStatusEntity
+                {
+                    ScraperId = id,
+                    IsRunning = true,
+                    StartTime = DateTime.Now,
+                    Message = "Scraper started",
+                    LastUpdate = DateTime.Now
+                };
+
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting scraper with ID {ScraperId}", id);
+                return StatusCode(500, $"An error occurred while starting scraper {id}");
+            }
+        }
+
+        #region Mapping Methods
+
+        private ScraperConfigModel? MapEntityToModel(WebScraperApi.Data.ScraperConfigEntity entity)
+        {
+            if (entity == null)
+                return null;
+
+            var model = new ScraperConfigModel
+            {
+                Id = entity.Id,
+                Name = entity.Name,
+                CreatedAt = entity.CreatedAt,
+                LastModified = entity.LastModified,
+                LastRun = entity.LastRun,
+                RunCount = entity.RunCount,
+                StartUrl = entity.StartUrl,
+                BaseUrl = entity.BaseUrl,
+                OutputDirectory = entity.OutputDirectory,
+                DelayBetweenRequests = entity.DelayBetweenRequests,
+                MaxConcurrentRequests = entity.MaxConcurrentRequests,
+                MaxDepth = entity.MaxDepth,
+                MaxPages = entity.MaxPages,
+                FollowLinks = entity.FollowLinks,
+                FollowExternalLinks = entity.FollowExternalLinks
+            };
+
+            // Map collections if they exist
+            if (entity.StartUrls != null)
+            {
+                model.StartUrls = new List<string>();
+                foreach (var url in entity.StartUrls)
+                {
+                    model.StartUrls.Add(url.Url);
+                }
             }
 
-            return Ok(new { Message = "Webhook configuration updated successfully" });
+            if (entity.ContentExtractorSelectors != null)
+            {
+                model.ContentExtractorSelectors = new List<string>();
+                model.ContentExtractorExcludeSelectors = new List<string>();
+
+                foreach (var selector in entity.ContentExtractorSelectors)
+                {
+                    if (selector.IsExclude)
+                    {
+                        model.ContentExtractorExcludeSelectors.Add(selector.Selector);
+                    }
+                    else
+                    {
+                        model.ContentExtractorSelectors.Add(selector.Selector);
+                    }
+                }
+            }
+
+            return model;
+        }
+
+        private WebScraperApi.Data.ScraperConfigEntity? MapModelToEntity(ScraperConfigModel model)
+        {
+            if (model == null)
+                return null;
+
+            // Set default values for required fields if not provided
+            var now = DateTime.UtcNow;
+
+            var entity = new WebScraperApi.Data.ScraperConfigEntity
+            {
+                Id = string.IsNullOrEmpty(model.Id) ? Guid.NewGuid().ToString() : model.Id,
+                Name = model.Name ?? "Unnamed Scraper",
+                CreatedAt = now,
+                LastModified = now,
+                LastRun = model.LastRun,
+                RunCount = model.RunCount,
+                StartUrl = model.StartUrl ?? "",
+                BaseUrl = model.BaseUrl ?? "",
+                OutputDirectory = model.OutputDirectory ?? "ScrapedData",
+                DelayBetweenRequests = model.DelayBetweenRequests > 0 ? model.DelayBetweenRequests : 1000,
+                MaxConcurrentRequests = model.MaxConcurrentRequests > 0 ? model.MaxConcurrentRequests : 5,
+                MaxDepth = model.MaxDepth > 0 ? model.MaxDepth : 5,
+                MaxPages = model.MaxPages > 0 ? model.MaxPages : 1000,
+                FollowLinks = model.FollowLinks,
+                FollowExternalLinks = model.FollowExternalLinks,
+                StartUrls = new List<WebScraperApi.Data.ScraperStartUrlEntity>(),
+                ContentExtractorSelectors = new List<WebScraperApi.Data.ContentExtractorSelectorEntity>()
+            };
+
+            // Map collections
+            if (model.StartUrls != null)
+            {
+                foreach (var url in model.StartUrls)
+                {
+                    entity.StartUrls.Add(new WebScraperApi.Data.ScraperStartUrlEntity
+                    {
+                        ScraperId = entity.Id,
+                        Url = url
+                    });
+                }
+            }
+
+            if (model.ContentExtractorSelectors != null)
+            {
+                foreach (var selector in model.ContentExtractorSelectors)
+                {
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    {
+                        ScraperId = entity.Id,
+                        Selector = selector,
+                        IsExclude = false
+                    });
+                }
+            }
+
+            if (model.ContentExtractorExcludeSelectors != null)
+            {
+                foreach (var selector in model.ContentExtractorExcludeSelectors)
+                {
+                    entity.ContentExtractorSelectors.Add(new WebScraperApi.Data.ContentExtractorSelectorEntity
+                    {
+                        ScraperId = entity.Id,
+                        Selector = selector,
+                        IsExclude = true
+                    });
+                }
+            }
+
+            return entity;
         }
 
         #endregion

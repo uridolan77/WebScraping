@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using WebScraperApi.Models;
 using WebScraperApi.Services.Notifications;
@@ -28,6 +30,11 @@ namespace WebScraperApi.Controllers
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
+            }
+            
+            if (string.IsNullOrEmpty(request.ScraperId))
+            {
+                return BadRequest("ScraperId is required");
             }
             
             var instance = _stateService.GetScraperInstance(request.ScraperId);
@@ -107,7 +114,7 @@ namespace WebScraperApi.Controllers
             instance.Config.WebhookUrl = config.WebhookUrl;
             instance.Config.WebhookEnabled = config.Enabled;
             instance.Config.WebhookFormat = config.Format ?? "json";
-            instance.Config.WebhookTriggers = config.Triggers ?? new string[] { "all" };
+            instance.Config.WebhookTriggers = config.Triggers != null ? config.Triggers.ToList() : new List<string> { "all" };
             _stateService.AddOrUpdateScraper(id, instance);
             
             // Validate the webhook by sending a test notification if requested
@@ -147,8 +154,13 @@ namespace WebScraperApi.Controllers
                 return NotFound($"Scraper with ID {id} not found");
             }
             
+            if (string.IsNullOrEmpty(request.EventType))
+            {
+                return BadRequest("EventType is required");
+            }
+            
             var success = await _notificationService.SendCustomNotificationAsync(
-                id, request.EventType, request.Data);
+                id, request.EventType, request.Data ?? new object());
                 
             if (!success)
             {
@@ -161,23 +173,23 @@ namespace WebScraperApi.Controllers
     
     public class WebhookTestRequest
     {
-        public string ScraperId { get; set; }
-        public string WebhookUrl { get; set; }
-        public string Message { get; set; }
+        public string? ScraperId { get; set; }
+        public string? WebhookUrl { get; set; }
+        public string? Message { get; set; }
     }
     
     public class WebhookConfig
     {
-        public string WebhookUrl { get; set; }
+        public string? WebhookUrl { get; set; }
         public bool Enabled { get; set; } = true;
-        public string Format { get; set; } = "json";
-        public string[] Triggers { get; set; }
+        public string? Format { get; set; } = "json";
+        public string[]? Triggers { get; set; }
         public bool SendTestNotification { get; set; } = false;
     }
     
     public class CustomNotificationRequest
     {
-        public string EventType { get; set; }
-        public object Data { get; set; }
+        public string? EventType { get; set; }
+        public object? Data { get; set; }
     }
 }

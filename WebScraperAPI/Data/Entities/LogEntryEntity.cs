@@ -12,13 +12,12 @@ namespace WebScraperApi.Data.Entities
         public string ScraperId { get; set; }
         
         [Required]
-        public DateTime Timestamp { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.Now;
         
         [Required]
         public string Message { get; set; }
         
-        [Required]
-        public string Level { get; set; }
+        public string Level { get; set; } = "INFO";
         
         public string RunId { get; set; }
 

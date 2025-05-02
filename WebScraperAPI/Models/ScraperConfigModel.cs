@@ -4,6 +4,9 @@ using System.ComponentModel.DataAnnotations;
 
 namespace WebScraperApi.Models
 {
+    /// <summary>
+    /// Model for scraper configuration
+    /// </summary>
     public class ScraperConfigModel
     {
         // Unique identifier for this scraper configuration
@@ -14,23 +17,22 @@ namespace WebScraperApi.Models
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         
-        public DateTime? LastRun { get; set; }
-        
-        // Added LastModified property
         public DateTime LastModified { get; set; } = DateTime.Now;
+        
+        public DateTime? LastRun { get; set; }
         
         // Track run count for analytics
         public int RunCount { get; set; } = 0;
         
         // Basic settings
         [Required]
-        public string StartUrl { get; set; }
+        public string StartUrl { get; set; } = string.Empty;
         
         // List of start URLs for more complex configurations
         public List<string> StartUrls { get; set; } = new List<string>();
         
         [Required]
-        public string BaseUrl { get; set; }
+        public string BaseUrl { get; set; } = string.Empty;
         
         public string OutputDirectory { get; set; } = "ScrapedData";
         
@@ -78,17 +80,13 @@ namespace WebScraperApi.Models
         
         public bool MonitorResponseTimes { get; set; } = true;
         
-        // Rate limiting configuration
         public int MaxRequestsPerMinute { get; set; } = 60;
         
-        public string UserAgent { get; set; } = "Mozilla/5.0 WebScraper Bot";
+        public string UserAgent { get; set; } = "WebStraction Crawler/1.0";
         
         public bool BackOffOnErrors { get; set; } = true;
         
-        // Domain-specific rate limiting
-        public Dictionary<string, Dictionary<string, object>> DomainRateLimits { get; set; } = new Dictionary<string, Dictionary<string, object>>();
-        
-        // Proxy configuration
+        // Proxy support
         public bool UseProxies { get; set; } = false;
         
         public string ProxyRotationStrategy { get; set; } = "RoundRobin";
@@ -97,20 +95,18 @@ namespace WebScraperApi.Models
         
         public int MaxProxyFailuresBeforeRemoval { get; set; } = 3;
         
-        public List<Dictionary<string, object>> Proxies { get; set; } = new List<Dictionary<string, object>>();
-        
-        // Continuous monitoring settings
+        // Monitoring options
         public bool EnableContinuousMonitoring { get; set; } = false;
         
-        public int MonitoringIntervalMinutes { get; set; } = 1440; // Default: 24 hours
+        public int MonitoringIntervalMinutes { get; set; } = 60;
         
         public bool NotifyOnChanges { get; set; } = false;
         
-        public string NotificationEmail { get; set; }
+        public string? NotificationEmail { get; set; }
         
         public bool TrackChangesHistory { get; set; } = true;
         
-        // Regulatory content monitoring options
+        // Regulatory content analysis options
         public bool EnableRegulatoryContentAnalysis { get; set; } = false;
         
         public bool TrackRegulatoryChanges { get; set; } = false;
@@ -123,6 +119,10 @@ namespace WebScraperApi.Models
         
         public bool MonitorHighImpactChanges { get; set; } = false;
         
+        public List<string> KeywordAlertList { get; set; } = new List<string>();
+        
+        public string? NotificationEndpoint { get; set; }
+        
         // Content extraction options
         public List<string> ContentExtractorSelectors { get; set; } = new List<string>();
         
@@ -132,10 +132,10 @@ namespace WebScraperApi.Models
         
         public bool ExtractStructuredData { get; set; } = false;
         
-        public string CustomJsExtractor { get; set; }
+        public string? CustomJsExtractor { get; set; }
         
         // Page processing options
-        public string WaitForSelector { get; set; }
+        public string? WaitForSelector { get; set; }
         
         // UKGC specific options
         public bool IsUKGCWebsite { get; set; } = false;
@@ -146,39 +146,45 @@ namespace WebScraperApi.Models
         
         public bool PrioritizeAML { get; set; } = true;
         
-        // Regulatory alert options
-        public List<string> KeywordAlertList { get; set; } = new List<string>();
+        // Webhook options
+        public bool WebhookEnabled { get; set; } = false;
         
-        public string NotificationEndpoint { get; set; }
+        public string? WebhookUrl { get; set; }
         
-        // Webhook configuration properties
-        public bool WebhookEnabled { get; set; }
-        public string WebhookUrl { get; set; }
-        public bool NotifyOnContentChanges { get; set; }
-        public bool NotifyOnDocumentProcessed { get; set; }
-        public bool NotifyOnScraperStatusChange { get; set; }
+        public List<string> WebhookTriggers { get; set; } = new List<string>();
         
-        // Added missing webhook properties
-        public string[] WebhookTriggers { get; set; } = new string[] { "all" };
-        public string WebhookFormat { get; set; } = "json";
+        public bool NotifyOnContentChanges { get; set; } = false;
         
-        // Content compression settings
-        public bool EnableContentCompression { get; set; } = true;
-        public int CompressionThresholdBytes { get; set; } = 1024; // Compress files larger than 1KB by default
+        public bool NotifyOnDocumentProcessed { get; set; } = false;
         
-        // Enhanced telemetry settings
+        public bool NotifyOnScraperStatusChange { get; set; } = false;
+        
+        public string WebhookFormat { get; set; } = "JSON";
+        
+        // Performance and storage options
+        public bool EnableContentCompression { get; set; } = false;
+        
+        public int CompressionThresholdBytes { get; set; } = 102400; // 100KB
+        
         public bool CollectDetailedMetrics { get; set; } = true;
-        public int MetricsReportingIntervalSeconds { get; set; } = 60;
-        public bool TrackDomainMetrics { get; set; } = true;
         
-        // Added scraper type property
+        public int MetricsReportingIntervalSeconds { get; set; } = 60;
+        
+        public bool TrackDomainMetrics { get; set; } = false;
+        
         public string ScraperType { get; set; } = "Standard";
         
-        // Schedule configuration
+        // Schedule information (optional)
         public List<Dictionary<string, object>> Schedules { get; set; } = new List<Dictionary<string, object>>();
         
-        // Get the monitoring interval as TimeSpan
-        public TimeSpan GetMonitoringInterval() => TimeSpan.FromMinutes(MonitoringIntervalMinutes);
+        /// <summary>
+        /// Gets the monitoring interval in minutes
+        /// </summary>
+        /// <returns>The monitoring interval in minutes, or 60 if monitoring is not enabled</returns>
+        public int GetMonitoringInterval()
+        {
+            return EnableContinuousMonitoring ? MonitoringIntervalMinutes : 60;
+        }
         
         // Convert to WebScraper.ScraperConfig for the actual scraper
         public WebScraper.ScraperConfig ToScraperConfig()
@@ -200,8 +206,6 @@ namespace WebScraperApi.Models
                 EnableChangeDetection = this.EnableChangeDetection,
                 TrackContentVersions = this.TrackContentVersions,
                 MaxVersionsToKeep = this.MaxVersionsToKeep,
-                NotifyOnChanges = this.NotifyOnChanges,
-                NotificationEmail = this.NotificationEmail,
                 EnableAdaptiveCrawling = this.EnableAdaptiveCrawling,
                 PriorityQueueSize = this.PriorityQueueSize,
                 AdjustDepthBasedOnQuality = this.AdjustDepthBasedOnQuality,
@@ -209,6 +213,8 @@ namespace WebScraperApi.Models
                 MinDelayBetweenRequests = this.MinDelayBetweenRequests,
                 MaxDelayBetweenRequests = this.MaxDelayBetweenRequests,
                 MonitorResponseTimes = this.MonitorResponseTimes,
+                NotifyOnChanges = this.NotifyOnChanges,
+                NotificationEmail = this.NotificationEmail,  // Already nullable
                 
                 // Content extraction options
                 ContentExtractorSelectors = this.ContentExtractorSelectors,
