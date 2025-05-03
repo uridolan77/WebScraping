@@ -273,6 +273,19 @@ export const getScraperMonitor = async (id) => {
   try {
     return handleResponse(apiClient.get(`/Scraper/${id}/monitor`));
   } catch (error) {
+    // Check if this is a 400 error indicating the scraper is not running
+    if (error.response && error.response.status === 400) {
+      // Extract the error message from the response if available
+      const errorMessage = error.response.data?.error ||
+                          "Scraper is not currently running. Start the scraper to see real-time monitoring data.";
+
+      // Create a more specific error
+      const customError = new Error(errorMessage);
+      customError.isScraperNotRunningError = true;
+      throw customError;
+    }
+
+    // For other errors, use the standard error handler
     throw handleApiError(error, `Failed to get monitoring data for scraper with ID ${id}`);
   }
 };

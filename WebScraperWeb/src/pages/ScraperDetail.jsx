@@ -178,9 +178,21 @@ const ScraperDetail = () => {
     staleTime: 5000, // Short stale time for real-time monitoring
     refetchInterval: 5000, // Frequent polling for real-time updates
     refetchIntervalInBackground: false,
-    retry: 1,
-    enabled: !!id && status?.isRunning // Only fetch when scraper is running
+    retry: 0, // Don't retry on error - we want to show the error message
+    enabled: !!id && status?.isRunning, // Only fetch when scraper is running
+    onError: (error) => {
+      console.error('Error fetching monitor data:', error);
+      // We'll handle the error in the UI, no need to show a toast or alert here
+      // as we're displaying the error directly in the Monitor tab
+    }
   });
+
+  // Log monitor data for debugging
+  useEffect(() => {
+    if (monitorData) {
+      console.log('Monitor data:', monitorData);
+    }
+  }, [monitorData]);
 
   // Extract logs from response
   const logs = logsData?.logs ? getArrayFromResponse(logsData.logs) : [];
@@ -901,6 +913,10 @@ const ScraperDetail = () => {
           {!status?.isRunning ? (
             <Alert severity="info" sx={{ mb: 3 }}>
               The scraper is not currently running. Start the scraper to see real-time monitoring data.
+            </Alert>
+          ) : monitorError ? (
+            <Alert severity={monitorError.isScraperNotRunningError ? "info" : "error"} sx={{ mb: 3 }}>
+              {monitorError.message || "Error loading monitoring data. The scraper may have stopped running."}
             </Alert>
           ) : isMonitorLoading && !monitorData ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
