@@ -56,6 +56,16 @@ namespace WebScraperApi.Services
             // Register HTTP client for webhook notifications
             services.AddHttpClient<IWebhookNotificationService, WebhookNotificationService>();
 
+            // Register the services needed by ScraperService
+            services.AddScoped<ScraperConfigService>();
+            services.AddScoped<ScraperRunService>();
+            services.AddScoped<ContentChangeService>();
+            services.AddScoped<DocumentService>();
+            services.AddScoped<MetricsService>();
+
+            // Register the main scraper service
+            services.AddScoped<IScraperService, ScraperService>();
+
             return services;
         }
     }

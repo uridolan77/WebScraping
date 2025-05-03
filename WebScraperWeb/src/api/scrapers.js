@@ -265,6 +265,19 @@ export const getScraperLogs = async (id, limit = 100) => {
 };
 
 /**
+ * Get real-time monitoring data for a running scraper
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Monitoring data
+ */
+export const getScraperMonitor = async (id) => {
+  try {
+    return handleResponse(apiClient.get(`/Scraper/${id}/monitor`));
+  } catch (error) {
+    throw handleApiError(error, `Failed to get monitoring data for scraper with ID ${id}`);
+  }
+};
+
+/**
  * Start a scraper
  * @param {string} id - Scraper ID
  * @returns {Promise<Object>} Start result

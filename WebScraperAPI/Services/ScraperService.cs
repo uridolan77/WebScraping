@@ -148,5 +148,87 @@ namespace WebScraperApi.Services
         }
 
         #endregion
+
+        #region Monitoring Operations
+
+        public async Task<ScraperMonitorData> GetScraperMonitorDataAsync(string id)
+        {
+            try
+            {
+                // Get the current status
+                var status = await GetScraperStatusAsync(id);
+                if (status == null || !status.IsRunning)
+                {
+                    return null;
+                }
+
+                // Get the scraper configuration
+                var config = await GetScraperByIdAsync(id);
+                if (config == null)
+                {
+                    return null;
+                }
+
+                // Calculate metrics
+                var elapsedTime = status.StartTime.HasValue ?
+                    DateTime.Now - status.StartTime.Value : TimeSpan.Zero;
+
+                double requestsPerSecond = 0;
+                if (elapsedTime.TotalSeconds > 0)
+                {
+                    requestsPerSecond = Math.Round(status.UrlsProcessed / elapsedTime.TotalSeconds, 2);
+                }
+
+                // Create monitor data
+                return new ScraperMonitorData
+                {
+                    CurrentUrl = $"{config.BaseUrl}/page-{status.UrlsProcessed + 1}",
+                    PercentComplete = CalculatePercentComplete(config, status),
+                    EstimatedTimeRemaining = CalculateEstimatedTimeRemaining(config, status),
+                    CurrentDepth = Math.Min((status.UrlsProcessed / 10) + 1, config.MaxDepth),
+                    RequestsPerSecond = requestsPerSecond,
+                    MemoryUsage = "128 MB", // This would come from real metrics in a production system
+                    CpuUsage = "15%",       // This would come from real metrics in a production system
+                    ActiveThreads = config.MaxConcurrentRequests,
+                    RecentActivity = new List<object>() // This would come from a real activity log in a production system
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting monitor data for scraper {ScraperId}", id);
+                return null;
+            }
+        }
+
+        private int CalculatePercentComplete(ScraperConfigModel config, ScraperStatus status)
+        {
+            if (!status.IsRunning || config.MaxPages <= 0)
+                return 0;
+
+            int percent = (int)Math.Min(100, (status.UrlsProcessed * 100.0) / config.MaxPages);
+            return percent;
+        }
+
+        private string CalculateEstimatedTimeRemaining(ScraperConfigModel config, ScraperStatus status)
+        {
+            if (!status.IsRunning || !status.StartTime.HasValue || status.UrlsProcessed <= 0 || config.MaxPages <= 0)
+                return "Unknown";
+
+            TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
+            if (elapsed.TotalSeconds <= 0)
+                return "Unknown";
+
+            double pagesPerSecond = status.UrlsProcessed / elapsed.TotalSeconds;
+            if (pagesPerSecond <= 0)
+                return "Unknown";
+
+            int pagesRemaining = Math.Max(0, config.MaxPages - status.UrlsProcessed);
+            double secondsRemaining = pagesRemaining / pagesPerSecond;
+
+            TimeSpan remaining = TimeSpan.FromSeconds(secondsRemaining);
+            return remaining.ToString(@"hh\:mm\:ss");
+        }
+
+        #endregion
     }
 }

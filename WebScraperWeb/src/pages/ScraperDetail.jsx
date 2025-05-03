@@ -12,6 +12,7 @@ import {
   Divider,
   Chip,
   CircularProgress,
+  LinearProgress,
   Alert,
   Card,
   CardContent,
@@ -32,6 +33,7 @@ import {
   getScraper,
   getScraperStatus,
   getScraperLogs,
+  getScraperMonitor,
   startScraper,
   stopScraper,
   deleteScraper
@@ -84,6 +86,14 @@ const formatDate = (dateString) => {
 const timeAgo = (dateString) => {
   if (!dateString) return 'Never';
   return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+};
+
+// Helper function to handle .NET-style response format with $values
+const getArrayFromResponse = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (data.$values && Array.isArray(data.$values)) return data.$values;
+  return [];
 };
 
 // Status chip component
@@ -156,8 +166,24 @@ const ScraperDetail = () => {
     enabled: !!id
   });
 
+  // Fetch scraper monitor data with React Query
+  const {
+    data: monitorData,
+    isLoading: isMonitorLoading,
+    error: monitorError,
+    refetch: refetchMonitor
+  } = useQuery({
+    queryKey: ['scraperMonitor', id],
+    queryFn: () => getScraperMonitor(id),
+    staleTime: 5000, // Short stale time for real-time monitoring
+    refetchInterval: 5000, // Frequent polling for real-time updates
+    refetchIntervalInBackground: false,
+    retry: 1,
+    enabled: !!id && status?.isRunning // Only fetch when scraper is running
+  });
+
   // Extract logs from response
-  const logs = logsData?.logs || [];
+  const logs = logsData?.logs ? getArrayFromResponse(logsData.logs) : [];
 
   // Update refetch intervals based on status
   useEffect(() => {
@@ -275,17 +301,22 @@ const ScraperDetail = () => {
     refetchScraper();
     refetchStatus();
     refetchLogs();
+    if (status?.isRunning) {
+      refetchMonitor();
+    }
 
     setAlert({
       show: true,
       message: 'Data refreshed successfully',
       severity: 'success'
     });
-  }, [refetchScraper, refetchStatus, refetchLogs]);
+  }, [refetchScraper, refetchStatus, refetchLogs, refetchMonitor, status]);
 
   // Handle start scraper
   const handleStartScraper = useCallback(() => {
     startScraperMutation.mutate();
+    // Switch to Monitor tab when starting the scraper
+    setActiveTab(4); // Index 4 will be the Monitor tab
   }, [startScraperMutation]);
 
   // Handle stop scraper
@@ -464,6 +495,14 @@ const ScraperDetail = () => {
             <Tab label="Configuration" {...a11yProps(1)} />
             <Tab label="Logs" {...a11yProps(2)} />
             <Tab label="Results" {...a11yProps(3)} />
+            <Tab
+              label="Monitor"
+              {...a11yProps(4)}
+              sx={{
+                display: status?.isRunning ? 'flex' : 'none',
+                color: status?.isRunning ? 'success.main' : 'inherit'
+              }}
+            />
           </Tabs>
         </Box>
 
@@ -487,9 +526,9 @@ const ScraperDetail = () => {
                         <Typography variant="subtitle2" color="textSecondary">
                           Status
                         </Typography>
-                        <Typography variant="body1">
+                        <Box>
                           {status?.isRunning ? 'Running' : (status?.hasErrors ? 'Error' : 'Idle')}
-                        </Typography>
+                        </Box>
                       </Grid>
                       <Grid item xs={6}>
                         <Typography variant="subtitle2" color="textSecondary">
@@ -679,9 +718,9 @@ const ScraperDetail = () => {
 
                   <Grid container spacing={2}>
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Follow Links:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -692,9 +731,9 @@ const ScraperDetail = () => {
                     </Grid>
 
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Follow External Links:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -705,9 +744,9 @@ const ScraperDetail = () => {
                     </Grid>
 
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Respect Robots.txt:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -718,9 +757,9 @@ const ScraperDetail = () => {
                     </Grid>
 
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Change Detection:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -731,9 +770,9 @@ const ScraperDetail = () => {
                     </Grid>
 
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Track Content Versions:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -744,9 +783,9 @@ const ScraperDetail = () => {
                     </Grid>
 
                     <Grid item xs={6} sm={4}>
-                      <Typography variant="body2">
+                      <Box>
                         Adaptive Crawling:
-                      </Typography>
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <Chip
@@ -841,6 +880,254 @@ const ScraperDetail = () => {
               </Typography>
             </CardContent>
           </Card>
+        </TabPanel>
+
+        {/* Monitor Tab */}
+        <TabPanel value={activeTab} index={4}>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">
+              Real-time Scraper Monitoring
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => refetchMonitor()}
+              disabled={isActionInProgress || isMonitorLoading || !status?.isRunning}
+            >
+              Refresh
+            </Button>
+          </Box>
+
+          {!status?.isRunning ? (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              The scraper is not currently running. Start the scraper to see real-time monitoring data.
+            </Alert>
+          ) : isMonitorLoading && !monitorData ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {/* Status Card */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Status
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          State
+                        </Typography>
+                        <Box sx={{ mb: 1 }}>
+                          {monitorData?.status?.isRunning ? (
+                            <Chip label="Running" color="success" size="small" />
+                          ) : (
+                            <Chip label="Stopped" color="default" size="small" />
+                          )}
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          URLs Processed
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.status?.urlsProcessed || 0}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Start Time
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.status?.startTime ? new Date(monitorData.status.startTime).toLocaleTimeString() : 'N/A'}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Elapsed Time
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.status?.elapsedTime || '00:00:00'}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Message
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.status?.message || 'No message'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Progress Card */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Progress
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                        Completion
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={monitorData?.progress?.percentComplete || 0}
+                            color="success"
+                            sx={{ height: 10, borderRadius: 5 }}
+                          />
+                        </Box>
+                        <Box sx={{ minWidth: 35 }}>
+                          <Typography variant="body2" color="textSecondary">
+                            {monitorData?.progress?.percentComplete || 0}%
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Current URL
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1, wordBreak: 'break-all' }}>
+                          {monitorData?.progress?.currentUrl || 'N/A'}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Current Depth
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.progress?.currentDepth || 0} / {monitorData?.progress?.maxDepth || 0}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Est. Time Remaining
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.progress?.estimatedTimeRemaining || 'Unknown'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Performance Card */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Performance
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Requests/Second
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.performance?.requestsPerSecond || 0}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Active Threads
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.performance?.activeThreads || 0}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Memory Usage
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.performance?.memoryUsage || 'N/A'}
+                        </Typography>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          CPU Usage
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {monitorData?.performance?.cpuUsage || 'N/A'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Recent Activity Card */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Recent Activity
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+
+                    {monitorData?.recentActivity && getArrayFromResponse(monitorData.recentActivity).length > 0 ? (
+                      <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+                        {getArrayFromResponse(monitorData.recentActivity).map((activity, index) => (
+                          <Box
+                            key={index}
+                            sx={{
+                              mb: 1,
+                              p: 1,
+                              bgcolor: 'background.default',
+                              borderRadius: 1,
+                              borderLeft: 4,
+                              borderColor: 'success.main'
+                            }}
+                          >
+                            <Typography variant="body2" color="textSecondary">
+                              {new Date(activity.timestamp).toLocaleTimeString()} - {activity.action}
+                            </Typography>
+                            <Typography variant="body2">
+                              {activity.url}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {activity.details}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body1" sx={{ p: 2, textAlign: 'center' }}>
+                        No recent activity
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
         </TabPanel>
       </Paper>
 

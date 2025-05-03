@@ -35,15 +35,16 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Refresh as RefreshIcon,
-  Error as ErrorIcon
+  Error as ErrorIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  getAllScrapers, 
-  getScraperStatus, 
-  startScraper, 
-  stopScraper, 
-  deleteScraper 
+import {
+  getAllScrapers,
+  getScraperStatus,
+  startScraper,
+  stopScraper,
+  deleteScraper
 } from '../api/scrapers';
 
 // Simple status chip component that doesn't use hooks
@@ -98,7 +99,7 @@ const StatusChip = ({ status, isLoading, isError }) => {
 // Format date helper function
 const formatDate = (dateString) => {
   if (!dateString) return 'Never';
-  
+
   const date = new Date(dateString);
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
@@ -110,10 +111,10 @@ const formatDate = (dateString) => {
 };
 
 // Simple row component that doesn't use hooks
-const ScraperRow = ({ 
-  scraper, 
-  status, 
-  isStatusLoading, 
+const ScraperRow = ({
+  scraper,
+  status,
+  isStatusLoading,
   isStatusError,
   isPending,
   onStart,
@@ -122,7 +123,7 @@ const ScraperRow = ({
   onEdit
 }) => {
   const isRunning = !isStatusError && status?.isRunning === true;
-  
+
   return (
     <TableRow key={scraper.id}>
       <TableCell>
@@ -135,10 +136,10 @@ const ScraperRow = ({
       </TableCell>
       <TableCell>{scraper.baseUrl}</TableCell>
       <TableCell>
-        <StatusChip 
-          status={status} 
-          isLoading={isStatusLoading} 
-          isError={isStatusError} 
+        <StatusChip
+          status={status}
+          isLoading={isStatusLoading}
+          isError={isStatusError}
         />
       </TableCell>
       <TableCell>
@@ -180,6 +181,16 @@ const ScraperRow = ({
               </IconButton>
             </Tooltip>
           )}
+          <Tooltip title="View Details">
+            <IconButton
+              color="info"
+              component={Link}
+              to={`/scrapers/${scraper.id}`}
+              size="small"
+            >
+              <VisibilityIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit Scraper">
             <IconButton
               color="primary"
@@ -209,16 +220,16 @@ const ScraperRow = ({
 const ScraperList = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  
+
   // State for UI interactions
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scraperToDelete, setScraperToDelete] = useState(null);
 
   // Fetch all scrapers
-  const { 
-    data: scrapers = [], 
-    isLoading: isScrapersLoading, 
+  const {
+    data: scrapers = [],
+    isLoading: isScrapersLoading,
     error: scrapersError,
     refetch: refetchScrapers
   } = useQuery({
@@ -237,8 +248,8 @@ const ScraperList = () => {
   });
 
   // Fetch status for all scrapers at once
-  const { 
-    data: allStatuses = {}, 
+  const {
+    data: allStatuses = {},
     isLoading: isStatusesLoading,
     error: statusesError,
     refetch: refetchStatuses
@@ -247,24 +258,24 @@ const ScraperList = () => {
     queryFn: async () => {
       try {
         // Fetch status for each scraper in parallel
-        const statusPromises = scrapers.map(scraper => 
+        const statusPromises = scrapers.map(scraper =>
           getScraperStatus(scraper.id)
             .then(status => ({ id: scraper.id, status }))
             .catch(error => {
               console.error(`Error fetching status for scraper ${scraper.id}:`, error);
-              return { 
-                id: scraper.id, 
+              return {
+                id: scraper.id,
                 status: { isRunning: false, hasErrors: false, errorMessage: 'Unable to fetch status' },
                 error: true
               };
             })
         );
-        
+
         const results = await Promise.all(statusPromises);
-        
+
         // Convert array of results to an object keyed by scraper ID
         return results.reduce((acc, { id, status, error }) => {
-          acc[id] = { 
+          acc[id] = {
             data: status,
             isError: !!error
           };
@@ -311,8 +322,8 @@ const ScraperList = () => {
 
   // Filter scrapers based on search term
   const filteredScrapers = useMemo(() => {
-    return scrapers.filter(scraper => 
-      scraper.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    return scrapers.filter(scraper =>
+      scraper.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       scraper.baseUrl.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [scrapers, searchTerm]);
@@ -429,13 +440,13 @@ const ScraperList = () => {
                   const scraperStatus = allStatuses[scraper.id] || {};
                   const status = scraperStatus.data;
                   const isStatusError = scraperStatus.isError;
-                  
+
                   // Check if this specific scraper has an action in progress
                   const isPending =
                     (startScraperMutation.isPending && startScraperMutation.variables === scraper.id) ||
                     (stopScraperMutation.isPending && stopScraperMutation.variables === scraper.id) ||
                     (deleteScraperMutation.isPending && deleteScraperMutation.variables === scraper.id);
-                  
+
                   return (
                     <ScraperRow
                       key={scraper.id}
@@ -481,9 +492,9 @@ const ScraperList = () => {
           <Button onClick={() => setDeleteDialogOpen(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleDeleteConfirm} 
-            color="error" 
+          <Button
+            onClick={handleDeleteConfirm}
+            color="error"
             variant="contained"
             disabled={deleteScraperMutation.isPending}
           >
