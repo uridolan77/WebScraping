@@ -282,7 +282,7 @@ namespace WebScraperApi.Services
                 EnableContinuousMonitoring = model.EnableContinuousMonitoring,
                 MonitoringIntervalMinutes = model.MonitoringIntervalMinutes,
                 NotifyOnChanges = model.NotifyOnChanges,
-                NotificationEmail = model.NotificationEmail ?? string.Empty,
+                NotificationEmail = model.NotificationEmail,
                 TrackChangesHistory = model.TrackChangesHistory,
                 EnableRegulatoryContentAnalysis = model.EnableRegulatoryContentAnalysis,
                 TrackRegulatoryChanges = model.TrackRegulatoryChanges,
@@ -292,15 +292,15 @@ namespace WebScraperApi.Services
                 MonitorHighImpactChanges = model.MonitorHighImpactChanges,
                 ExtractMetadata = model.ExtractMetadata,
                 ExtractStructuredData = model.ExtractStructuredData,
-                CustomJsExtractor = model.CustomJsExtractor ?? string.Empty,
-                WaitForSelector = model.WaitForSelector ?? string.Empty,
+                CustomJsExtractor = model.CustomJsExtractor,
+                WaitForSelector = model.WaitForSelector,
                 IsUKGCWebsite = model.IsUKGCWebsite,
                 PrioritizeEnforcementActions = model.PrioritizeEnforcementActions,
                 PrioritizeLCCP = model.PrioritizeLCCP,
                 PrioritizeAML = model.PrioritizeAML,
-                NotificationEndpoint = model.NotificationEndpoint ?? string.Empty,
+                NotificationEndpoint = model.NotificationEndpoint,
                 WebhookEnabled = model.WebhookEnabled,
-                WebhookUrl = model.WebhookUrl ?? string.Empty,
+                WebhookUrl = model.WebhookUrl,
                 NotifyOnContentChanges = model.NotifyOnContentChanges,
                 NotifyOnDocumentProcessed = model.NotifyOnDocumentProcessed,
                 NotifyOnScraperStatusChange = model.NotifyOnScraperStatusChange,
@@ -379,13 +379,13 @@ namespace WebScraperApi.Services
                     entity.Schedules.Add(new WebScraperApi.Data.Entities.ScraperScheduleEntity
                     {
                         ScraperId = entity.Id,
-                        Name = schedule.ContainsKey("name") ? schedule["name"]?.ToString() ?? "Default Schedule" : "Default Schedule",
-                        CronExpression = schedule.ContainsKey("cronExpression") ? schedule["cronExpression"]?.ToString() ?? "0 0 * * *" : "0 0 * * *",
-                        IsActive = schedule.ContainsKey("isActive") && schedule["isActive"] is bool isActive ? isActive : true,
+                        Name = schedule.ContainsKey("name") ? schedule["name"]?.ToString() : null,
+                        CronExpression = schedule.ContainsKey("cronExpression") ? schedule["cronExpression"]?.ToString() : null,
+                        IsActive = schedule.ContainsKey("isActive") && schedule["isActive"] is bool isActive ? isActive : false,
                         LastRun = schedule.ContainsKey("lastRun") && schedule["lastRun"] is DateTime lastRun ? lastRun : null,
                         NextRun = schedule.ContainsKey("nextRun") && schedule["nextRun"] is DateTime nextRun ? nextRun : null,
                         MaxRuntimeMinutes = schedule.ContainsKey("maxRuntimeMinutes") && schedule["maxRuntimeMinutes"] is int maxRuntime ? maxRuntime : null,
-                        NotificationEmail = schedule.ContainsKey("notificationEmail") ? schedule["notificationEmail"]?.ToString() ?? string.Empty : string.Empty
+                        NotificationEmail = schedule.ContainsKey("notificationEmail") ? schedule["notificationEmail"]?.ToString() : null
                     });
                 }
             }

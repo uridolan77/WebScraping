@@ -5,7 +5,7 @@ import memoryCache, { generateCacheKey } from '../utils/cacheUtils';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5203/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://localhost:7143/api',
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -101,7 +101,16 @@ apiClient.interceptors.response.use(
 // Helper function to handle API responses
 export const handleResponse = (promise) => {
   return promise
-    .then(response => response.data)
+    .then(response => {
+      const data = response.data;
+
+      // Check if the response is in the format { $id: "1", $values: [...] }
+      if (data && data.$values && Array.isArray(data.$values)) {
+        return data.$values;
+      }
+
+      return data;
+    })
     .catch(error => {
       throw error;
     });

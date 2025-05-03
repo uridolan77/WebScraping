@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -26,8 +26,16 @@ import {
   ArrowBack as ArrowBackIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { useScrapers } from '../hooks';
 import { formatDistanceToNow } from 'date-fns';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  getScraper,
+  getScraperStatus,
+  getScraperLogs,
+  startScraper,
+  stopScraper,
+  deleteScraper
+} from '../api/scrapers';
 
 // TabPanel component for tab content
 function TabPanel(props) {
@@ -58,218 +66,266 @@ function a11yProps(index) {
   };
 }
 
+// Format date helper function
+const formatDate = (dateString) => {
+  if (!dateString) return 'Never';
+
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
+
+// Calculate time ago helper function
+const timeAgo = (dateString) => {
+  if (!dateString) return 'Never';
+  return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+};
+
+// Status chip component
+const StatusChip = ({ status }) => {
+  if (!status) return <Chip label="Unknown" color="default" />;
+
+  if (status.isRunning) {
+    return <Chip label="Running" color="success" />;
+  } else if (status.hasErrors) {
+    return <Chip label="Error" color="error" />;
+  } else {
+    return <Chip label="Idle" color="default" />;
+  }
+};
+
 const ScraperDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { 
-    getScrapers, 
-    getScraper,
-    startScraper, 
-    stopScraper, 
-    deleteScraper,
-    getScraperStatus,
-    getScraperLogs,
-    loading, 
-    error 
-  } = useScrapers();
-  
-  const [scraper, setScraper] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [logs, setLogs] = useState([]);
+  const queryClient = useQueryClient();
+
+  // Local state
   const [activeTab, setActiveTab] = useState(0);
-  const [actionInProgress, setActionInProgress] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [alert, setAlert] = useState({ show: false, message: '', severity: 'info' });
 
-  // Handle tab change
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
+  // Fetch scraper data with React Query
+  const {
+    data: scraper,
+    isLoading: isScraperLoading,
+    error: scraperError,
+    refetch: refetchScraper
+  } = useQuery({
+    queryKey: ['scraper', id],
+    queryFn: () => getScraper(id),
+    staleTime: 60 * 1000, // 1 minute
+    refetchOnWindowFocus: false,
+    retry: 1,
+    enabled: !!id
+  });
 
-  // Fetch scraper data and status
+  // Fetch scraper status with React Query
+  const {
+    data: status,
+    isLoading: isStatusLoading,
+    error: statusError,
+    refetch: refetchStatus
+  } = useQuery({
+    queryKey: ['scraperStatus', id],
+    queryFn: () => getScraperStatus(id),
+    staleTime: 10 * 1000, // 10 seconds
+    refetchInterval: 30000, // Default polling interval
+    refetchIntervalInBackground: false,
+    retry: 1,
+    enabled: !!id
+  });
+
+  // Fetch scraper logs with React Query
+  const {
+    data: logsData,
+    isLoading: isLogsLoading,
+    error: logsError,
+    refetch: refetchLogs
+  } = useQuery({
+    queryKey: ['scraperLogs', id],
+    queryFn: () => getScraperLogs(id, 100),
+    staleTime: 60000, // Default stale time
+    refetchInterval: 30000, // Default polling interval
+    refetchIntervalInBackground: false,
+    retry: 1,
+    enabled: !!id
+  });
+
+  // Extract logs from response
+  const logs = logsData?.logs || [];
+
+  // Update refetch intervals based on status
   useEffect(() => {
-    const fetchScraperData = async () => {
-      if (!id) return;
-      
-      try {
-        const scraperData = await getScraper(id);
-        setScraper(scraperData);
-        
-        // Fetch status
-        const statusData = await getScraperStatus(id);
-        setStatus(statusData);
-        
-        // Fetch logs
-        const logsData = await getScraperLogs(id, 100);
-        setLogs(logsData?.logs || []);
-      } catch (err) {
-        setAlert({
-          show: true,
-          message: `Error loading scraper details: ${err.message || 'Unknown error'}`,
-          severity: 'error'
+    if (status) {
+      // If scraper is running, update the refetch intervals
+      if (status.isRunning) {
+        // Set shorter intervals for status and logs when scraper is running
+        queryClient.setQueryDefaults(['scraperStatus', id], {
+          refetchInterval: 5000
         });
-        console.error('Error fetching scraper details:', err);
+
+        queryClient.setQueryDefaults(['scraperLogs', id], {
+          staleTime: 5000,
+          refetchInterval: 10000
+        });
+      } else {
+        // Set longer intervals when scraper is idle
+        queryClient.setQueryDefaults(['scraperStatus', id], {
+          refetchInterval: 30000
+        });
+
+        queryClient.setQueryDefaults(['scraperLogs', id], {
+          staleTime: 60000,
+          refetchInterval: 30000
+        });
       }
-    };
-    
-    fetchScraperData();
-    
-    // Set up polling for status updates
-    const statusInterval = setInterval(() => {
-      if (id) {
-        getScraperStatus(id)
-          .then(statusData => setStatus(statusData))
-          .catch(err => console.error('Error fetching status:', err));
-      }
-    }, 5000);
-    
-    // Set up polling for logs when scraper is running
-    const logsInterval = setInterval(() => {
-      if (id && status?.isRunning) {
-        getScraperLogs(id, 100)
-          .then(logsData => setLogs(logsData?.logs || []))
-          .catch(err => console.error('Error fetching logs:', err));
-      }
-    }, 10000);
-    
-    return () => {
-      clearInterval(statusInterval);
-      clearInterval(logsInterval);
-    };
-  }, [id, getScraper, getScraperStatus, getScraperLogs]);
-  
-  // Handle start scraper
-  const handleStartScraper = async () => {
-    try {
-      setActionInProgress(true);
-      await startScraper(id);
-      
-      const statusData = await getScraperStatus(id);
-      setStatus(statusData);
-      
+    }
+  }, [status, id, queryClient]);
+
+  // Start scraper mutation
+  const startScraperMutation = useMutation({
+    mutationFn: () => startScraper(id),
+    onSuccess: () => {
+      // Invalidate status query to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['scraperStatus', id] });
+
       setAlert({
         show: true,
         message: 'Scraper started successfully',
         severity: 'success'
       });
-    } catch (err) {
+    },
+    onError: (error) => {
       setAlert({
         show: true,
-        message: `Error starting scraper: ${err.message || 'Unknown error'}`,
+        message: `Error starting scraper: ${error.message || 'Unknown error'}`,
         severity: 'error'
       });
-      console.error('Error starting scraper:', err);
-    } finally {
-      setActionInProgress(false);
     }
-  };
-  
-  // Handle stop scraper
-  const handleStopScraper = async () => {
-    try {
-      setActionInProgress(true);
-      await stopScraper(id);
-      
-      const statusData = await getScraperStatus(id);
-      setStatus(statusData);
-      
+  });
+
+  // Stop scraper mutation
+  const stopScraperMutation = useMutation({
+    mutationFn: () => stopScraper(id),
+    onSuccess: () => {
+      // Invalidate status query to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['scraperStatus', id] });
+
       setAlert({
         show: true,
         message: 'Scraper stopped successfully',
         severity: 'success'
       });
-    } catch (err) {
+    },
+    onError: (error) => {
       setAlert({
         show: true,
-        message: `Error stopping scraper: ${err.message || 'Unknown error'}`,
+        message: `Error stopping scraper: ${error.message || 'Unknown error'}`,
         severity: 'error'
       });
-      console.error('Error stopping scraper:', err);
-    } finally {
-      setActionInProgress(false);
     }
-  };
-  
-  // Handle delete scraper
-  const handleDeleteScraper = async () => {
-    try {
-      setActionInProgress(true);
-      await deleteScraper(id);
-      
+  });
+
+  // Delete scraper mutation
+  const deleteScraperMutation = useMutation({
+    mutationFn: () => deleteScraper(id),
+    onSuccess: () => {
+      // Invalidate scrapers list query
+      queryClient.invalidateQueries({ queryKey: ['scrapers'] });
+
       setAlert({
         show: true,
         message: 'Scraper deleted successfully',
         severity: 'success'
       });
-      
+
       // Navigate back to scrapers list after a short delay
       setTimeout(() => {
         navigate('/scrapers');
       }, 1500);
-    } catch (err) {
+    },
+    onError: (error) => {
       setAlert({
         show: true,
-        message: `Error deleting scraper: ${err.message || 'Unknown error'}`,
+        message: `Error deleting scraper: ${error.message || 'Unknown error'}`,
         severity: 'error'
       });
-      console.error('Error deleting scraper:', err);
-      setActionInProgress(false);
+      setDeleteDialogOpen(false);
     }
-  };
-  
-  // Handle refresh
-  const handleRefresh = async () => {
-    try {
-      const scraperData = await getScraper(id);
-      setScraper(scraperData);
-      
-      const statusData = await getScraperStatus(id);
-      setStatus(statusData);
-      
-      const logsData = await getScraperLogs(id, 100);
-      setLogs(logsData?.logs || []);
-      
-      setAlert({
-        show: true,
-        message: 'Data refreshed successfully',
-        severity: 'success'
-      });
-    } catch (err) {
-      setAlert({
-        show: true,
-        message: `Error refreshing data: ${err.message || 'Unknown error'}`,
-        severity: 'error'
-      });
-      console.error('Error refreshing data:', err);
-    }
-  };
-  
-  // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Never';
-    
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
-  
-  // Calculate time ago
-  const timeAgo = (dateString) => {
-    if (!dateString) return 'Never';
-    return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+  });
+
+  // Check if any action is in progress
+  const isActionInProgress =
+    startScraperMutation.isPending ||
+    stopScraperMutation.isPending ||
+    deleteScraperMutation.isPending;
+
+  // Handle tab change
+  const handleTabChange = (_, newValue) => {
+    setActiveTab(newValue);
   };
 
-  if (loading && !scraper) {
+  // Handle refresh
+  const handleRefresh = useCallback(() => {
+    refetchScraper();
+    refetchStatus();
+    refetchLogs();
+
+    setAlert({
+      show: true,
+      message: 'Data refreshed successfully',
+      severity: 'success'
+    });
+  }, [refetchScraper, refetchStatus, refetchLogs]);
+
+  // Handle start scraper
+  const handleStartScraper = useCallback(() => {
+    startScraperMutation.mutate();
+  }, [startScraperMutation]);
+
+  // Handle stop scraper
+  const handleStopScraper = useCallback(() => {
+    stopScraperMutation.mutate();
+  }, [stopScraperMutation]);
+
+  // Handle delete scraper
+  const handleDeleteScraper = useCallback(() => {
+    deleteScraperMutation.mutate();
+  }, [deleteScraperMutation]);
+
+  // Show loading state if scraper data is loading
+  if (isScraperLoading && !scraper) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
           <CircularProgress />
         </Box>
+      </Container>
+    );
+  }
+
+  // Show error state if there was an error fetching scraper data
+  if (scraperError && !scraper) {
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box sx={{ mb: 3 }}>
+          <Button
+            component={Link}
+            to="/scrapers"
+            startIcon={<ArrowBackIcon />}
+            variant="outlined"
+          >
+            Back to Scrapers
+          </Button>
+        </Box>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Error loading scraper details: {scraperError.message || 'Unknown error'}
+        </Alert>
       </Container>
     );
   }
@@ -288,18 +344,18 @@ const ScraperDetail = () => {
           Back to Scrapers
         </Button>
       </Box>
-      
+
       {/* Alert for messages */}
       {alert.show && (
-        <Alert 
-          severity={alert.severity} 
+        <Alert
+          severity={alert.severity}
           sx={{ mb: 3 }}
           onClose={() => setAlert({ ...alert, show: false })}
         >
           {alert.message}
         </Alert>
       )}
-      
+
       {/* Scraper header */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
@@ -310,50 +366,49 @@ const ScraperDetail = () => {
             <Typography variant="subtitle1" color="textSecondary" gutterBottom>
               {scraper?.baseUrl || ''}
             </Typography>
-            {status && (
-              <Box sx={{ mt: 1 }}>
-                <Chip 
-                  label={status.isRunning ? 'Running' : (status.hasErrors ? 'Error' : 'Idle')} 
-                  color={status.isRunning ? 'success' : (status.hasErrors ? 'error' : 'default')}
-                  sx={{ mr: 1 }}
-                />
-                {status.lastRun && (
-                  <Chip 
-                    label={`Last run: ${timeAgo(status.lastRun)}`} 
-                    variant="outlined" 
-                    size="small"
-                    sx={{ mr: 1 }}
-                  />
-                )}
-                {status.urlsProcessed > 0 && (
-                  <Chip 
-                    label={`URLs processed: ${status.urlsProcessed}`} 
-                    variant="outlined" 
-                    size="small"
-                  />
-                )}
-              </Box>
-            )}
+            <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {isStatusLoading ? (
+                <CircularProgress size={24} />
+              ) : (
+                <>
+                  <StatusChip status={status} />
+                  {status?.lastRun && (
+                    <Chip
+                      label={`Last run: ${timeAgo(status.lastRun)}`}
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
+                  {status?.urlsProcessed > 0 && (
+                    <Chip
+                      label={`URLs processed: ${status.urlsProcessed}`}
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
+                </>
+              )}
+            </Box>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
               <Tooltip title="Refresh">
                 <IconButton
                   onClick={handleRefresh}
-                  disabled={actionInProgress}
+                  disabled={isActionInProgress}
                 >
                   <RefreshIcon />
                 </IconButton>
               </Tooltip>
-              
+
               {status?.isRunning ? (
                 <Tooltip title="Stop Scraper">
                   <Button
                     variant="contained"
                     color="warning"
-                    startIcon={<StopIcon />}
+                    startIcon={stopScraperMutation.isPending ? <CircularProgress size={20} color="inherit" /> : <StopIcon />}
                     onClick={handleStopScraper}
-                    disabled={actionInProgress}
+                    disabled={isActionInProgress || isStatusLoading}
                   >
                     Stop
                   </Button>
@@ -363,15 +418,15 @@ const ScraperDetail = () => {
                   <Button
                     variant="contained"
                     color="success"
-                    startIcon={<PlayIcon />}
+                    startIcon={startScraperMutation.isPending ? <CircularProgress size={20} color="inherit" /> : <PlayIcon />}
                     onClick={handleStartScraper}
-                    disabled={actionInProgress}
+                    disabled={isActionInProgress || isStatusLoading}
                   >
                     Start
                   </Button>
                 </Tooltip>
               )}
-              
+
               <Tooltip title="Edit Scraper">
                 <Button
                   variant="outlined"
@@ -379,19 +434,19 @@ const ScraperDetail = () => {
                   startIcon={<EditIcon />}
                   component={Link}
                   to={`/scrapers/${id}/edit`}
-                  disabled={actionInProgress}
+                  disabled={isActionInProgress}
                 >
                   Edit
                 </Button>
               </Tooltip>
-              
+
               <Tooltip title="Delete Scraper">
                 <Button
                   variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
                   onClick={() => setDeleteDialogOpen(true)}
-                  disabled={actionInProgress || status?.isRunning}
+                  disabled={isActionInProgress || status?.isRunning}
                 >
                   Delete
                 </Button>
@@ -400,7 +455,7 @@ const ScraperDetail = () => {
           </Grid>
         </Grid>
       </Paper>
-      
+
       {/* Tabs for different sections */}
       <Paper sx={{ mb: 3 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -411,7 +466,7 @@ const ScraperDetail = () => {
             <Tab label="Results" {...a11yProps(3)} />
           </Tabs>
         </Box>
-        
+
         {/* Overview Tab */}
         <TabPanel value={activeTab} index={0}>
           <Grid container spacing={3}>
@@ -422,44 +477,50 @@ const ScraperDetail = () => {
                     Scraper Status
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
-                  <Grid container spacing={2}>
-                    <Grid item xs={6}>
-                      <Typography variant="subtitle2" color="textSecondary">
-                        Status
-                      </Typography>
-                      <Typography variant="body1">
-                        {status?.isRunning ? 'Running' : (status?.hasErrors ? 'Error' : 'Idle')}
-                      </Typography>
+                  {isStatusLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : (
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Status
+                        </Typography>
+                        <Typography variant="body1">
+                          {status?.isRunning ? 'Running' : (status?.hasErrors ? 'Error' : 'Idle')}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Last Run
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatDate(status?.lastRun || scraper?.lastRun)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          URLs Processed
+                        </Typography>
+                        <Typography variant="body1">
+                          {status?.urlsProcessed || scraper?.urlsProcessed || 0}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="textSecondary">
+                          Error Count
+                        </Typography>
+                        <Typography variant="body1">
+                          {status?.errorCount || 0}
+                        </Typography>
+                      </Grid>
                     </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="subtitle2" color="textSecondary">
-                        Last Run
-                      </Typography>
-                      <Typography variant="body1">
-                        {formatDate(status?.lastRun || scraper?.lastRun)}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="subtitle2" color="textSecondary">
-                        URLs Processed
-                      </Typography>
-                      <Typography variant="body1">
-                        {status?.urlsProcessed || scraper?.urlsProcessed || 0}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="subtitle2" color="textSecondary">
-                        Error Count
-                      </Typography>
-                      <Typography variant="body1">
-                        {status?.errorCount || 0}
-                      </Typography>
-                    </Grid>
-                  </Grid>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
@@ -504,7 +565,7 @@ const ScraperDetail = () => {
                 </CardContent>
               </Card>
             </Grid>
-            
+
             <Grid item xs={12}>
               <Card>
                 <CardContent>
@@ -512,7 +573,11 @@ const ScraperDetail = () => {
                     Recent Activity
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
-                  {logs && logs.length > 0 ? (
+                  {isLogsLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : logs && logs.length > 0 ? (
                     <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
                       {logs.slice(0, 5).map((log, index) => (
                         <Box key={index} sx={{ mb: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
@@ -535,7 +600,7 @@ const ScraperDetail = () => {
             </Grid>
           </Grid>
         </TabPanel>
-        
+
         {/* Configuration Tab */}
         <TabPanel value={activeTab} index={1}>
           <Card>
@@ -544,7 +609,7 @@ const ScraperDetail = () => {
                 Scraper Configuration
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              
+
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="textSecondary">
@@ -553,21 +618,21 @@ const ScraperDetail = () => {
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.name || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Base URL
                   </Typography>
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.baseUrl || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Start URL
                   </Typography>
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.startUrl || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Output Directory
                   </Typography>
@@ -575,7 +640,7 @@ const ScraperDetail = () => {
                     {scraper?.outputDirectory || 'Default'}
                   </Typography>
                 </Grid>
-                
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="textSecondary">
                     Max Depth
@@ -583,21 +648,21 @@ const ScraperDetail = () => {
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.maxDepth || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Max Pages
                   </Typography>
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.maxPages || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Max Concurrent Requests
                   </Typography>
                   <Typography variant="body1" sx={{ mb: 2 }}>
                     {scraper?.maxConcurrentRequests || 'N/A'}
                   </Typography>
-                  
+
                   <Typography variant="subtitle2" color="textSecondary">
                     Delay Between Requests (ms)
                   </Typography>
@@ -605,13 +670,13 @@ const ScraperDetail = () => {
                     {scraper?.delayBetweenRequests || 'N/A'}
                   </Typography>
                 </Grid>
-                
+
                 <Grid item xs={12}>
                   <Divider sx={{ my: 2 }} />
                   <Typography variant="h6" gutterBottom>
                     Features
                   </Typography>
-                  
+
                   <Grid container spacing={2}>
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
@@ -619,72 +684,72 @@ const ScraperDetail = () => {
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.followLinks ? 'Enabled' : 'Disabled'}
                         color={scraper?.followLinks ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    
+
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
                         Follow External Links:
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.followExternalLinks ? 'Enabled' : 'Disabled'}
                         color={scraper?.followExternalLinks ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    
+
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
                         Respect Robots.txt:
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.respectRobotsTxt ? 'Enabled' : 'Disabled'}
                         color={scraper?.respectRobotsTxt ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    
+
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
                         Change Detection:
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.enableChangeDetection ? 'Enabled' : 'Disabled'}
                         color={scraper?.enableChangeDetection ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    
+
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
                         Track Content Versions:
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.trackContentVersions ? 'Enabled' : 'Disabled'}
                         color={scraper?.trackContentVersions ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    
+
                     <Grid item xs={6} sm={4}>
                       <Typography variant="body2">
                         Adaptive Crawling:
                       </Typography>
                     </Grid>
                     <Grid item xs={6} sm={2}>
-                      <Chip 
+                      <Chip
                         label={scraper?.enableAdaptiveCrawling ? 'Enabled' : 'Disabled'}
                         color={scraper?.enableAdaptiveCrawling ? 'success' : 'default'}
                         size="small"
@@ -696,73 +761,79 @@ const ScraperDetail = () => {
             </CardContent>
           </Card>
         </TabPanel>
-        
+
         {/* Logs Tab */}
         <TabPanel value={activeTab} index={2}>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={handleRefresh}
-              disabled={actionInProgress}
+              onClick={() => refetchLogs()}
+              disabled={isActionInProgress || isLogsLoading}
             >
               Refresh Logs
             </Button>
           </Box>
-          
+
           <Card>
             <CardContent>
-              <Box sx={{ maxHeight: 500, overflow: 'auto' }}>
-                {logs && logs.length > 0 ? (
-                  logs.map((log, index) => (
-                    <Box 
-                      key={index} 
-                      sx={{ 
-                        mb: 1, 
-                        p: 1, 
-                        bgcolor: 'background.default', 
-                        borderRadius: 1,
-                        borderLeft: 4,
-                        borderColor: 
-                          log.level === 'ERROR' ? 'error.main' : 
-                          log.level === 'WARNING' ? 'warning.main' : 
-                          log.level === 'INFO' ? 'info.main' : 
-                          'grey.400'
-                      }}
-                    >
-                      <Typography variant="body2" color="textSecondary">
-                        {new Date(log.timestamp).toLocaleString()} - {log.level || 'INFO'}
-                      </Typography>
-                      <Typography variant="body2">
-                        {log.message}
-                      </Typography>
-                      {log.source && (
-                        <Typography variant="caption" color="textSecondary">
-                          Source: {log.source}
+              {isLogsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Box sx={{ maxHeight: 500, overflow: 'auto' }}>
+                  {logs && logs.length > 0 ? (
+                    logs.map((log, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          mb: 1,
+                          p: 1,
+                          bgcolor: 'background.default',
+                          borderRadius: 1,
+                          borderLeft: 4,
+                          borderColor:
+                            log.level === 'ERROR' ? 'error.main' :
+                            log.level === 'WARNING' ? 'warning.main' :
+                            log.level === 'INFO' ? 'info.main' :
+                            'grey.400'
+                        }}
+                      >
+                        <Typography variant="body2" color="textSecondary">
+                          {new Date(log.timestamp).toLocaleString()} - {log.level || 'INFO'}
                         </Typography>
-                      )}
-                    </Box>
-                  ))
-                ) : (
-                  <Typography variant="body1" sx={{ p: 2, textAlign: 'center' }}>
-                    No logs available
-                  </Typography>
-                )}
-              </Box>
+                        <Typography variant="body2">
+                          {log.message}
+                        </Typography>
+                        {log.source && (
+                          <Typography variant="caption" color="textSecondary">
+                            Source: {log.source}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))
+                  ) : (
+                    <Typography variant="body1" sx={{ p: 2, textAlign: 'center' }}>
+                      No logs available
+                    </Typography>
+                  )}
+                </Box>
+              )}
             </CardContent>
           </Card>
         </TabPanel>
-        
+
         {/* Results Tab */}
         <TabPanel value={activeTab} index={3}>
           <Typography variant="h6" gutterBottom>
             Scraped Results
           </Typography>
-          
+
           <Alert severity="info" sx={{ mb: 3 }}>
             This section will display the most recent results from this scraper. You can view more detailed results and analysis in the Analytics section.
           </Alert>
-          
+
           <Card>
             <CardContent>
               <Typography variant="body1" sx={{ p: 2, textAlign: 'center' }}>
@@ -772,7 +843,7 @@ const ScraperDetail = () => {
           </Card>
         </TabPanel>
       </Paper>
-      
+
       {/* Delete Confirmation Dialog */}
       <Box
         component="div"
@@ -788,7 +859,7 @@ const ScraperDetail = () => {
           justifyContent: 'center',
           zIndex: 9999,
         }}
-        onClick={() => !actionInProgress && setDeleteDialogOpen(false)}
+        onClick={() => !isActionInProgress && setDeleteDialogOpen(false)}
       >
         <Paper
           sx={{
@@ -802,27 +873,27 @@ const ScraperDetail = () => {
           <Typography variant="h6" gutterBottom>
             Delete Scraper
           </Typography>
-          
+
           <Typography variant="body1" sx={{ mb: 3 }}>
             Are you sure you want to delete this scraper? This action cannot be undone.
           </Typography>
-          
+
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button
               variant="outlined"
               onClick={() => setDeleteDialogOpen(false)}
-              disabled={actionInProgress}
+              disabled={isActionInProgress}
             >
               Cancel
             </Button>
-            
+
             <Button
               variant="contained"
               color="error"
               onClick={handleDeleteScraper}
-              disabled={actionInProgress}
+              disabled={isActionInProgress}
             >
-              {actionInProgress ? (
+              {deleteScraperMutation.isPending ? (
                 <CircularProgress size={24} color="inherit" />
               ) : (
                 'Delete'

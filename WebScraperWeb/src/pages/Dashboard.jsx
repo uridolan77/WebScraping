@@ -49,29 +49,32 @@ const Dashboard = () => {
   useEffect(() => {
     if (scrapers && scraperStatus) {
       const newStats = {
-        total: scrapers.length,
+        total: Array.isArray(scrapers) ? scrapers.length : 0,
         running: 0,
         completed: 0,
         failed: 0,
         scheduled: 0
       };
 
-      scrapers.forEach(scraper => {
-        const status = scraperStatus[scraper.id];
-        if (status) {
-          if (status.isRunning) {
-            newStats.running++;
-          } else if (status.hasErrors) {
-            newStats.failed++;
-          } else if (status.lastRun) {
-            newStats.completed++;
-          }
+      // Ensure scrapers is an array before iterating
+      if (Array.isArray(scrapers)) {
+        scrapers.forEach(scraper => {
+          const status = scraperStatus[scraper.id];
+          if (status) {
+            if (status.isRunning) {
+              newStats.running++;
+            } else if (status.hasErrors) {
+              newStats.failed++;
+            } else if (status.lastRun) {
+              newStats.completed++;
+            }
 
-          if (scraper.enableContinuousMonitoring) {
-            newStats.scheduled++;
+            if (scraper.enableContinuousMonitoring) {
+              newStats.scheduled++;
+            }
           }
-        }
-      });
+        });
+      }
 
       setStats(newStats);
     }
@@ -107,9 +110,11 @@ const Dashboard = () => {
   }
 
   // Get recent scrapers (last 5)
-  const recentScrapers = [...scrapers]
-    .sort((a, b) => new Date(b.lastRun || 0) - new Date(a.lastRun || 0))
-    .slice(0, 5);
+  const recentScrapers = Array.isArray(scrapers)
+    ? [...scrapers]
+        .sort((a, b) => new Date(b.lastRun || 0) - new Date(a.lastRun || 0))
+        .slice(0, 5)
+    : [];
 
   return (
     <Box>

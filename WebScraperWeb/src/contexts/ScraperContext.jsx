@@ -34,10 +34,26 @@ export const ScraperProvider = ({ children }) => {
         setLoading(true);
         setError(null);
         const data = await getAllScrapers();
-        setScrapers(data);
+
+        // Ensure we have an array of scrapers
+        if (data) {
+          if (Array.isArray(data)) {
+            setScrapers(data);
+          } else if (data.$values && Array.isArray(data.$values)) {
+            // Handle case where API returns { $id: "1", $values: [...] }
+            setScrapers(data.$values);
+          } else {
+            console.error('Unexpected API response format:', data);
+            setScrapers([]);
+            setError('Unexpected API response format');
+          }
+        } else {
+          setScrapers([]);
+        }
       } catch (err) {
         setError('Failed to fetch scrapers');
         console.error(err);
+        setScrapers([]);
       } finally {
         setLoading(false);
       }
@@ -52,6 +68,12 @@ export const ScraperProvider = ({ children }) => {
 
     const fetchScraperStatuses = async () => {
       try {
+        // Ensure scrapers is an array before mapping
+        if (!Array.isArray(scrapers)) {
+          console.error('Error fetching scraper statuses: scrapers is not an array', scrapers);
+          return;
+        }
+
         const statusPromises = scrapers.map(scraper =>
           getScraperStatus(scraper.id)
             .then(status => ({ id: scraper.id, status }))

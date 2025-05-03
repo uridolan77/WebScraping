@@ -96,7 +96,7 @@ export const configureWebhook = async (webhookConfig: any) => {
 export const testWebhook = async (webhookUrl: string, scraperId?: string) => {
   try {
     const endpoint = scraperId
-      ? `/Scrapers/${scraperId}/webhooks/test`
+      ? `/Scraper/${scraperId}/webhooks/test`
       : '/Notifications/webhook/test';
     const response = await apiClient.post(endpoint, { url: webhookUrl });
     return response.data;
@@ -109,7 +109,7 @@ export const testWebhook = async (webhookUrl: string, scraperId?: string) => {
 // Get webhook configuration for a scraper
 export const getWebhookConfig = async (scraperId: string) => {
   try {
-    const response = await apiClient.get(`/Scrapers/${scraperId}/webhooks`);
+    const response = await apiClient.get(`/Scraper/${scraperId}/webhooks`);
     return response.data;
   } catch (error) {
     console.error(`Error fetching webhook configuration for scraper ${scraperId}:`, error);
@@ -120,7 +120,7 @@ export const getWebhookConfig = async (scraperId: string) => {
 // Update webhook configuration for a scraper
 export const updateWebhookConfig = async (scraperId: string, config: any) => {
   try {
-    const response = await apiClient.put(`/Scrapers/${scraperId}/webhooks`, config);
+    const response = await apiClient.put(`/Scraper/${scraperId}/webhooks`, config);
     return response.data;
   } catch (error) {
     console.error(`Error updating webhook configuration for scraper ${scraperId}:`, error);
@@ -131,7 +131,7 @@ export const updateWebhookConfig = async (scraperId: string, config: any) => {
 // Get scraper by ID (this is a duplicate of the function in scrapers.ts, included here for convenience)
 export const getScraper = async (id: string) => {
   try {
-    const response = await apiClient.get(`/Scrapers/${id}`);
+    const response = await apiClient.get(`/Scraper/${id}`);
     return response.data;
   } catch (error) {
     console.error(`Error fetching scraper with ID ${id}:`, error);

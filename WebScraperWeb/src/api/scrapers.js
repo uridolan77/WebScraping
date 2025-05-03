@@ -85,16 +85,139 @@ export const createScraper = async (scraperData) => {
  */
 export const updateScraper = async (id, scraperData) => {
   try {
+    console.log('Original scraper data:', scraperData);
+
+    // Create a deep copy to avoid modifying the original object
+    const processedData = JSON.parse(JSON.stringify(scraperData));
+
+    // Validate required fields but don't set defaults
+    const requiredFields = ['name', 'startUrl', 'baseUrl'];
+    for (const field of requiredFields) {
+      if (!processedData[field] || processedData[field] === '') {
+        throw new Error(`Missing required field: ${field}`);
+      }
+    }
+
+    // Ensure ID is a string if provided
+    if (processedData.id && typeof processedData.id !== 'string') {
+      processedData.id = String(processedData.id);
+    }
+
+    // Only set runCount default if not provided
+    if (processedData.runCount === undefined) {
+      processedData.runCount = 0;
+    }
+
+    // Handle arrays properly
+    // Convert startUrls to an empty array if it's not an array
+    if (!processedData.startUrls || !Array.isArray(processedData.startUrls)) {
+      processedData.startUrls = [];
+    }
+
+    // Add the main startUrl to startUrls if not already there
+    if (processedData.startUrl && !processedData.startUrls.some(url => url === processedData.startUrl)) {
+      processedData.startUrls.push(processedData.startUrl);
+    }
+
+    // Convert contentExtractorSelectors to an empty array if it's not an array
+    if (!processedData.contentExtractorSelectors || !Array.isArray(processedData.contentExtractorSelectors)) {
+      processedData.contentExtractorSelectors = [];
+    }
+
+    // Convert contentExtractorExcludeSelectors to an empty array if it's not an array
+    if (!processedData.contentExtractorExcludeSelectors || !Array.isArray(processedData.contentExtractorExcludeSelectors)) {
+      processedData.contentExtractorExcludeSelectors = [];
+    }
+
+    // Use the processed data directly without merging with defaults
+    const mergedData = processedData;
+
     // Convert camelCase to PascalCase for .NET API
     const pascalCaseData = {};
-    Object.keys(scraperData).forEach(key => {
+    Object.keys(mergedData).forEach(key => {
       // Convert first character to uppercase
       const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
-      pascalCaseData[pascalKey] = scraperData[key];
+
+      // Handle arrays specially to ensure they're properly formatted
+      if (Array.isArray(mergedData[key])) {
+        pascalCaseData[pascalKey] = [...mergedData[key]]; // Create a new array to avoid reference issues
+      } else {
+        pascalCaseData[pascalKey] = mergedData[key];
+      }
     });
+
+    // Explicitly set the Id property to ensure it's correct
+    pascalCaseData.Id = id;
+
+    // Also ensure the id property is set (some APIs might use lowercase)
+    pascalCaseData.id = id;
+
+    // Ensure StartUrl is set (this is a required field)
+    if (!pascalCaseData.StartUrl || pascalCaseData.StartUrl.trim() === '') {
+      // Try to get StartUrl from StartUrls if available
+      if (Array.isArray(pascalCaseData.StartUrls) && pascalCaseData.StartUrls.length > 0) {
+        pascalCaseData.StartUrl = pascalCaseData.StartUrls[0];
+      } else {
+        // Don't set a default value, let the validation handle it
+        throw new Error('StartUrl is required');
+      }
+    }
+
+    // Ensure StartUrls is an array
+    if (!Array.isArray(pascalCaseData.StartUrls)) {
+      pascalCaseData.StartUrls = [];
+    }
+
+    // Add StartUrl to StartUrls if not already there
+    if (pascalCaseData.StartUrl && !pascalCaseData.StartUrls.includes(pascalCaseData.StartUrl)) {
+      pascalCaseData.StartUrls.push(pascalCaseData.StartUrl);
+    }
+
+    // Ensure ContentExtractorSelectors is an array
+    if (!Array.isArray(pascalCaseData.ContentExtractorSelectors)) {
+      pascalCaseData.ContentExtractorSelectors = [];
+    }
+
+    // Ensure ContentExtractorExcludeSelectors is an array
+    if (!Array.isArray(pascalCaseData.ContentExtractorExcludeSelectors)) {
+      pascalCaseData.ContentExtractorExcludeSelectors = [];
+    }
+
+    // Ensure KeywordAlertList is an array
+    if (!Array.isArray(pascalCaseData.KeywordAlertList)) {
+      pascalCaseData.KeywordAlertList = [];
+    }
+
+    // Ensure WebhookTriggers is an array
+    if (!Array.isArray(pascalCaseData.WebhookTriggers)) {
+      pascalCaseData.WebhookTriggers = [];
+    }
+
+    // Ensure Schedules is an array
+    if (!Array.isArray(pascalCaseData.Schedules)) {
+      pascalCaseData.Schedules = [];
+    }
+
+    console.log('Sending scraper data to API:', pascalCaseData);
+    console.log('StartUrls:', pascalCaseData.StartUrls);
+    console.log('ContentExtractorSelectors:', pascalCaseData.ContentExtractorSelectors);
+    console.log('ContentExtractorExcludeSelectors:', pascalCaseData.ContentExtractorExcludeSelectors);
+
+    // Final validation for StartUrl
+    if (!pascalCaseData.StartUrl || pascalCaseData.StartUrl.trim() === '') {
+      console.error('StartUrl is still empty after all checks.');
+      throw new Error('StartUrl is required');
+    }
+
+    // Log the StartUrl value for debugging
+    console.log('Final StartUrl value:', pascalCaseData.StartUrl);
+
+    // Send the data directly without wrapping it in a 'model' property
+    console.log('Final request data:', pascalCaseData);
 
     return handleResponse(apiClient.put(`/Scraper/${id}`, pascalCaseData));
   } catch (error) {
+    console.error('Error updating scraper:', error);
     throw handleApiError(error, `Failed to update scraper with ID ${id}`);
   }
 };

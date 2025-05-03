@@ -71,7 +71,12 @@ builder.Services.AddCors(options =>
         });
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serialization to handle circular references
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
+    });
 
 // Helper method to get connection strings from Key Vault or local configuration
 static string GetConnectionString(IConfiguration configuration, string name)
@@ -196,7 +201,45 @@ if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
                 var webScraperDbContext = scope.ServiceProvider.GetRequiredService<WebScraperDbContext>();
                 if (webScraperDbContext.Database.ProviderName != null && !webScraperDbContext.Database.ProviderName.Contains("InMemory"))
                 {
-                    webScraperDbContext.Database.Migrate();
+                    // Ensure database exists
+                    webScraperDbContext.Database.EnsureCreated();
+
+                    try
+                    {
+                        // Try to apply migrations
+                        webScraperDbContext.Database.Migrate();
+                    }
+                    catch (Exception migrateEx)
+                    {
+                        Console.WriteLine($"Warning: Failed to apply MySQL migrations: {migrateEx.Message}");
+                        Console.WriteLine("Attempting to ensure tables exist...");
+
+                        // If migrations fail, try to ensure the database is created
+                        try
+                        {
+                            // Check if the scraper_start_url table exists
+                            var connection = webScraperDbContext.Database.GetDbConnection();
+                            connection.Open();
+                            using (var command = connection.CreateCommand())
+                            {
+                                command.CommandText = @"
+                                    CREATE TABLE IF NOT EXISTS scraper_start_url (
+                                        id INT AUTO_INCREMENT PRIMARY KEY,
+                                        scraper_id VARCHAR(36) NOT NULL,
+                                        url VARCHAR(500) NOT NULL,
+                                        FOREIGN KEY (scraper_id) REFERENCES scraper_config(id) ON DELETE CASCADE
+                                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+                                command.ExecuteNonQuery();
+                            }
+                            connection.Close();
+
+                            Console.WriteLine("Successfully ensured scraper_start_url table exists");
+                        }
+                        catch (Exception tableEx)
+                        {
+                            Console.WriteLine($"Warning: Failed to create scraper_start_url table: {tableEx.Message}");
+                        }
+                    }
                 }
             }
             catch (Exception ex)

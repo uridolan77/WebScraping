@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -37,174 +37,312 @@ import {
   Refresh as RefreshIcon,
   Error as ErrorIcon
 } from '@mui/icons-material';
-import { useScrapers } from '../hooks';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  getAllScrapers, 
+  getScraperStatus, 
+  startScraper, 
+  stopScraper, 
+  deleteScraper 
+} from '../api/scrapers';
+
+// Simple status chip component that doesn't use hooks
+const StatusChip = ({ status, isLoading, isError }) => {
+  if (isLoading && !status) {
+    return <Chip label="Loading..." color="default" size="small" />;
+  }
+
+  if (isError && !status) {
+    return (
+      <Tooltip title="Unable to fetch status">
+        <Chip
+          label="Unknown"
+          color="default"
+          size="small"
+          icon={<ErrorIcon fontSize="small" />}
+        />
+      </Tooltip>
+    );
+  }
+
+  if (!status) {
+    return <Chip label="Unknown" color="default" size="small" />;
+  }
+
+  if (status.isRunning) {
+    return (
+      <Tooltip title={`Processing: ${status.urlsProcessed || 0} URLs`}>
+        <Chip
+          label="Running"
+          color="success"
+          size="small"
+        />
+      </Tooltip>
+    );
+  } else if (status.hasErrors) {
+    return (
+      <Tooltip title={status.errorMessage || 'An error occurred'}>
+        <Chip
+          label="Error"
+          color="error"
+          size="small"
+          icon={<ErrorIcon fontSize="small" />}
+        />
+      </Tooltip>
+    );
+  } else {
+    return <Chip label="Idle" color="default" size="small" />;
+  }
+};
+
+// Format date helper function
+const formatDate = (dateString) => {
+  if (!dateString) return 'Never';
+  
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
+
+// Simple row component that doesn't use hooks
+const ScraperRow = ({ 
+  scraper, 
+  status, 
+  isStatusLoading, 
+  isStatusError,
+  isPending,
+  onStart,
+  onStop,
+  onDelete,
+  onEdit
+}) => {
+  const isRunning = !isStatusError && status?.isRunning === true;
+  
+  return (
+    <TableRow key={scraper.id}>
+      <TableCell>
+        <Link
+          to={`/scrapers/${scraper.id}`}
+          style={{ textDecoration: 'none', color: 'inherit', fontWeight: 500 }}
+        >
+          {scraper.name}
+        </Link>
+      </TableCell>
+      <TableCell>{scraper.baseUrl}</TableCell>
+      <TableCell>
+        <StatusChip 
+          status={status} 
+          isLoading={isStatusLoading} 
+          isError={isStatusError} 
+        />
+      </TableCell>
+      <TableCell>
+        {formatDate(status?.lastRun || scraper.lastRun)}
+      </TableCell>
+      <TableCell>
+        {status?.urlsProcessed || scraper.urlsProcessed || 0}
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isRunning ? (
+            <Tooltip title="Stop Scraper">
+              <IconButton
+                color="warning"
+                onClick={() => onStop(scraper.id)}
+                disabled={isPending || isStatusError}
+                size="small"
+              >
+                {isPending ? (
+                  <CircularProgress size={24} />
+                ) : (
+                  <StopIcon />
+                )}
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title="Start Scraper">
+              <IconButton
+                color="success"
+                onClick={() => onStart(scraper.id)}
+                disabled={isPending || isStatusError}
+                size="small"
+              >
+                {isPending ? (
+                  <CircularProgress size={24} />
+                ) : (
+                  <PlayIcon />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Edit Scraper">
+            <IconButton
+              color="primary"
+              component={Link}
+              to={`/scrapers/${scraper.id}/edit`}
+              size="small"
+            >
+              <EditIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Scraper">
+            <IconButton
+              color="error"
+              onClick={() => onDelete(scraper)}
+              disabled={isPending || isRunning}
+              size="small"
+            >
+              <DeleteIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </TableCell>
+    </TableRow>
+  );
+};
 
 const ScraperList = () => {
   const navigate = useNavigate();
-  const { 
-    getScrapers, 
-    startScraper, 
-    stopScraper, 
-    deleteScraper,
-    getScraperStatus,
-    loading, 
-    error 
-  } = useScrapers();
+  const queryClient = useQueryClient();
   
-  const [scrapers, setScrapers] = useState([]);
+  // State for UI interactions
   const [searchTerm, setSearchTerm] = useState('');
-  const [scraperStatus, setScraperStatus] = useState({});
-  const [actionInProgress, setActionInProgress] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scraperToDelete, setScraperToDelete] = useState(null);
 
   // Fetch all scrapers
-  const fetchScrapers = async () => {
-    try {
-      const data = await getScrapers();
-      setScrapers(data);
-      // Get status for each scraper
-      data.forEach(scraper => {
-        fetchScraperStatus(scraper.id);
-      });
-    } catch (error) {
-      console.error('Error fetching scrapers:', error);
+  const { 
+    data: scrapers = [], 
+    isLoading: isScrapersLoading, 
+    error: scrapersError,
+    refetch: refetchScrapers
+  } = useQuery({
+    queryKey: ['scrapers'],
+    queryFn: async () => {
+      try {
+        return await getAllScrapers();
+      } catch (error) {
+        console.error('Error fetching scrapers:', error);
+        return [];
+      }
+    },
+    staleTime: 60 * 1000, // 1 minute
+    refetchOnWindowFocus: false,
+    keepPreviousData: true
+  });
+
+  // Fetch status for all scrapers at once
+  const { 
+    data: allStatuses = {}, 
+    isLoading: isStatusesLoading,
+    error: statusesError,
+    refetch: refetchStatuses
+  } = useQuery({
+    queryKey: ['scraperStatuses'],
+    queryFn: async () => {
+      try {
+        // Fetch status for each scraper in parallel
+        const statusPromises = scrapers.map(scraper => 
+          getScraperStatus(scraper.id)
+            .then(status => ({ id: scraper.id, status }))
+            .catch(error => {
+              console.error(`Error fetching status for scraper ${scraper.id}:`, error);
+              return { 
+                id: scraper.id, 
+                status: { isRunning: false, hasErrors: false, errorMessage: 'Unable to fetch status' },
+                error: true
+              };
+            })
+        );
+        
+        const results = await Promise.all(statusPromises);
+        
+        // Convert array of results to an object keyed by scraper ID
+        return results.reduce((acc, { id, status, error }) => {
+          acc[id] = { 
+            data: status,
+            isError: !!error
+          };
+          return acc;
+        }, {});
+      } catch (error) {
+        console.error('Error fetching scraper statuses:', error);
+        return {};
+      }
+    },
+    enabled: scrapers.length > 0,
+    staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 30 * 1000, // Poll every 30 seconds
+    refetchIntervalInBackground: false,
+    keepPreviousData: true
+  });
+
+  // Setup mutations for actions
+  const startScraperMutation = useMutation({
+    mutationFn: (id) => startScraper(id),
+    onSuccess: () => {
+      // Invalidate all statuses to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['scraperStatuses'] });
     }
-  };
+  });
 
-  // Fetch status for a single scraper
-  const fetchScraperStatus = async (id) => {
-    try {
-      const status = await getScraperStatus(id);
-      setScraperStatus(prev => ({
-        ...prev,
-        [id]: status
-      }));
-    } catch (error) {
-      console.error(`Error fetching status for scraper ${id}:`, error);
+  const stopScraperMutation = useMutation({
+    mutationFn: (id) => stopScraper(id),
+    onSuccess: () => {
+      // Invalidate all statuses to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['scraperStatuses'] });
     }
-  };
+  });
 
-  // Initial load
-  useEffect(() => {
-    fetchScrapers();
-    
-    // Refresh status every 10 seconds
-    const interval = setInterval(() => {
-      scrapers.forEach(scraper => {
-        if (!actionInProgress || actionInProgress !== scraper.id) {
-          fetchScraperStatus(scraper.id);
-        }
-      });
-    }, 10000);
-    
-    return () => clearInterval(interval);
-  }, [scrapers.length]); // Only re-run when the number of scrapers changes
-
-  // Filter scrapers based on search term
-  const filteredScrapers = scrapers.filter(scraper => 
-    scraper.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    scraper.baseUrl.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Handle start scraper
-  const handleStartScraper = async (id) => {
-    try {
-      setActionInProgress(id);
-      await startScraper(id);
-      await fetchScraperStatus(id);
-    } catch (error) {
-      console.error(`Error starting scraper ${id}:`, error);
-    } finally {
-      setActionInProgress(null);
-    }
-  };
-
-  // Handle stop scraper
-  const handleStopScraper = async (id) => {
-    try {
-      setActionInProgress(id);
-      await stopScraper(id);
-      await fetchScraperStatus(id);
-    } catch (error) {
-      console.error(`Error stopping scraper ${id}:`, error);
-    } finally {
-      setActionInProgress(null);
-    }
-  };
-
-  // Handle delete scraper
-  const handleDeleteClick = (scraper) => {
-    setScraperToDelete(scraper);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!scraperToDelete) return;
-    
-    try {
-      setActionInProgress(scraperToDelete.id);
-      await deleteScraper(scraperToDelete.id);
+  const deleteScraperMutation = useMutation({
+    mutationFn: (id) => deleteScraper(id),
+    onSuccess: () => {
+      // Invalidate scrapers list to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['scrapers'] });
       setDeleteDialogOpen(false);
       setScraperToDelete(null);
-      // Refresh the list
-      fetchScrapers();
-    } catch (error) {
-      console.error(`Error deleting scraper ${scraperToDelete.id}:`, error);
-    } finally {
-      setActionInProgress(null);
     }
-  };
+  });
 
-  // Render status chip
-  const renderStatusChip = (id) => {
-    const status = scraperStatus[id];
-    
-    if (!status) {
-      return <Chip label="Unknown" color="default" size="small" />;
-    }
-    
-    if (status.isRunning) {
-      return (
-        <Tooltip title={`Processing: ${status.urlsProcessed || 0} URLs`}>
-          <Chip
-            label="Running"
-            color="success"
-            size="small"
-          />
-        </Tooltip>
-      );
-    } else if (status.hasErrors) {
-      return (
-        <Tooltip title={status.errorMessage || 'An error occurred'}>
-          <Chip
-            label="Error"
-            color="error"
-            size="small"
-            icon={<ErrorIcon fontSize="small" />}
-          />
-        </Tooltip>
-      );
-    } else {
-      return <Chip label="Idle" color="default" size="small" />;
-    }
-  };
+  // Filter scrapers based on search term
+  const filteredScrapers = useMemo(() => {
+    return scrapers.filter(scraper => 
+      scraper.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      scraper.baseUrl.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [scrapers, searchTerm]);
 
-  // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Never';
-    
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
+  // Action handlers
+  const handleStartScraper = useCallback((id) => {
+    startScraperMutation.mutate(id);
+  }, [startScraperMutation]);
 
-  if (loading && scrapers.length === 0) {
+  const handleStopScraper = useCallback((id) => {
+    stopScraperMutation.mutate(id);
+  }, [stopScraperMutation]);
+
+  const handleDeleteClick = useCallback((scraper) => {
+    setScraperToDelete(scraper);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!scraperToDelete) return;
+    deleteScraperMutation.mutate(scraperToDelete.id);
+  }, [deleteScraperMutation, scraperToDelete]);
+
+  // Refresh all data
+  const handleRefresh = useCallback(() => {
+    refetchScrapers();
+    refetchStatuses();
+  }, [refetchScrapers, refetchStatuses]);
+
+  if (isScrapersLoading && scrapers.length === 0) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -255,8 +393,8 @@ const ScraperList = () => {
                 <Button
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={fetchScrapers}
-                  disabled={loading}
+                  onClick={handleRefresh}
+                  disabled={isScrapersLoading || isStatusesLoading}
                 >
                   Refresh
                 </Button>
@@ -267,7 +405,7 @@ const ScraperList = () => {
       </Card>
 
       {/* Scrapers Table */}
-      {loading && scrapers.length > 0 ? (
+      {isScrapersLoading && scrapers.length > 0 ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress />
         </Box>
@@ -286,81 +424,32 @@ const ScraperList = () => {
             </TableHead>
             <TableBody>
               {filteredScrapers.length > 0 ? (
-                filteredScrapers.map((scraper) => (
-                  <TableRow key={scraper.id}>
-                    <TableCell>
-                      <Link
-                        to={`/scrapers/${scraper.id}`}
-                        style={{ textDecoration: 'none', color: 'inherit', fontWeight: 500 }}
-                      >
-                        {scraper.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{scraper.baseUrl}</TableCell>
-                    <TableCell>{renderStatusChip(scraper.id)}</TableCell>
-                    <TableCell>
-                      {formatDate(scraperStatus[scraper.id]?.lastRun || scraper.lastRun)}
-                    </TableCell>
-                    <TableCell>
-                      {scraperStatus[scraper.id]?.urlsProcessed || scraper.urlsProcessed || 0}
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        {scraperStatus[scraper.id]?.isRunning ? (
-                          <Tooltip title="Stop Scraper">
-                            <IconButton
-                              color="warning"
-                              onClick={() => handleStopScraper(scraper.id)}
-                              disabled={actionInProgress === scraper.id}
-                              size="small"
-                            >
-                              {actionInProgress === scraper.id ? (
-                                <CircularProgress size={24} />
-                              ) : (
-                                <StopIcon />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title="Start Scraper">
-                            <IconButton
-                              color="success"
-                              onClick={() => handleStartScraper(scraper.id)}
-                              disabled={actionInProgress === scraper.id}
-                              size="small"
-                            >
-                              {actionInProgress === scraper.id ? (
-                                <CircularProgress size={24} />
-                              ) : (
-                                <PlayIcon />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <Tooltip title="Edit Scraper">
-                          <IconButton
-                            color="primary"
-                            component={Link}
-                            to={`/scrapers/${scraper.id}/edit`}
-                            size="small"
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete Scraper">
-                          <IconButton
-                            color="error"
-                            onClick={() => handleDeleteClick(scraper)}
-                            disabled={actionInProgress === scraper.id || scraperStatus[scraper.id]?.isRunning}
-                            size="small"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredScrapers.map((scraper) => {
+                  // Get status for this specific scraper
+                  const scraperStatus = allStatuses[scraper.id] || {};
+                  const status = scraperStatus.data;
+                  const isStatusError = scraperStatus.isError;
+                  
+                  // Check if this specific scraper has an action in progress
+                  const isPending =
+                    (startScraperMutation.isPending && startScraperMutation.variables === scraper.id) ||
+                    (stopScraperMutation.isPending && stopScraperMutation.variables === scraper.id) ||
+                    (deleteScraperMutation.isPending && deleteScraperMutation.variables === scraper.id);
+                  
+                  return (
+                    <ScraperRow
+                      key={scraper.id}
+                      scraper={scraper}
+                      status={status}
+                      isStatusLoading={isStatusesLoading}
+                      isStatusError={isStatusError}
+                      isPending={isPending}
+                      onStart={handleStartScraper}
+                      onStop={handleStopScraper}
+                      onDelete={handleDeleteClick}
+                    />
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} align="center">
@@ -396,9 +485,9 @@ const ScraperList = () => {
             onClick={handleDeleteConfirm} 
             color="error" 
             variant="contained"
-            disabled={actionInProgress === scraperToDelete?.id}
+            disabled={deleteScraperMutation.isPending}
           >
-            {actionInProgress === scraperToDelete?.id ? (
+            {deleteScraperMutation.isPending ? (
               <CircularProgress size={24} />
             ) : (
               'Delete'
