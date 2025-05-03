@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,8 +57,19 @@ namespace WebScraperApi.Services.Factories
 
         public IDynamicContentRenderer? CreateDynamicContentRenderer(ScraperConfig config, Action<string> logAction)
         {
-            // Dynamic content rendering is optional
-            return null;
+#nullable disable
+            try
+            {
+                // Dynamic content rendering is optional
+                logAction("Dynamic content rendering is not implemented in this version");
+                return null; // null is acceptable since we've declared the return type as nullable
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing dynamic content renderer");
+                return null; // null is acceptable since we've declared the return type as nullable
+            }
+#nullable restore
         }
 
         // Internal implementation classes for when we don't need complex functionality

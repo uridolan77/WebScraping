@@ -66,39 +66,38 @@ namespace WebScraperApi.Services.Factories
             }
 
             // Fix return type to match the interface's expected type
-            public async Task<WebScraper.RegulatoryFramework.Interfaces.DocumentMetadata> ProcessDocumentAsync(string url, string contentType, byte[] documentData)
+            public async Task<WebScraper.RegulatoryFramework.Implementation.DocumentMetadata> ProcessDocumentAsync(string url, string contentType, byte[] documentData)
             {
                 try
                 {
+                    // Handle null parameter safely
+                    string safeUrl = url ?? string.Empty;
+                    string safeContentType = contentType ?? string.Empty;
+                    
                     // Simple implementation
                     await Task.Delay(1); // Make it truly async
                     
-                    var metadata = new WebScraper.RegulatoryFramework.Interfaces.DocumentMetadata
+                    var metadata = new WebScraper.RegulatoryFramework.Implementation.DocumentMetadata
                     {
-                        Url = url ?? string.Empty,
-                        ContentType = contentType ?? string.Empty,
-                        Size = documentData?.Length ?? 0,
+                        Url = safeUrl,
+                        Title = $"Document from {safeUrl}",
+                        DocumentType = DetermineDocumentType(safeUrl, safeContentType),
                         ProcessedDate = DateTime.UtcNow,
-                        DocumentType = string.Empty,
-                        Content = string.Empty,
-                        AdditionalMetadata = new Dictionary<string, string>()
+                        ExtractedMetadata = new Dictionary<string, object>
+                        {
+                            ["ContentType"] = safeContentType,
+                            ["Size"] = documentData?.Length ?? 0
+                        }
                     };
                     
-                    // Set content based on type
-                    if (contentType?.Contains("text") == true || contentType?.Contains("html") == true)
+                    // Extract basic text content if it's a text document
+                    if (documentData != null && safeContentType.Contains("text"))
                     {
-                        metadata.DocumentType = "Text";
-                        metadata.Content = documentData != null ? System.Text.Encoding.UTF8.GetString(documentData) : "";
-                    }
-                    else if (contentType?.Contains("pdf") == true)
-                    {
-                        metadata.DocumentType = "PDF";
-                        metadata.Content = $"[PDF Content - {metadata.Size} bytes]";
+                        metadata.TextContent = System.Text.Encoding.UTF8.GetString(documentData);
                     }
                     else
                     {
-                        metadata.DocumentType = "Binary";
-                        metadata.Content = $"[Binary content of type {contentType}]";
+                        metadata.TextContent = $"[Binary content of type {safeContentType} - {documentData?.Length ?? 0} bytes]";
                     }
                     
                     return metadata;
@@ -107,17 +106,60 @@ namespace WebScraperApi.Services.Factories
                 {
                     _logger.LogError(ex, $"Error processing document {url}");
                     
-                    return new WebScraper.RegulatoryFramework.Interfaces.DocumentMetadata
+                    return new WebScraper.RegulatoryFramework.Implementation.DocumentMetadata
                     {
                         Url = url ?? string.Empty,
-                        ContentType = contentType ?? string.Empty,
-                        Size = documentData?.Length ?? 0,
+                        Title = $"Error processing document from {url ?? "unknown"}",
                         DocumentType = "Error",
                         ProcessedDate = DateTime.UtcNow,
-                        Content = $"Error: {ex.Message}",
-                        AdditionalMetadata = new Dictionary<string, string>()
+                        TextContent = $"Error: {ex.Message}",
+                        ExtractedMetadata = new Dictionary<string, object>
+                        {
+                            ["Error"] = ex.Message,
+                            ["ContentType"] = contentType ?? "unknown",
+                            ["Size"] = documentData?.Length ?? 0
+                        }
                     };
                 }
+            }
+            
+            // Helper method to determine document type from URL and content type
+            private string DetermineDocumentType(string url, string contentType)
+            {
+                if (string.IsNullOrEmpty(url) && string.IsNullOrEmpty(contentType))
+                {
+                    return "Unknown";
+                }
+                
+                // Try to determine by file extension first
+                if (!string.IsNullOrEmpty(url))
+                {
+                    string extension = System.IO.Path.GetExtension(url).ToLowerInvariant();
+                    switch (extension)
+                    {
+                        case ".pdf": return "PDF";
+                        case ".docx":
+                        case ".doc": return "Word";
+                        case ".xlsx":
+                        case ".xls": return "Excel";
+                        case ".pptx":
+                        case ".ppt": return "PowerPoint";
+                    }
+                }
+                
+                // Try with content type as fallback
+                if (!string.IsNullOrEmpty(contentType))
+                {
+                    contentType = contentType.ToLowerInvariant();
+                    if (contentType.Contains("pdf")) return "PDF";
+                    if (contentType.Contains("word")) return "Word";
+                    if (contentType.Contains("excel") || contentType.Contains("spreadsheet")) return "Excel";
+                    if (contentType.Contains("powerpoint") || contentType.Contains("presentation")) return "PowerPoint";
+                    if (contentType.Contains("text/html")) return "HTML";
+                    if (contentType.Contains("text/plain")) return "Text";
+                }
+                
+                return "Unknown";
             }
 
             // Fix return type to match interface
