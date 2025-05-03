@@ -123,52 +123,87 @@ namespace WebScraperApi.Services.Execution
         /// <returns>A configured EnhancedScraper instance</returns>
         public async Task<EnhancedScraper> CreateEnhancedScraperAsync(ScraperConfig config, Action<string> logAction)
         {
-            // Create a scraper-specific logger
-            var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
-
-            // Convert ScraperConfig to RegulatoryScraperConfig
-            var regulatoryConfig = new RegulatoryScraperConfig
+            try
             {
-                DomainName = config.Name,
-                BaseUrl = config.StartUrl,
-                UserAgent = "WebScraperAPI/1.0",
-                MaxConcurrentRequests = config.MaxConcurrentRequests,
-                RequestTimeoutSeconds = 30,
-                EnablePriorityCrawling = config.EnableAdaptiveCrawling,
-                EnableHierarchicalExtraction = config.ExtractStructuredContent,
-                EnableDocumentProcessing = config.EnableDocumentProcessing,
-                EnableComplianceChangeDetection = config.EnableChangeDetection,
-                EnableDomainClassification = config.ClassifyRegulatoryDocuments,
-                EnableDynamicContentRendering = false,
-                EnableAlertSystem = config.NotifyOnChanges
-            };
+                logAction("Creating enhanced scraper with specialized components");
+                
+                // Create a scraper-specific logger
+                var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
+                
+                // Log configuration details for debugging
+                logAction($"Config details: Name={config.Name}, StartUrl={config.StartUrl}, MaxCrawlDepth={config.MaxCrawlDepth}");
 
-            // Create components from factories
-            var crawlStrategy = _componentFactory.CreateCrawlStrategy(config, logAction);
-            var contentExtractor = _componentFactory.CreateContentExtractor(config, logAction);
-            var documentProcessor = _componentFactory.CreateDocumentProcessor(config, logAction);
-            var changeDetector = _componentFactory.CreateChangeDetector(config, logAction);
-            var contentClassifier = _componentFactory.CreateContentClassifier(config, logAction);
-            var stateStore = _componentFactory.CreateStateStore(config, logAction);
+                // Convert ScraperConfig to RegulatoryScraperConfig
+                var regulatoryConfig = new RegulatoryScraperConfig
+                {
+                    DomainName = config.Name,
+                    BaseUrl = config.StartUrl,
+                    UserAgent = "WebScraperAPI/1.0",
+                    MaxConcurrentRequests = config.MaxConcurrentRequests,
+                    RequestTimeoutSeconds = 30,
+                    EnablePriorityCrawling = config.EnableAdaptiveCrawling,
+                    EnableHierarchicalExtraction = config.ExtractStructuredContent,
+                    EnableDocumentProcessing = config.EnableDocumentProcessing,
+                    EnableComplianceChangeDetection = config.EnableChangeDetection,
+                    EnableDomainClassification = config.ClassifyRegulatoryDocuments,
+                    EnableDynamicContentRendering = false,
+                    EnableAlertSystem = config.NotifyOnChanges
+                };
+                
+                logAction("Creating crawl strategy component");
+                var crawlStrategy = _componentFactory.CreateCrawlStrategy(config, logAction);
+                
+                logAction("Creating content extractor component");
+                var contentExtractor = _componentFactory.CreateContentExtractor(config, logAction);
+                
+                logAction("Creating document processor component");
+                var documentProcessor = _componentFactory.CreateDocumentProcessor(config, logAction);
+                
+                logAction("Creating change detector component");
+                var changeDetector = _componentFactory.CreateChangeDetector(config, logAction);
+                
+                logAction("Creating content classifier component");
+                var contentClassifier = _componentFactory.CreateContentClassifier(config, logAction);
+                
+                logAction("Creating state store component");
+                var stateStore = _componentFactory.CreateStateStore(config, logAction);
 
-            // Create the enhanced scraper with all components
-            var enhancedScraper = new EnhancedScraper(
-                regulatoryConfig,
-                scraperLogger,
-                crawlStrategy,
-                contentExtractor,
-                documentProcessor,
-                changeDetector,
-                contentClassifier,
-                null, // No dynamic renderer
-                null, // No alert service
-                stateStore);
+                logAction("Assembling enhanced scraper with all components");
+                
+                // Create the enhanced scraper with all components
+                var enhancedScraper = new EnhancedScraper(
+                    regulatoryConfig,
+                    scraperLogger,
+                    crawlStrategy,
+                    contentExtractor,
+                    documentProcessor,
+                    changeDetector,
+                    contentClassifier,
+                    null, // No dynamic renderer
+                    null, // No alert service
+                    stateStore);
 
-            // Wait a moment to make this truly async
-            await Task.Delay(1);
+                logAction("Enhanced scraper created successfully");
+                
+                // Wait a moment to make this truly async
+                await Task.Delay(1);
 
-            // Return the configured scraper
-            return enhancedScraper;
+                // Return the configured scraper
+                return enhancedScraper;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error creating enhanced scraper: {ex.Message}");
+                logAction($"Error creating enhanced scraper: {ex.Message}");
+                
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
+                    logAction($"Inner error: {ex.InnerException.Message}");
+                }
+                
+                throw; // Re-throw to let the caller handle it
+            }
         }
 
         /// <summary>

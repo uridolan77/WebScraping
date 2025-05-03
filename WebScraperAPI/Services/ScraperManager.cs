@@ -221,18 +221,25 @@ namespace WebScraperApi.Services
             try
             {
                 _logger.LogInformation($"Starting scraper {id}...");
+                _monitoringService.AddLogMessage(id, $"Attempting to start scraper with ID: {id}");
 
                 var instance = _stateService.GetScraperInstance(id);
                 if (instance == null)
                 {
-                    _logger.LogWarning($"Cannot start scraper {id}: not found");
+                    var errorMsg = $"Cannot start scraper {id}: scraper instance not found in state management";
+                    _logger.LogWarning(errorMsg);
+                    _monitoringService.AddLogMessage(id, errorMsg);
                     return false;
                 }
 
+                // Debug info about the scraper configuration
+                _monitoringService.AddLogMessage(id, $"Scraper configuration: Name={instance.Config.Name}, BaseUrl={instance.Config.BaseUrl}");
+                
                 // Skip if already running
                 if (instance.Status.IsRunning)
                 {
                     _logger.LogInformation($"Scraper {id} is already running");
+                    _monitoringService.AddLogMessage(id, "Scraper is already running");
                     return true;
                 }
 
@@ -245,21 +252,53 @@ namespace WebScraperApi.Services
                 _monitoringService.AddLogMessage(id, "Starting scraper execution");
 
                 // Update metrics
-                instance.Metrics ??= new ScraperMetrics();
+                if (instance.Metrics == null)
+                {
+                    _monitoringService.AddLogMessage(id, "Initializing metrics for first run");
+                    instance.Metrics = new ScraperMetrics();
+                }
                 instance.Metrics.ExecutionCount++;
 
+                _monitoringService.AddLogMessage(id, "Converting config model to scraper config");
+                
+                // Log scraper configuration details
+                _monitoringService.AddLogMessage(id, $"Configuration details: MaxDepth={instance.Config.MaxDepth}, MaxConcurrentRequests={instance.Config.MaxConcurrentRequests}, DelayBetweenRequests={instance.Config.DelayBetweenRequests}ms");
+                if (instance.Config.IsUKGCWebsite)
+                {
+                    _monitoringService.AddLogMessage(id, "This is a UKGC website configuration with special handling");
+                }
+
                 // Execute the scraper
-                await _executionService.StartScraperAsync(
+                _monitoringService.AddLogMessage(id, "Calling scraper execution service");
+                var success = await _executionService.StartScraperAsync(
                     instance.Config,
                     new WebScraperApi.Models.ScraperState { Id = id, Status = "Running" },
                     message => _monitoringService.AddLogMessage(id, message));
 
-                return true;
+                if (success)
+                {
+                    _monitoringService.AddLogMessage(id, "Scraper started successfully");
+                    return true;
+                }
+                else
+                {
+                    instance.Status.IsRunning = false;
+                    instance.Status.HasErrors = true;
+                    instance.Status.Message = "Failed to start scraper";
+                    _monitoringService.AddLogMessage(id, "Scraper failed to start - execution service returned failure");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error starting scraper {id}");
                 _monitoringService.AddLogMessage(id, $"Error starting scraper: {ex.Message}");
+                _monitoringService.AddLogMessage(id, $"Stack trace: {ex.StackTrace}");
+                
+                if (ex.InnerException != null)
+                {
+                    _monitoringService.AddLogMessage(id, $"Inner exception: {ex.InnerException.Message}");
+                }
 
                 // Update status
                 var instance = _stateService.GetScraperInstance(id);

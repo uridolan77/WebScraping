@@ -14,6 +14,10 @@ using Azure.Security.KeyVault.Secrets;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using System.Reflection;
 using System.IO;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -276,5 +280,13 @@ if (!app.Environment.IsDevelopment())
 app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
+
+// Ensure the scraper configs directory exists
+var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scraperConfigs.json");
+var configDir = Path.GetDirectoryName(configPath);
+if (!Directory.Exists(configDir) && configDir != null)
+{
+    Directory.CreateDirectory(configDir);
+}
 
 app.Run();
