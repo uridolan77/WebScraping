@@ -55,39 +55,62 @@ namespace WebScraperApi.Services.Execution
                     return false;
                 }
 
-                // Always use EnhancedScraper for all scrapers
-                var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
-
-                // Create a standard Scraper that we can use with the existing code
-                var scraper = new Scraper(scraperConfig, _logger);
-
-                // Store the enhanced scraper instance in the state
-                scraperState.Scraper = enhancedScraper;
-
-                // Initialize the scraper
-                logAction("Initializing scraper...");
-                await scraper.InitializeAsync();
-
-                // Start scraping
-                logAction("Starting scraping process...");
-                await scraper.StartScrapingAsync();
-
-                // Set up continuous monitoring if enabled
-                if (config.EnableContinuousMonitoring)
+                try
                 {
-                    var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
-                    await scraper.SetupContinuousScrapingAsync(interval);
-                    logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
+                    // Always use EnhancedScraper for all scrapers
+                    var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
+
+                    // Create a standard Scraper that we can use with the existing code
+                    var scraper = new Scraper(scraperConfig, _logger);
+
+                    // Store the enhanced scraper instance in the state
+                    scraperState.Scraper = enhancedScraper;
+
+                    // Initialize the scraper
+                    logAction("Initializing scraper...");
+                    await scraper.InitializeAsync();
+
+                    // Start scraping
+                    logAction("Starting scraping process...");
+                    await scraper.StartScrapingAsync();
+
+                    // Set up continuous monitoring if enabled
+                    if (config.EnableContinuousMonitoring)
+                    {
+                        var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
+                        await scraper.SetupContinuousScrapingAsync(interval);
+                        logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
+                    }
+
+                    logAction("Scraping operation completed successfully");
+
+                    return true;
                 }
-
-                logAction("Scraping operation completed successfully");
-
-                return true;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error during scraper execution for {config.Name}: {ex.Message}");
+                    logAction($"Error during scraper execution: {ex.Message}");
+                    
+                    if (ex.InnerException != null)
+                    {
+                        _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
+                        logAction($"Inner error: {ex.InnerException.Message}");
+                    }
+                    
+                    return false;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error executing scraper {config.Name}");
                 logAction($"Error during scraping: {ex.Message}");
+                
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
+                    logAction($"Inner error: {ex.InnerException.Message}");
+                }
+                
                 return false;
             }
         }

@@ -9,21 +9,21 @@ namespace WebScraperApi.Services.Factories
     public static class ScraperFactoryExtensions
     {
         /// <summary>
-        /// Adds all factory services to the service collection
+        /// Adds scraper factory services to the dependency injection container
         /// </summary>
         /// <param name="services">The service collection</param>
         /// <returns>The service collection</returns>
         public static IServiceCollection AddScraperFactories(this IServiceCollection services)
         {
-            // Register all factories
-            services.AddSingleton<ContentExtractionFactory>();
-            services.AddSingleton<DocumentProcessingFactory>();
-            services.AddSingleton<RegulatoryMonitorFactory>();
-            services.AddSingleton<StateManagementFactory>();
-            
+            // Register individual component factories
+            services.AddScoped<ContentExtractionFactory>();
+            services.AddScoped<DocumentProcessingFactory>();
+            services.AddScoped<RegulatoryMonitorFactory>();
+            services.AddScoped<StateManagementFactory>();
+
             // Register the main component factory
-            services.AddSingleton<ScraperComponentFactory>();
-            
+            services.AddScoped<ScraperComponentFactory>();
+
             return services;
         }
     }
