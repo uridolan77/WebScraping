@@ -162,5 +162,7 @@ namespace WebScraperApi.Data.Entities
         public virtual ICollection<ContentChangeRecordEntity> ContentChangeRecords { get; set; }
         public virtual ICollection<ProcessedDocumentEntity> ProcessedDocuments { get; set; }
         public virtual ICollection<ScraperMetricEntity> Metrics { get; set; }
+        public virtual ICollection<ScraperLogEntity> Logs { get; set; }
+        public virtual ICollection<ScrapedPageEntity> ScrapedPages { get; set; }
     }
 }

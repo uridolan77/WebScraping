@@ -764,5 +764,38 @@ namespace WebScraperApi.Data.Repositories
         }
 
         #endregion
+
+        #region Scraper Log Operations
+
+        public async Task<List<ScraperLogEntity>> GetScraperLogsAsync(string scraperId, int limit = 100)
+        {
+            return await _context.ScraperLogs
+                .Where(l => l.ScraperId == scraperId)
+                .OrderByDescending(l => l.Timestamp)
+                .Take(limit)
+                .ToListAsync();
+        }
+
+        public async Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry)
+        {
+            _context.ScraperLogs.Add(logEntry);
+            await _context.SaveChangesAsync();
+
+            return logEntry;
+        }
+
+        #endregion
+
+        #region Scraped Page Operations
+
+        public async Task<ScrapedPageEntity> AddScrapedPageAsync(ScrapedPageEntity page)
+        {
+            _context.ScrapedPages.Add(page);
+            await _context.SaveChangesAsync();
+
+            return page;
+        }
+
+        #endregion
     }
 }

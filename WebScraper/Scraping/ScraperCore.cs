@@ -15,6 +15,7 @@ namespace WebScraper.Scraping
         private readonly ScraperConfig _config;
         private readonly ILogger _logger;
         private readonly List<IScraperComponent> _components = new List<IScraperComponent>();
+        private readonly List<ScraperError> _errors = new List<ScraperError>();
         private bool _isInitialized = false;
         private bool _isDisposed = false;
         private CancellationTokenSource _cancellationTokenSource;
@@ -23,6 +24,11 @@ namespace WebScraper.Scraping
         /// Gets the configuration for this scraper
         /// </summary>
         public ScraperConfig Config => _config;
+
+        /// <summary>
+        /// Gets a list of errors that occurred during scraping
+        /// </summary>
+        public IReadOnlyList<ScraperError> Errors => _errors.AsReadOnly();
 
         /// <summary>
         /// Initializes a new instance of the ScraperCore class
@@ -233,6 +239,28 @@ namespace WebScraper.Scraping
         }
 
         /// <summary>
+        /// Adds an error to the error collection
+        /// </summary>
+        /// <param name="url">The URL that caused the error</param>
+        /// <param name="message">The error message</param>
+        public void AddError(string url, string message)
+        {
+            var error = new ScraperError
+            {
+                Url = url,
+                Message = message,
+                Timestamp = DateTime.Now
+            };
+            
+            lock (_errors)
+            {
+                _errors.Add(error);
+            }
+            
+            _logger.LogError($"Scraper error for {url}: {message}");
+        }
+
+        /// <summary>
         /// Disposes resources
         /// </summary>
         public void Dispose()
@@ -271,5 +299,26 @@ namespace WebScraper.Scraping
 
             _logger.LogInformation("Scraper disposed");
         }
+    }
+
+    /// <summary>
+    /// Represents a scraper error
+    /// </summary>
+    public class ScraperError
+    {
+        /// <summary>
+        /// The URL that caused the error
+        /// </summary>
+        public string Url { get; set; }
+        
+        /// <summary>
+        /// The error message
+        /// </summary>
+        public string Message { get; set; }
+        
+        /// <summary>
+        /// When the error occurred
+        /// </summary>
+        public DateTime Timestamp { get; set; }
     }
 }

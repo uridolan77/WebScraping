@@ -42,18 +42,31 @@ namespace WebScraper.Scraping.Components
                 // Ensure output directory exists
                 if (!Directory.Exists(Config.OutputDirectory))
                 {
+                    LogInfo($"Creating output directory: {Config.OutputDirectory}");
                     Directory.CreateDirectory(Config.OutputDirectory);
                 }
 
-                // Create connection string
-                _dbConnectionString = $"Data Source={Path.Combine(Config.OutputDirectory, "scraper_state.db")}";
+                // Get scraper instance ID
                 _scraperInstanceId = Config.Name ?? "default";
+                LogInfo($"Using scraper instance ID: {_scraperInstanceId}");
 
-                // Create state manager
-                _stateManager = new StateManagement.PersistentStateManager(_dbConnectionString, LogInfo);
+                // Create a valid state directory
+                var stateDirectory = Path.Combine(Config.OutputDirectory, "state");
+                if (!Directory.Exists(stateDirectory))
+                {
+                    LogInfo($"Creating state directory: {stateDirectory}");
+                    Directory.CreateDirectory(stateDirectory);
+                }
+
+                // Create state manager with the directory (not a connection string)
+                LogInfo($"Creating state manager with directory: {stateDirectory}");
+                _stateManager = new StateManagement.PersistentStateManager(stateDirectory, LogInfo);
+                
+                LogInfo("Initializing state manager...");
                 await _stateManager.InitializeAsync();
 
                 // Save initial scraper state
+                LogInfo("Saving initial scraper state...");
                 var initialState = new StateManagement.ScraperState
                 {
                     ScraperId = _scraperInstanceId,
@@ -70,6 +83,15 @@ namespace WebScraper.Scraping.Components
             catch (Exception ex)
             {
                 LogError(ex, "Failed to initialize persistent state manager");
+                LogError(ex, $"Error details: {ex.Message}");
+                
+                if (ex.InnerException != null)
+                {
+                    LogError(ex, $"Inner exception: {ex.InnerException.Message}");
+                }
+                
+                // Instead of silently continuing, re-throw to properly handle the error
+                throw;
             }
         }
 

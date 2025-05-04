@@ -51,5 +51,12 @@ namespace WebScraperApi.Services.Execution
         /// <param name="id">The ID of the scraper</param>
         /// <returns>The status of the scraper</returns>
         Task<ScraperStatus> GetScraperStatusAsync(string id);
+
+        /// <summary>
+        /// Gets the detailed state information of a scraper, including error details
+        /// </summary>
+        /// <param name="id">The ID of the scraper</param>
+        /// <returns>The detailed state of the scraper</returns>
+        Task<WebScraperApi.Models.ScraperState> GetScraperStateAsync(string id);
     }
 }

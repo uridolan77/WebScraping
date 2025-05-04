@@ -19,6 +19,8 @@ namespace WebScraperApi.Models
         public bool IsRunning { get; set; }
         public string Status { get; set; } = "Idle"; // Status string representation
         public string Message { get; set; } = string.Empty; // Status message
+        public bool HasErrors { get; set; } = false; // Indicates if the scraper has encountered errors
+        public string LastError { get; set; } = string.Empty; // The last error encountered by the scraper
 
         // Timing information
         public DateTime? StartTime { get; set; }
@@ -26,6 +28,7 @@ namespace WebScraperApi.Models
         public DateTime? LastRunStartTime { get => StartTime; set => StartTime = value; } // Alias for StartTime
         public DateTime? LastRunEndTime { get => EndTime; set => EndTime = value; } // Alias for EndTime
         public string ElapsedTime { get; set; } = string.Empty;
+        public DateTime? LastUpdate { get; set; } = DateTime.Now; // Last time the state was updated
 
         // Progress information
         public int UrlsProcessed { get; set; }

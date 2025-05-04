@@ -21,8 +21,21 @@ export const getAllScrapers = async () => {
  */
 export const getScraper = async (id) => {
   try {
+    // Pass the promise directly to handleResponse instead of awaiting it first
     return handleResponse(apiClient.get(`/Scraper/${id}`));
   } catch (error) {
+    // Special handling for 404 errors (scraper not found)
+    if (error.response && error.response.status === 404) {
+      console.warn(`Scraper with ID ${id} not found. It may have been deleted.`);
+      // Return a default object indicating the scraper doesn't exist
+      return { 
+        id, 
+        notFound: true, 
+        name: 'Scraper not found', 
+        message: 'This scraper may have been deleted or never existed.'
+      };
+    }
+    
     throw handleApiError(error, `Failed to fetch scraper with ID ${id}`);
   }
 };
@@ -245,6 +258,19 @@ export const getScraperStatus = async (id) => {
     return handleResponse(apiClient.get(`/Scraper/${id}/status`));
   } catch (error) {
     throw handleApiError(error, `Failed to get status for scraper with ID ${id}`);
+  }
+};
+
+/**
+ * Get detailed scraper status
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Detailed scraper status including metrics and error details
+ */
+export const getScraperDetailedStatus = async (id) => {
+  try {
+    return handleResponse(apiClient.get(`/Scraper/${id}/detailed-status`));
+  } catch (error) {
+    throw handleApiError(error, `Failed to get detailed status for scraper with ID ${id}`);
   }
 };
 

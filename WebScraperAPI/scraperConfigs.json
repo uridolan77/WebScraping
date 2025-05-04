@@ -27,5 +27,58 @@
       ".navigation",
       "footer"
     ]
+  },
+  {
+    "id": "mga-scraper",
+    "name": "Malta Gaming Authority Scraper",
+    "startUrl": "https://www.mga.org.mt/legislation-regulations/",
+    "baseUrl": "https://www.mga.org.mt",
+    "outputDirectory": "ScrapedData/MGA",
+    "maxDepth": 4,
+    "maxPages": 500,
+    "delayBetweenRequests": 1500,
+    "maxConcurrentRequests": 3,
+    "followLinks": true,
+    "followExternalLinks": false,
+    "createdAt": "2025-05-02T00:00:00Z",
+    "lastModified": "2025-05-02T00:00:00Z",
+    "runCount": 0,
+    "contentExtractorSelectors": [
+      "article",
+      ".entry-content",
+      ".regulation-content"
+    ]
+  },
+  {
+    "id": "fca-scraper",
+    "name": "FCA Financial Regulations Scraper",
+    "startUrl": "https://www.fca.org.uk/firms/financial-crime",
+    "baseUrl": "https://www.fca.org.uk",
+    "outputDirectory": "ScrapedData/FCA",
+    "maxDepth": 6,
+    "maxPages": 1200,
+    "delayBetweenRequests": 2000,
+    "maxConcurrentRequests": 4,
+    "followLinks": true,
+    "followExternalLinks": false,
+    "createdAt": "2025-05-02T00:00:00Z",
+    "lastModified": "2025-05-02T00:00:00Z", 
+    "runCount": 0
+  },
+  {
+    "id": "ico-scraper",
+    "name": "ICO Data Protection Scraper",
+    "startUrl": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/",
+    "baseUrl": "https://ico.org.uk",
+    "outputDirectory": "ScrapedData/ICO",
+    "maxDepth": 5,
+    "maxPages": 800,
+    "delayBetweenRequests": 1500,
+    "maxConcurrentRequests": 3,
+    "followLinks": true,
+    "followExternalLinks": false,
+    "createdAt": "2025-05-03T00:00:00Z",
+    "lastModified": "2025-05-03T00:00:00Z",
+    "runCount": 0
   }
 ]

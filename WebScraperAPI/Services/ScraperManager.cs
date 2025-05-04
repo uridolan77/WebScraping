@@ -243,10 +243,12 @@ namespace WebScraperApi.Services
                     return true;
                 }
 
-                // Update status
+                // Update initial status
                 instance.Status.IsRunning = true;
                 instance.Status.StartTime = DateTime.Now;
                 instance.Status.Message = "Starting scraper execution";
+                instance.Status.HasErrors = false;
+                instance.Status.LastError = string.Empty;
 
                 // Add log message
                 _monitoringService.AddLogMessage(id, "Starting scraper execution");
@@ -282,10 +284,18 @@ namespace WebScraperApi.Services
                 }
                 else
                 {
+                    // Update status - this will reflect any error messages set by the execution service
+                    // We need to check the scraper state for error details
+                    var scraperState = await _executionService.GetScraperStateAsync(id);
+                    
                     instance.Status.IsRunning = false;
                     instance.Status.HasErrors = true;
-                    instance.Status.Message = "Failed to start scraper";
-                    _monitoringService.AddLogMessage(id, "Scraper failed to start - execution service returned failure");
+                    instance.Status.Message = scraperState?.Message ?? "Failed to start scraper";
+                    instance.Status.LastError = scraperState?.LastError ?? "Unknown error occurred";
+                    
+                    _monitoringService.AddLogMessage(id, $"Failed to start scraper: {instance.Status.LastError}");
+                    _logger.LogError("Failed to start scraper {Id}: {Error}", id, instance.Status.LastError);
+                    
                     return false;
                 }
             }
@@ -299,7 +309,7 @@ namespace WebScraperApi.Services
                 {
                     _monitoringService.AddLogMessage(id, $"Inner exception: {ex.InnerException.Message}");
                 }
-
+                
                 // Update status
                 var instance = _stateService.GetScraperInstance(id);
                 if (instance != null)

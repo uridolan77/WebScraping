@@ -68,8 +68,12 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(
         policy =>
         {
-            // For development, explicitly allow the React app's origin
-            policy.WithOrigins("http://localhost:5173")
+            // For development, explicitly allow multiple origins
+            policy.WithOrigins(
+                    "http://localhost:5173",  // Original React app origin
+                    "http://localhost:5203",  // Frontend origin that's trying to access the API
+                    "https://localhost:7143"  // API's own origin for self-calls
+                  )
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -170,10 +174,23 @@ builder.Services.AddSwaggerGen(c =>
     if (File.Exists(xmlPath))
     {
         c.IncludeXmlComments(xmlPath);
+        Console.WriteLine($"Including XML comments from: {xmlPath}");
+    }
+    else
+    {
+        Console.WriteLine($"Warning: XML documentation file not found at: {xmlPath}");
     }
 
     // Use fully qualified object names to avoid conflicts
     c.CustomSchemaIds(type => type.FullName);
+    
+    // Add a conflict resolver for actions with the same path
+    c.ResolveConflictingActions(apiDescriptions =>
+    {
+        // Use the first action in case of conflicts
+        // This helps when you have duplicate routes
+        return apiDescriptions.First();
+    });
 });
 
 var app = builder.Build();
@@ -266,6 +283,23 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Web Scraper API v1"));
+    
+    // In development, check database table naming conventions
+    try
+    {
+        var connectionString = GetConnectionString(builder.Configuration, "WebStraction");
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            // Check if all tables follow expected naming conventions
+            WebScraperApi.Data.DatabaseTableNameFixer.EnsureCorrectTableNames(
+                app.Services, 
+                connectionString);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to check database table names: {ex.Message}");
+    }
 }
 
 // Move UseCors before routing for correct CORS handling

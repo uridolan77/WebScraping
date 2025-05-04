@@ -140,12 +140,35 @@ namespace WebScraper
                 
             try
             {
+                _logger.LogInformation("Starting scraper initialization...");
+                _logger.LogInformation($"Scraper configuration: Name={_config.Name}, StartUrl={_config.StartUrl}");
+                _logger.LogInformation($"Output directory: {_config.OutputDirectory}");
+
+                // Ensure output directory exists
+                if (!string.IsNullOrEmpty(_config.OutputDirectory) && !System.IO.Directory.Exists(_config.OutputDirectory))
+                {
+                    _logger.LogInformation($"Creating output directory: {_config.OutputDirectory}");
+                    System.IO.Directory.CreateDirectory(_config.OutputDirectory);
+                }
+
+                // Initialize core components
+                _logger.LogInformation("Initializing core components...");
                 await _core.InitializeAsync();
                 _isInitialized = true;
+                _logger.LogInformation("Scraper initialization completed successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to initialize scraper");
+                _logger.LogError($"Error details: {ex.Message}");
+                
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError($"Inner exception: {ex.InnerException.Message}");
+                    _logger.LogError($"Inner exception stack trace: {ex.InnerException.StackTrace}");
+                }
+                
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 throw;
             }
         }
@@ -157,12 +180,18 @@ namespace WebScraper
         {
             if (!_isInitialized)
             {
+                _logger.LogInformation("Scraper not initialized, initializing now...");
                 await InitializeAsync();
             }
             
             try
             {
+                _logger.LogInformation("Starting scraping process...");
+                _logger.LogInformation($"Configuration details: MaxDepth={_config.MaxDepth}, MaxConcurrentRequests={_config.MaxConcurrentRequests}");
+                
                 await _core.StartScrapingAsync();
+                
+                _logger.LogInformation("Scraping process completed successfully");
                 
                 // Update metrics
                 Metrics.LastRunTime = DateTime.Now;
@@ -171,10 +200,20 @@ namespace WebScraper
                     Metrics.FirstRunTime = DateTime.Now;
                 }
                 Metrics.TotalRuns++;
+                _logger.LogInformation($"Updated metrics: TotalRuns={Metrics.TotalRuns}, FailedRuns={Metrics.FailedRuns}");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during scraping");
+                _logger.LogError($"Error details: {ex.Message}");
+                
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError($"Inner exception: {ex.InnerException.Message}");
+                    _logger.LogError($"Inner exception stack trace: {ex.InnerException.StackTrace}");
+                }
+                
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 Metrics.FailedRuns++;
                 throw;
             }

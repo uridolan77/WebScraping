@@ -23,6 +23,13 @@ namespace WebScraperApi.Data.Repositories
         Task<ScraperStatusEntity> GetScraperStatusAsync(string scraperId);
         Task<ScraperStatusEntity> UpdateScraperStatusAsync(ScraperStatusEntity status);
 
+        // Scraper Log operations - Added missing methods
+        Task<List<ScraperLogEntity>> GetScraperLogsAsync(string scraperId, int limit = 100);
+        Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry);
+
+        // Scraped Page operations - Added missing method
+        Task<ScrapedPageEntity> AddScrapedPageAsync(ScrapedPageEntity page);
+
         // Scraper Run operations
         Task<List<ScraperRunEntity>> GetScraperRunsAsync(string scraperId, int limit = 10);
         Task<ScraperRunEntity> GetScraperRunByIdAsync(string runId);

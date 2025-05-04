@@ -19,6 +19,7 @@ namespace WebScraperApi.Services.Execution
         private readonly ILogger<ScraperExecutionService> _logger;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ScraperComponentFactory _componentFactory;
+        private readonly Dictionary<string, WebScraperApi.Models.ScraperState> _scraperStates = new();
 
         public ScraperExecutionService(
             ILogger<ScraperExecutionService> logger,
@@ -44,34 +45,70 @@ namespace WebScraperApi.Services.Execution
         {
             try
             {
+                // Update state to reflect we're starting
+                scraperState.IsRunning = true;
+                scraperState.Status = "Starting";
+                scraperState.StartTime = DateTime.Now;
+                scraperState.Message = $"Starting scraper: {config.Name}";
+                scraperState.LastUpdate = DateTime.Now;
+                
+                // Store the state for retrieval
+                _scraperStates[config.Id] = scraperState;
+                
                 logAction($"Starting scraper: {config.Name}");
+                _logger.LogInformation("Starting scraper '{Name}' with ID '{Id}'", config.Name, config.Id);
 
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
-
+                
                 // Validate the configuration
                 if (!await ValidateConfigurationAsync(scraperConfig, logAction))
                 {
+                    // Update state to reflect validation failure
+                    scraperState.IsRunning = false;
+                    scraperState.Status = "Failed";
+                    scraperState.EndTime = DateTime.Now;
+                    scraperState.Message = "Configuration validation failed";
+                    scraperState.HasErrors = true;
+                    scraperState.LastError = "Configuration validation failed - check logs for details";
+                    scraperState.LastUpdate = DateTime.Now;
+                    
+                    // Update stored state
+                    _scraperStates[config.Id] = scraperState;
+                    
+                    _logger.LogError("Scraper '{Name}' failed validation", config.Name);
                     return false;
                 }
 
                 try
                 {
                     // Always use EnhancedScraper for all scrapers
+                    _logger.LogDebug("Creating enhanced scraper for '{Name}'", config.Name);
                     var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
 
                     // Create a standard Scraper that we can use with the existing code
+                    _logger.LogDebug("Creating standard scraper for '{Name}'", config.Name);
                     var scraper = new Scraper(scraperConfig, _logger);
 
                     // Store the enhanced scraper instance in the state
                     scraperState.Scraper = enhancedScraper;
+                    
+                    // Update state
+                    scraperState.Status = "Initializing";
+                    scraperState.Message = "Initializing scraper...";
 
                     // Initialize the scraper
                     logAction("Initializing scraper...");
+                    _logger.LogInformation("Initializing scraper '{Name}'", config.Name);
                     await scraper.InitializeAsync();
+
+                    // Update state
+                    scraperState.Status = "Running";
+                    scraperState.Message = "Starting scraping process...";
 
                     // Start scraping
                     logAction("Starting scraping process...");
+                    _logger.LogInformation("Starting scraping process for '{Name}'", config.Name);
                     await scraper.StartScrapingAsync();
 
                     // Set up continuous monitoring if enabled
@@ -80,36 +117,72 @@ namespace WebScraperApi.Services.Execution
                         var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
                         await scraper.SetupContinuousScrapingAsync(interval);
                         logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
+                        _logger.LogInformation("Continuous monitoring enabled for '{Name}' with interval: {Interval:F1} hours", 
+                            config.Name, interval.TotalHours);
                     }
 
                     logAction("Scraping operation completed successfully");
-
+                    _logger.LogInformation("Scraping operation completed successfully for '{Name}'", config.Name);
+                    
+                    // Update state on successful completion
+                    scraperState.Status = "Completed";
+                    scraperState.Message = "Scraping operation completed successfully";
+                    scraperState.EndTime = DateTime.Now;
+                    
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Error during scraper execution for {config.Name}: {ex.Message}");
+                    string errorMessage = $"Error during scraper execution for {config.Name}: {ex.Message}";
+                    _logger.LogError(ex, errorMessage);
                     logAction($"Error during scraper execution: {ex.Message}");
                     
+                    // Capture inner exception details if available
+                    string innerErrorMessage = null;
                     if (ex.InnerException != null)
                     {
-                        _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
-                        logAction($"Inner error: {ex.InnerException.Message}");
+                        innerErrorMessage = ex.InnerException.Message;
+                        _logger.LogError(ex.InnerException, $"Inner exception: {innerErrorMessage}");
+                        logAction($"Inner error: {innerErrorMessage}");
                     }
+                    
+                    // Update state with error information
+                    scraperState.IsRunning = false;
+                    scraperState.Status = "Failed";
+                    scraperState.EndTime = DateTime.Now;
+                    scraperState.HasErrors = true;
+                    scraperState.Message = errorMessage;
+                    scraperState.LastError = innerErrorMessage != null 
+                        ? $"{errorMessage} - {innerErrorMessage}" 
+                        : errorMessage;
                     
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error executing scraper {config.Name}");
+                string errorMessage = $"Error executing scraper {config.Name}: {ex.Message}";
+                _logger.LogError(ex, errorMessage);
                 logAction($"Error during scraping: {ex.Message}");
                 
+                // Capture inner exception details if available
+                string innerErrorMessage = null;
                 if (ex.InnerException != null)
                 {
-                    _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
-                    logAction($"Inner error: {ex.InnerException.Message}");
+                    innerErrorMessage = ex.InnerException.Message;
+                    _logger.LogError(ex.InnerException, $"Inner exception: {innerErrorMessage}");
+                    logAction($"Inner error: {innerErrorMessage}");
                 }
+                
+                // Update state with error information
+                scraperState.IsRunning = false;
+                scraperState.Status = "Failed";
+                scraperState.EndTime = DateTime.Now;
+                scraperState.HasErrors = true;
+                scraperState.Message = errorMessage;
+                scraperState.LastError = innerErrorMessage != null 
+                    ? $"{errorMessage} - {innerErrorMessage}" 
+                    : errorMessage;
                 
                 return false;
             }
@@ -214,6 +287,7 @@ namespace WebScraperApi.Services.Execution
             try
             {
                 logAction("Validating configuration...");
+                _logger.LogDebug("Validating configuration for {Name}...", config.Name);
 
                 // Add a small delay to make this truly async
                 await Task.Delay(1);
@@ -221,13 +295,17 @@ namespace WebScraperApi.Services.Execution
                 // Basic validation
                 if (string.IsNullOrEmpty(config.StartUrl))
                 {
-                    logAction("Error: Start URL is required");
+                    string error = "Error: Start URL is required";
+                    logAction(error);
+                    _logger.LogError(error);
                     return false;
                 }
 
                 if (!Uri.TryCreate(config.StartUrl, UriKind.Absolute, out _))
                 {
-                    logAction("Error: Start URL must be a valid URL");
+                    string error = "Error: Start URL must be a valid URL";
+                    logAction(error);
+                    _logger.LogError(error);
                     return false;
                 }
 
@@ -240,6 +318,25 @@ namespace WebScraperApi.Services.Execution
                         config.Name);
 
                     logAction($"Output directory not specified, using default: {config.OutputDirectory}");
+                    _logger.LogInformation("Output directory not specified, using default: {OutputDirectory}", config.OutputDirectory);
+                }
+                
+                // Ensure output directory exists
+                if (!Directory.Exists(config.OutputDirectory))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(config.OutputDirectory);
+                        logAction($"Created output directory: {config.OutputDirectory}");
+                        _logger.LogInformation("Created output directory: {OutputDirectory}", config.OutputDirectory);
+                    }
+                    catch (Exception ex)
+                    {
+                        string error = $"Error creating output directory: {ex.Message}";
+                        logAction(error);
+                        _logger.LogError(ex, error);
+                        return false;
+                    }
                 }
 
                 // Validate crawl depth
@@ -247,22 +344,24 @@ namespace WebScraperApi.Services.Execution
                 {
                     config.MaxCrawlDepth = 3;
                     logAction($"Invalid crawl depth, using default: {config.MaxCrawlDepth}");
+                    _logger.LogWarning("Invalid crawl depth, using default: {MaxCrawlDepth}", config.MaxCrawlDepth);
                 }
 
                 // Advanced validation for specific scraper types
                 if (config.EnableRegulatoryContentAnalysis)
                 {
                     logAction("Validating regulatory monitor configuration...");
-
+                    _logger.LogDebug("Validating regulatory monitor configuration for {Name}...", config.Name);
                     // Add any regulatory-specific validation here
                 }
 
                 logAction("Configuration validation successful");
+                _logger.LogInformation("Configuration validation successful for {Name}", config.Name);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error validating configuration");
+                _logger.LogError(ex, "Error validating configuration for {Name}", config.Name);
                 logAction($"Configuration validation error: {ex.Message}");
                 return false;
             }
@@ -353,6 +452,55 @@ namespace WebScraperApi.Services.Execution
             {
                 _logger.LogError(ex, $"Error getting status for scraper with ID {id}");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Gets the detailed state information of a scraper, including error details
+        /// </summary>
+        /// <param name="id">The ID of the scraper</param>
+        /// <returns>The detailed state of the scraper</returns>
+        public async Task<WebScraperApi.Models.ScraperState> GetScraperStateAsync(string id)
+        {
+            try
+            {
+                _logger.LogInformation("Getting detailed state for scraper with ID {Id}", id);
+
+                // In a real implementation, we would load this from a persistent store
+                // For now, we'll create a new instance with the latest information
+                await Task.Delay(1); // Small delay to make this truly async
+
+                // Check the shared state dictionary to see if we have state info for this scraper
+                if (_scraperStates.TryGetValue(id, out var state))
+                {
+                    return state;
+                }
+
+                // Return a default state if we don't have one
+                return new WebScraperApi.Models.ScraperState
+                {
+                    Id = id,
+                    IsRunning = false,
+                    Status = "Idle",
+                    Message = "No state information available",
+                    LastUpdate = DateTime.Now
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting detailed state for scraper with ID {Id}", id);
+                
+                // Return a state with error information
+                return new WebScraperApi.Models.ScraperState
+                {
+                    Id = id,
+                    IsRunning = false,
+                    Status = "Error",
+                    HasErrors = true,
+                    Message = "Error retrieving state information",
+                    LastError = ex.Message,
+                    LastUpdate = DateTime.Now
+                };
             }
         }
     }

@@ -31,17 +31,21 @@ namespace WebScraperApi.Data
         public DbSet<ProcessedDocumentEntity> ProcessedDocuments { get; set; }
         public DbSet<DocumentMetadataEntity> DocumentMetadata { get; set; }
         public DbSet<ScraperMetricEntity> ScraperMetrics { get; set; }
+        public DbSet<ScraperLogEntity> ScraperLogs { get; set; }
+        public DbSet<ScrapedPageEntity> ScrapedPages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configure table names (to match the SQL script)
-            modelBuilder.Entity<ScraperConfigEntity>().ToTable("scraper_config");
+            // Configure table names to use singular camelCase format (without underscores)
+            
+            // Configure ScraperConfigEntity
+            modelBuilder.Entity<ScraperConfigEntity>().ToTable("scraperconfig");
 
             // Configure ScraperStartUrlEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperStartUrlEntity>()
-                .ToTable("scraper_start_url")
+                .ToTable("scraperstarturlentity")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.StartUrls)
                 .HasForeignKey(s => s.ScraperId)
@@ -49,7 +53,7 @@ namespace WebScraperApi.Data
 
             // Configure ContentExtractorSelectorEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ContentExtractorSelectorEntity>()
-                .ToTable("content_extractor_selector")
+                .ToTable("contentextractorselector")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.ContentExtractorSelectors)
                 .HasForeignKey(s => s.ScraperId)
@@ -57,7 +61,7 @@ namespace WebScraperApi.Data
 
             // Configure KeywordAlertEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.KeywordAlertEntity>()
-                .ToTable("keyword_alert")
+                .ToTable("keywordalert")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.KeywordAlerts)
                 .HasForeignKey(s => s.ScraperId)
@@ -65,7 +69,7 @@ namespace WebScraperApi.Data
 
             // Configure WebhookTriggerEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.WebhookTriggerEntity>()
-                .ToTable("webhook_trigger")
+                .ToTable("webhooktrigger")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.WebhookTriggers)
                 .HasForeignKey(s => s.ScraperId)
@@ -73,7 +77,7 @@ namespace WebScraperApi.Data
 
             // Configure DomainRateLimitEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.DomainRateLimitEntity>()
-                .ToTable("domain_rate_limit")
+                .ToTable("domainratelimit")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.DomainRateLimits)
                 .HasForeignKey(s => s.ScraperId)
@@ -81,7 +85,7 @@ namespace WebScraperApi.Data
 
             // Configure ProxyConfigurationEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ProxyConfigurationEntity>()
-                .ToTable("proxy_configuration")
+                .ToTable("proxyconfiguration", schema: null)
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.ProxyConfigurations)
                 .HasForeignKey(s => s.ScraperId)
@@ -89,7 +93,7 @@ namespace WebScraperApi.Data
 
             // Configure ScraperScheduleEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperScheduleEntity>()
-                .ToTable("scraper_schedule")
+                .ToTable("scraperschedule")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.Schedules)
                 .HasForeignKey(s => s.ScraperId)
@@ -97,7 +101,7 @@ namespace WebScraperApi.Data
 
             // Configure ScraperRunEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperRunEntity>()
-                .ToTable("scraper_run")
+                .ToTable("scraperrun")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.Runs)
                 .HasForeignKey(s => s.ScraperId)
@@ -105,7 +109,7 @@ namespace WebScraperApi.Data
 
             // Configure ScraperStatusEntity
             modelBuilder.Entity<ScraperStatusEntity>()
-                .ToTable("scraper_status")
+                .ToTable("scraperstatus")
                 .HasOne(s => s.ScraperConfig)
                 .WithOne(c => c.Status)
                 .HasForeignKey<ScraperStatusEntity>(s => s.ScraperId)
@@ -113,7 +117,7 @@ namespace WebScraperApi.Data
 
             // Configure PipelineMetricEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.PipelineMetricEntity>()
-                .ToTable("pipeline_metric")
+                .ToTable("pipelinemetric")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.PipelineMetrics)
                 .HasForeignKey(s => s.ScraperId)
@@ -121,7 +125,7 @@ namespace WebScraperApi.Data
 
             // Configure LogEntryEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.LogEntryEntity>()
-                .ToTable("log_entry")
+                .ToTable("logentry")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.LogEntries)
                 .HasForeignKey(s => s.ScraperId)
@@ -129,7 +133,7 @@ namespace WebScraperApi.Data
 
             // Configure ContentChangeRecordEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ContentChangeRecordEntity>()
-                .ToTable("content_change_record")
+                .ToTable("contentchangerecord")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.ContentChangeRecords)
                 .HasForeignKey(s => s.ScraperId)
@@ -137,7 +141,7 @@ namespace WebScraperApi.Data
 
             // Configure ProcessedDocumentEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ProcessedDocumentEntity>()
-                .ToTable("processed_document")
+                .ToTable("processeddocument")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.ProcessedDocuments)
                 .HasForeignKey(s => s.ScraperId)
@@ -145,66 +149,37 @@ namespace WebScraperApi.Data
 
             // Configure DocumentMetadataEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.DocumentMetadataEntity>()
-                .ToTable("document_metadata");
+                .ToTable("documentmetadata");
 
             // Configure ScraperMetricEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperMetricEntity>()
-                .ToTable("scraper_metrics")
+                .ToTable("scrapermetric")
                 .HasOne(s => s.ScraperConfig)
                 .WithMany(c => c.Metrics)
                 .HasForeignKey(s => s.ScraperId)
                 .HasPrincipalKey(c => c.Id);
 
-            // Remove the duplicate configuration for ScraperStartUrlEntity since it's already configured above
-
-            // Configure case-sensitive column names for MySQL
-            foreach (var entity in modelBuilder.Model.GetEntityTypes())
-            {
-                // Replace camel case property names with snake_case column names
-                foreach (var property in entity.GetProperties())
-                {
-                    property.SetColumnName(SnakeCase(property.Name));
-                }
-
-                // Replace camel case navigation/foreign key names with snake_case
-                foreach (var key in entity.GetForeignKeys())
-                {
-                    foreach (var column in key.Properties)
-                    {
-                        column.SetColumnName(SnakeCase(column.Name));
-                    }
-                }
-            }
+            // Configure ScraperLogEntity
+            modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperLogEntity>()
+                .ToTable("scraperlog")
+                .HasOne(s => s.ScraperConfig)
+                .WithMany(c => c.Logs)
+                .HasForeignKey(s => s.ScraperId)
+                .HasPrincipalKey(c => c.Id);
+    
+            // Configure ScrapedPageEntity
+            modelBuilder.Entity<WebScraperApi.Data.Entities.ScrapedPageEntity>()
+                .ToTable("scrapedpage") 
+                .HasOne(s => s.ScraperConfig)
+                .WithMany(c => c.ScrapedPages)
+                .HasForeignKey(s => s.ScraperId)
+                .HasPrincipalKey(c => c.Id);
 
             // Configure one-to-one relationship between ScraperConfigEntity and ScraperStatusEntity
             modelBuilder.Entity<ScraperConfigEntity>()
                 .HasOne(s => s.Status)
                 .WithOne(s => s.ScraperConfig)
                 .HasForeignKey<ScraperStatusEntity>(s => s.ScraperId);
-
-            // Other relationships will be configured by convention
-        }
-
-        // Helper method to convert CamelCase to snake_case for MySQL compatibility
-        private string SnakeCase(string input)
-        {
-            if (string.IsNullOrEmpty(input))
-                return input;
-
-            var result = input.ToString();
-
-            // Handle common ID abbreviation
-            result = System.Text.RegularExpressions.Regex.Replace(result, "ID$", "_id");
-
-            // Convert other camel case
-            result = System.Text.RegularExpressions.Regex.Replace(
-                result,
-                "(?<!^)([A-Z][a-z]|(?<=[a-z])[A-Z])",
-                "_$1",
-                System.Text.RegularExpressions.RegexOptions.Compiled)
-                .ToLower();
-
-            return result;
         }
     }
 }

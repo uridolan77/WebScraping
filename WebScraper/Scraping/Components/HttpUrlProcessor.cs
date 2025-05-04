@@ -210,44 +210,80 @@ namespace WebScraper.Scraping.Components
                 return;
             }
             
-            // Get content
-            var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            
-            var content = await response.Content.ReadAsStringAsync();
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "text/html";
-            
-            // If it's a document, handle it separately
-            if (IsDocumentType(contentType))
+            try 
             {
-                await ProcessDocumentAsync(url, await response.Content.ReadAsByteArrayAsync(), contentType);
-                return;
+                // Get content
+                var response = await _httpClient.GetAsync(url);
+                
+                // Track the status code without throwing exceptions for non-2xx status codes
+                int statusCode = (int)response.StatusCode;
+                
+                // Update state manager with status code
+                var stateManager = GetComponent<IStateManager>();
+                if (stateManager != null)
+                {
+                    await stateManager.MarkUrlVisitedAsync(url, statusCode);
+                }
+                
+                // Handle non-success status codes
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorMessage = $"URL returned status code {statusCode}: {response.ReasonPhrase}";
+                    LogWarning($"{errorMessage} - {url}");
+                    
+                    // Add error to core's error collection so it can be displayed in UI
+                    Core.AddError(url, errorMessage);
+                    
+                    // Don't proceed with content processing for non-success responses
+                    return;
+                }
+                
+                var content = await response.Content.ReadAsStringAsync();
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "text/html";
+                
+                // If it's a document, handle it separately
+                if (IsDocumentType(contentType))
+                {
+                    await ProcessDocumentAsync(url, await response.Content.ReadAsByteArrayAsync(), contentType);
+                    return;
+                }
+                
+                // Extract text content
+                string textContent = "";
+                var htmlDoc = new HtmlDocument();
+                htmlDoc.LoadHtml(content);
+                
+                var contentExtractor = GetComponent<IContentExtractor>();
+                if (contentExtractor != null)
+                {
+                    textContent = await contentExtractor.ExtractTextContentAsync(content);
+                }
+                else
+                {
+                    // Simple extraction if no extractor is available
+                    textContent = htmlDoc.DocumentNode.InnerText;
+                }
+                
+                // Process content
+                await ProcessContentAsync(url, content, textContent, contentType);
+                
+                // Extract and process links
+                var links = ExtractLinks(htmlDoc, url);
+                if (links.Any())
+                {
+                    await ProcessUrlBatchAsync(links);
+                }
             }
-            
-            // Extract text content
-            string textContent = "";
-            var htmlDoc = new HtmlDocument();
-            htmlDoc.LoadHtml(content);
-            
-            var contentExtractor = GetComponent<IContentExtractor>();
-            if (contentExtractor != null)
+            catch (Exception ex)
             {
-                textContent = await contentExtractor.ExtractTextContentAsync(content);
-            }
-            else
-            {
-                // Simple extraction if no extractor is available
-                textContent = htmlDoc.DocumentNode.InnerText;
-            }
-            
-            // Process content
-            await ProcessContentAsync(url, content, textContent, contentType);
-            
-            // Extract and process links
-            var links = ExtractLinks(htmlDoc, url);
-            if (links.Any())
-            {
-                await ProcessUrlBatchAsync(links);
+                // Log the error
+                LogError(ex, $"Exception processing URL: {url}");
+                
+                // Add error to core's error collection so it can be displayed in UI
+                Core.AddError(url, ex.Message);
+                
+                // Re-throw to propagate through standard error handling
+                throw;
             }
         }
         
