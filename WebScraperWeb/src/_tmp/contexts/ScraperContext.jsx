@@ -7,7 +7,8 @@ import {
   updateScraper,
   deleteScraper,
   startScraper,
-  stopScraper
+  stopScraper,
+  getScraperLogs
 } from '../api/scrapers';
 
 // Create the context
@@ -23,6 +24,7 @@ export const ScraperProvider = ({ children }) => {
   const [scrapers, setScrapers] = useState([]);
   const [selectedScraper, setSelectedScraper] = useState(null);
   const [scraperStatus, setScraperStatus] = useState({});
+  const [scraperLogs, setScraperLogs] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -224,10 +226,25 @@ export const ScraperProvider = ({ children }) => {
     }
   };
 
+  // Function to fetch logs for a specific scraper
+  const fetchScraperLogs = async (id, limit = 100) => {
+    try {
+      setError(null);
+      const logs = await getScraperLogs(id, limit);
+      setScraperLogs(prev => ({ ...prev, [id]: logs }));
+      return logs;
+    } catch (err) {
+      setError(`Failed to fetch logs for scraper with ID ${id}`);
+      console.error(err);
+      return [];
+    }
+  };
+
   const value = {
     scrapers,
     selectedScraper,
     scraperStatus,
+    scraperLogs,
     loading,
     error,
     fetchScraper,
@@ -237,7 +254,8 @@ export const ScraperProvider = ({ children }) => {
     removeScraper,
     start,
     stop,
-    fetchAllScraperStatus
+    fetchAllScraperStatus,
+    fetchScraperLogs
   };
 
   return (

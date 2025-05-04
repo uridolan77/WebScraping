@@ -18,6 +18,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,23 +65,20 @@ if (!string.IsNullOrEmpty(keyVaultEndpoint))
     }
 }
 
-// Add services to the container.
-builder.Services.AddCors(options =>
+// Add JWT Authentication
+builder.Services.AddAuthentication(options =>
 {
-    options.AddDefaultPolicy(
-        policy =>
-        {
-            // For development, explicitly allow multiple origins
-            policy.WithOrigins(
-                    "http://localhost:5173",  // Original React app origin
-                    "http://localhost:5203",  // Frontend origin that's trying to access the API
-                    "https://localhost:7143"  // API's own origin for self-calls
-                  )
-                  .AllowAnyHeader()
-                  .AllowAnyMethod();
-        });
-});
-
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -144,7 +144,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
     ConnectionMultiplexer.Connect(GetConnectionString(builder.Configuration, "Redis")));
 
 // Register repositories
-builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
+builder.Services.AddScoped<IScraperConfigRepository, WebScraperApi.Data.Repositories.ScraperConfigRepository>();
 builder.Services.AddScoped<IScraperStatusRepository, ScraperStatusRepository>();
 builder.Services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
 builder.Services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();

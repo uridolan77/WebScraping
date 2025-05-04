@@ -22,6 +22,7 @@ import {
 import { useScrapers } from '../contexts/ScraperContext';
 import PageHeader from '../components/common/PageHeader';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import ScraperLogs from '../components/scrapers/ScraperLogs';
 
 // Tab panel component
 function TabPanel(props) {
@@ -54,43 +55,59 @@ const ScraperDetail = () => {
     error, 
     start, 
     stop, 
-    fetchScraperStatus, 
-    fetchScraperLogs, 
-    status, 
-    logs 
+    scraperStatus,
+    scraperLogs,
+    fetchScraperLogs
   } = useScrapers();
   
   const [tabValue, setTabValue] = useState(0);
   const [actionInProgress, setActionInProgress] = useState(false);
+  const [logs, setLogs] = useState([]);
 
   // Fetch scraper data
   useEffect(() => {
     if (id) {
       fetchScraper(id);
-      fetchScraperStatus(id);
-      fetchScraperLogs(id);
+      
+      // Initial fetch of logs
+      fetchScraperLogs(id, 100).then(fetchedLogs => {
+        if (fetchedLogs) {
+          setLogs(fetchedLogs);
+        }
+      });
     }
-  }, [id, fetchScraper, fetchScraperStatus, fetchScraperLogs]);
+  }, [id, fetchScraper, fetchScraperLogs]);
 
-  // Set up polling for status updates
+  // Set up polling for logs updates based on scraper status
   useEffect(() => {
     if (!id) return;
     
-    const statusInterval = setInterval(() => {
-      fetchScraperStatus(id);
+    const logsInterval = setInterval(() => {
+      const status = scraperStatus[id];
+      if (status?.isRunning && tabValue === 1) { // Only auto-refresh logs when logs tab is active
+        fetchScraperLogs(id, 100).then(fetchedLogs => {
+          if (fetchedLogs) {
+            setLogs(fetchedLogs);
+          }
+        });
+      }
     }, 5000);
     
-    const logsInterval = setInterval(() => {
-      if (status?.isRunning) {
-        fetchScraperLogs(id);
-      }
-    }, 10000);
-    
     return () => {
-      clearInterval(statusInterval);
       clearInterval(logsInterval);
     };
-  }, [id, status, fetchScraperStatus, fetchScraperLogs]);
+  }, [id, tabValue, scraperStatus, fetchScraperLogs]);
+
+  // Update logs when tab changes to logs tab
+  useEffect(() => {
+    if (tabValue === 1 && id) {
+      fetchScraperLogs(id, 100).then(fetchedLogs => {
+        if (fetchedLogs) {
+          setLogs(fetchedLogs);
+        }
+      });
+    }
+  }, [tabValue, id, fetchScraperLogs]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -102,7 +119,6 @@ const ScraperDetail = () => {
     try {
       setActionInProgress(true);
       await start(id);
-      fetchScraperStatus(id);
     } catch (error) {
       console.error('Error starting scraper:', error);
     } finally {
@@ -116,7 +132,6 @@ const ScraperDetail = () => {
     try {
       setActionInProgress(true);
       await stop(id);
-      fetchScraperStatus(id);
     } catch (error) {
       console.error('Error stopping scraper:', error);
     } finally {
@@ -177,7 +192,7 @@ const ScraperDetail = () => {
 
       {/* Action Buttons */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
-        {status?.isRunning ? (
+        {scraperStatus[id]?.isRunning ? (
           <Button
             variant="contained"
             color="warning"
@@ -212,14 +227,12 @@ const ScraperDetail = () => {
           color="error"
           startIcon={<DeleteIcon />}
           onClick={() => {
-            // Show delete confirmation dialog
-            // This would typically be implemented with a state variable and a Dialog component
             if (window.confirm('Are you sure you want to delete this scraper? This action cannot be undone.')) {
               // Delete scraper and navigate back to list
               // deleteScraper(id).then(() => navigate('/scrapers'));
             }
           }}
-          disabled={status?.isRunning}
+          disabled={scraperStatus[id]?.isRunning}
         >
           Delete
         </Button>
@@ -234,7 +247,7 @@ const ScraperDetail = () => {
           <Box>
             <Typography variant="body2" color="text.secondary">Status</Typography>
             <Typography variant="body1" fontWeight="bold">
-              {status?.isRunning ? 'Running' : status?.hasErrors ? 'Error' : 'Idle'}
+              {scraperStatus[id]?.isRunning ? 'Running' : scraperStatus[id]?.hasErrors ? 'Error' : 'Idle'}
             </Typography>
           </Box>
           
@@ -350,46 +363,10 @@ const ScraperDetail = () => {
         
         {/* Logs Tab */}
         <TabPanel value={tabValue} index={1}>
-          <Typography variant="h6" gutterBottom>Scraper Logs</Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          {logs && logs.length > 0 ? (
-            <Box 
-              sx={{ 
-                maxHeight: '500px', 
-                overflow: 'auto', 
-                bgcolor: '#f5f5f5', 
-                p: 2, 
-                borderRadius: 1,
-                fontFamily: 'monospace'
-              }}
-            >
-              {logs.map((log, index) => (
-                <Box 
-                  key={index} 
-                  sx={{ 
-                    mb: 1, 
-                    color: log.level === 'Error' ? 'error.main' : 
-                           log.level === 'Warning' ? 'warning.main' : 'text.primary'
-                  }}
-                >
-                  <Typography variant="body2" component="span" sx={{ mr: 2, color: 'text.secondary' }}>
-                    {new Date(log.timestamp).toLocaleString()}
-                  </Typography>
-                  <Typography variant="body2" component="span" sx={{ mr: 2, fontWeight: 'bold' }}>
-                    [{log.level}]
-                  </Typography>
-                  <Typography variant="body2" component="span">
-                    {log.message}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          ) : (
-            <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
-              No logs available
-            </Typography>
-          )}
+          <ScraperLogs 
+            logs={logs} 
+            isRunning={scraperStatus[id]?.isRunning || false} 
+          />
         </TabPanel>
         
         {/* Results Tab */}
