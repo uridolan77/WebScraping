@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using WebScraperApi.Models;
 using WebScraperApi.Services.Common;
 using WebScraperApi.Services.State;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace WebScraperApi.Services.Monitoring
 {
@@ -16,6 +17,7 @@ namespace WebScraperApi.Services.Monitoring
     {
         private readonly ILogger<ScraperMonitoringService> _logger;
         private readonly IScraperStateService _stateService;
+        private readonly IServiceProvider _serviceProvider;
         private readonly Dictionary<string, List<LogEntry>> _logStore;
 
         /// <summary>
@@ -25,10 +27,12 @@ namespace WebScraperApi.Services.Monitoring
 
         public ScraperMonitoringService(
             ILogger<ScraperMonitoringService> logger,
-            IScraperStateService stateService)
+            IScraperStateService stateService,
+            IServiceProvider serviceProvider)
         {
             _logger = logger;
             _stateService = stateService;
+            _serviceProvider = serviceProvider;
             _logStore = new Dictionary<string, List<LogEntry>>();
         }
 
@@ -55,18 +59,63 @@ namespace WebScraperApi.Services.Monitoring
         /// <returns>Collection of log entries</returns>
         public IEnumerable<LogEntry> GetScraperLogs(string id, int limit = 100)
         {
-            if (!_logStore.ContainsKey(id))
+            // First, attempt to get logs from the database using a scoped repository
+            List<LogEntry> databaseLogs = new List<LogEntry>();
+            try
             {
-                return new List<LogEntry>();
+                // Create a scope to resolve the scoped repository
+                using (var scope = _serviceProvider.CreateScope())
+                {
+                    var repository = scope.ServiceProvider.GetRequiredService<WebScraperApi.Data.Repositories.IScraperRepository>();
+                    var dbLogs = repository.GetScraperLogsAsync(id, limit).GetAwaiter().GetResult();
+                    
+                    if (dbLogs != null && dbLogs.Count > 0)
+                    {
+                        foreach (var dbLog in dbLogs)
+                        {
+                            databaseLogs.Add(new LogEntry
+                            {
+                                Timestamp = dbLog.Timestamp,
+                                Message = dbLog.Message,
+                                Level = dbLog.LogLevel
+                            });
+                        }
+                        
+                        _logger.LogInformation($"Retrieved {databaseLogs.Count} log entries from database for scraper {id}");
+                    }
+                    else
+                    {
+                        _logger.LogInformation($"No log entries found in database for scraper {id}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving log entries from database for scraper {id}");
             }
 
-            lock (_logStore)
+            // Then, get any in-memory logs
+            List<LogEntry> memoryLogs = new List<LogEntry>();
+            if (_logStore.ContainsKey(id))
             {
-                return _logStore[id]
-                    .OrderByDescending(log => log.Timestamp)
-                    .Take(limit)
-                    .ToList();
+                lock (_logStore)
+                {
+                    memoryLogs = _logStore[id].ToList();
+                }
+                _logger.LogInformation($"Retrieved {memoryLogs.Count} log entries from memory for scraper {id}");
             }
+
+            // Combine both sources, deduplicating by timestamp and message
+            var combinedLogs = databaseLogs
+                .Concat(memoryLogs)
+                .GroupBy(log => new { log.Timestamp, log.Message })
+                .Select(group => group.First())
+                .OrderByDescending(log => log.Timestamp)
+                .Take(limit)
+                .ToList();
+
+            _logger.LogInformation($"Returning {combinedLogs.Count} combined log entries for scraper {id}");
+            return combinedLogs;
         }
 
         /// <summary>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Typography, 
   Alert,
@@ -10,9 +10,25 @@ import {
   Divider,
   Grid,
   Chip,
-  LinearProgress
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Tab,
+  Tabs,
+  TextField,
+  InputAdornment
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { 
+  Refresh as RefreshIcon,
+  Link as LinkIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
+  Search as SearchIcon 
+} from '@mui/icons-material';
 
 /**
  * Helper function to handle .NET-style response format with $values
@@ -37,6 +53,35 @@ const MonitorTab = ({
   isActionInProgress,
   onRefreshMonitor 
 }) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  // Extract logs from monitorData and filter for URLs and errors
+  const logs = getArrayFromResponse(monitorData?.logs || []);
+  const processedUrls = logs.filter(log => 
+    log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'))
+  );
+  const errorLogs = logs.filter(log => 
+    log.logLevel === 'Error' || log.logLevel === 'Warning'
+  );
+
+  // Filter based on search query
+  const filteredLogs = searchQuery 
+    ? logs.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
+    : logs;
+  
+  const filteredUrls = searchQuery 
+    ? processedUrls.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
+    : processedUrls;
+  
+  const filteredErrors = searchQuery 
+    ? errorLogs.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
+    : errorLogs;
+
   return (
     <>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -66,29 +111,200 @@ const MonitorTab = ({
           <CircularProgress />
         </Box>
       ) : (
-        <Grid container spacing={3}>
-          {/* Status Card */}
-          <Grid item xs={12} md={6}>
-            <StatusCard monitorData={monitorData} />
-          </Grid>
+        <>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            {/* Status Card */}
+            <Grid item xs={12} md={6}>
+              <StatusCard monitorData={monitorData} />
+            </Grid>
 
-          {/* Progress Card */}
-          <Grid item xs={12} md={6}>
-            <ProgressCard monitorData={monitorData} />
-          </Grid>
+            {/* Progress Card */}
+            <Grid item xs={12} md={6}>
+              <ProgressCard monitorData={monitorData} />
+            </Grid>
 
-          {/* Performance Card */}
-          <Grid item xs={12} md={6}>
-            <PerformanceCard monitorData={monitorData} />
-          </Grid>
+            {/* Performance Card */}
+            <Grid item xs={12} md={6}>
+              <PerformanceCard monitorData={monitorData} />
+            </Grid>
 
-          {/* Recent Activity Card */}
-          <Grid item xs={12} md={6}>
-            <RecentActivityCard monitorData={monitorData} getArrayFromResponse={getArrayFromResponse} />
+            {/* Recent Activity Card */}
+            <Grid item xs={12} md={6}>
+              <RecentActivityCard monitorData={monitorData} getArrayFromResponse={getArrayFromResponse} />
+            </Grid>
           </Grid>
-        </Grid>
+          
+          {/* Processed URLs and Errors Section */}
+          <Typography variant="h6" gutterBottom>
+            Detailed Processing Logs
+          </Typography>
+          <Paper sx={{ mb: 3, p: 0 }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={activeTab} onChange={handleTabChange} aria-label="log tabs">
+                <Tab label={`All Logs (${logs.length})`} id="tab-0" />
+                <Tab 
+                  label={`Processed URLs (${processedUrls.length})`} 
+                  id="tab-1" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  label={`Errors & Warnings (${errorLogs.length})`} 
+                  id="tab-2" 
+                  iconPosition="start"
+                  sx={{ color: errorLogs.length > 0 ? 'error.main' : 'inherit' }}
+                />
+              </Tabs>
+            </Box>
+            
+            <Box sx={{ p: 2 }}>
+              <TextField
+                fullWidth
+                placeholder="Search logs..."
+                size="small"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ mb: 2 }}
+              />
+              
+              {/* All Logs Tab */}
+              {activeTab === 0 && (
+                <LogsList 
+                  logs={filteredLogs} 
+                  emptyMessage="No logs found" 
+                  maxHeight={400}
+                />
+              )}
+              
+              {/* Processed URLs Tab */}
+              {activeTab === 1 && (
+                <LogsList 
+                  logs={filteredUrls} 
+                  emptyMessage="No processed URLs found" 
+                  maxHeight={400}
+                  highlightUrls
+                />
+              )}
+              
+              {/* Errors & Warnings Tab */}
+              {activeTab === 2 && (
+                <LogsList 
+                  logs={filteredErrors} 
+                  emptyMessage="No errors or warnings found" 
+                  maxHeight={400}
+                  highlightErrors
+                />
+              )}
+            </Box>
+          </Paper>
+        </>
       )}
     </>
+  );
+};
+
+/**
+ * Component to display a list of logs
+ */
+const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, highlightErrors = false }) => {
+  if (!logs || logs.length === 0) {
+    return (
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <Typography variant="body1" color="textSecondary">
+          {emptyMessage}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <List
+      sx={{
+        maxHeight,
+        overflow: 'auto',
+        bgcolor: 'background.paper',
+        borderRadius: 1,
+        '& .MuiListItem-root': {
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          py: 1
+        }
+      }}
+      dense
+    >
+      {logs.map((log, index) => {
+        const isUrlLog = log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'));
+        const isError = log.logLevel === 'Error';
+        const isWarning = log.logLevel === 'Warning';
+        
+        let url = '';
+        if (isUrlLog) {
+          const urlMatch = log.message.match(/URL: (.+?)( |$)/);
+          if (urlMatch && urlMatch.length > 1) {
+            url = urlMatch[1];
+          }
+        }
+        
+        return (
+          <ListItem
+            key={index}
+            sx={{
+              bgcolor: isError ? 'rgba(255, 0, 0, 0.05)' : 
+                     isWarning ? 'rgba(255, 165, 0, 0.05)' : 
+                     isUrlLog ? 'rgba(0, 0, 255, 0.05)' : 'inherit'
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 36 }}>
+              {isError && <ErrorIcon color="error" fontSize="small" />}
+              {isWarning && <WarningIcon color="warning" fontSize="small" />}
+              {isUrlLog && <LinkIcon color="primary" fontSize="small" />}
+              {!isError && !isWarning && !isUrlLog && <InfoIcon color="action" fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Box>
+                  <Typography 
+                    variant="body2" 
+                    component="span" 
+                    sx={{ 
+                      fontWeight: (isError || isWarning) ? 'bold' : 'normal',
+                      fontFamily: 'monospace', 
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {log.message}
+                  </Typography>
+                  {url && (
+                    <Chip 
+                      label={url.length > 40 ? url.substring(0, 37) + '...' : url}
+                      size="small" 
+                      variant="outlined" 
+                      color="primary"
+                      component="a"
+                      href={url}
+                      target="_blank"
+                      clickable
+                      sx={{ ml: 1, maxWidth: '200px' }}
+                    />
+                  )}
+                </Box>
+              }
+              secondary={
+                <Typography variant="caption" color="textSecondary" sx={{ fontFamily: 'monospace' }}>
+                  {new Date(log.timestamp).toLocaleString()} - {log.logLevel}
+                </Typography>
+              }
+            />
+          </ListItem>
+        );
+      })}
+    </List>
   );
 };
 

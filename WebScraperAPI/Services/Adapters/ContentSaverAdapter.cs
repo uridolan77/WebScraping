@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -7,6 +8,8 @@ using WebScraper.Scraping;
 using WebScraper.Scraping.Components;
 using WebScraperApi.Data.Entities;
 using WebScraperApi.Data.Repositories;
+using WebScraperApi.Models;
+using WebScraperApi.Services;
 using HtmlAgilityPack;
 
 namespace WebScraperApi.Services.Adapters
@@ -18,8 +21,13 @@ namespace WebScraperApi.Services.Adapters
     {
         private readonly IScraperRepository _repository;
         private readonly ILogger<ContentSaverAdapter> _logger;
+        private readonly ScraperRunHistoryLogger _historyLogger;
         private string _outputDirectory;
         private bool _initialized = false;
+        private int _pagesProcessed = 0;
+        private DateTime _startTime;
+        private readonly Process _currentProcess;
+        private readonly Stopwatch _stopwatch = new Stopwatch();
 
         /// <summary>
         /// Initializes a new instance of the ContentSaverAdapter class
@@ -28,6 +36,10 @@ namespace WebScraperApi.Services.Adapters
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _startTime = DateTime.Now;
+            _historyLogger = new ScraperRunHistoryLogger(logger);
+            _currentProcess = Process.GetCurrentProcess();
+            _stopwatch.Start();
         }
 
         /// <summary>
@@ -50,10 +62,25 @@ namespace WebScraperApi.Services.Adapters
                 LogInfo($"Output directory not specified, using default: {_outputDirectory}");
             }
 
-            // Create a timestamped subfolder for this run
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            _outputDirectory = Path.Combine(_outputDirectory, timestamp);
-            LogInfo($"Using timestamped output directory for this run: {_outputDirectory}");
+            // Create a dedicated subdirectory for run history files to avoid path conflicts
+            string runHistoryDir = Path.Combine(_outputDirectory, "run_history");
+            if (!Directory.Exists(runHistoryDir))
+            {
+                try
+                {
+                    Directory.CreateDirectory(runHistoryDir);
+                    LogInfo($"Created run history directory: {runHistoryDir}");
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, $"Failed to create run history directory: {runHistoryDir}");
+                    // Fallback to main output directory
+                    runHistoryDir = _outputDirectory;
+                }
+            }
+
+            // Use the root output directory without creating a timestamped subfolder
+            LogInfo($"Using root output directory for content: {_outputDirectory}");
 
             // Create the output directory if it doesn't exist
             if (!Directory.Exists(_outputDirectory))
@@ -85,8 +112,107 @@ namespace WebScraperApi.Services.Adapters
                 LogError(ex, "Failed to create test file in output directory. File saving may not work.");
             }
 
+            // Initialize the run history logger
+            try
+            {
+                string scraperId = Core.Config?.Name ?? "unknown";
+                string scraperName = Core.Config?.Name ?? "Unknown Scraper";
+                
+                // Use the dedicated run history directory instead of the main output directory
+                _logger.LogInformation($"Initializing run history logger with scraper ID: {scraperId}, name: {scraperName}, output dir: {runHistoryDir}");
+                
+                // Create a configuration object for the run history
+                var runConfig = new ScraperRunConfiguration
+                {
+                    StartUrl = Core.Config?.StartUrl ?? string.Empty,
+                    BaseUrl = Core.Config?.BaseUrl ?? string.Empty,
+                    MaxDepth = Core.Config?.MaxDepth ?? 0,
+                    MaxPages = 100, // Default value since MaxPages doesn't exist in ScraperConfig
+                    MaxConcurrentRequests = Core.Config?.MaxConcurrentRequests ?? 0,
+                    DelayBetweenRequests = Core.Config?.DelayBetweenRequests ?? 0,
+                    FollowLinks = true, // Default value since FollowLinks doesn't exist in ScraperConfig
+                    FollowExternalLinks = Core.Config?.FollowExternalLinks ?? false,
+                    RespectRobotsTxt = Core.Config?.RespectRobotsTxt ?? true
+                };
+                
+                // Add content selectors if available
+                if (Core.Config?.ContentExtractorSelectors != null)
+                {
+                    runConfig.ContentExtractorSelectors.AddRange(Core.Config.ContentExtractorSelectors);
+                }
+                
+                // Add exclude selectors if available
+                if (Core.Config?.ContentExtractorExcludeSelectors != null)
+                {
+                    runConfig.ContentExtractorExcludeSelectors.AddRange(Core.Config.ContentExtractorExcludeSelectors);
+                }
+                
+                // Initialize the run history logger with the dedicated directory
+                await _historyLogger.InitializeAsync(scraperId, scraperName, runHistoryDir, runConfig);
+                
+                LogInfo($"Successfully initialized run history logger with output file: {_historyLogger.GetHistoryFilePath()}");
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, "Failed to initialize run history logger");
+            }
+
+            // Initialize the scraper status in the database
+            try
+            {
+                string scraperId = Core.Config?.Name ?? "unknown";
+                LogInfo($"Initializing scraper status in database for ScraperId: {scraperId}");
+                
+                var status = new ScraperStatusEntity
+                {
+                    ScraperId = scraperId,
+                    IsRunning = true,
+                    StartTime = DateTime.Now,
+                    UrlsProcessed = 0,
+                    UrlsQueued = 0,
+                    DocumentsProcessed = 0,
+                    HasErrors = false,
+                    Message = "Scraper started",
+                    ElapsedTime = "00:00:00",
+                    LastStatusUpdate = DateTime.Now,
+                    LastUpdate = DateTime.Now,
+                    LastError = ""
+                };
+                
+                await _repository.UpdateScraperStatusAsync(status);
+                LogInfo($"Successfully initialized scraper status in database for ScraperId: {scraperId}");
+                
+                // Also add a log entry to the database
+                var logEntry = new ScraperLogEntity
+                {
+                    ScraperId = scraperId,
+                    Timestamp = DateTime.Now,
+                    LogLevel = "Info",
+                    Message = "Scraper started"
+                };
+                
+                await _repository.AddScraperLogAsync(logEntry);
+                LogInfo($"Successfully added start log entry to database");
+                
+                // Add the initialization log entry to the run history
+                await _historyLogger.AddLogEntryAsync("Info", "Scraper started");
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, "Failed to initialize scraper status in database");
+                LogError(ex, $"Database connection error: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
+                }
+                
+                // Add the error to the run history
+                await _historyLogger.AddLogEntryAsync("Error", $"Failed to initialize scraper status in database: {ex.Message}");
+            }
+
             _initialized = true;
             LogInfo("ContentSaverAdapter initialized successfully");
+            await _historyLogger.AddLogEntryAsync("Info", "ContentSaverAdapter initialized successfully");
         }
 
         /// <summary>
@@ -101,6 +227,13 @@ namespace WebScraperApi.Services.Adapters
 
             try
             {
+                // Create a stopwatch to measure processing time for this URL
+                var urlProcessingStopwatch = new Stopwatch();
+                urlProcessingStopwatch.Start();
+                
+                // Increment the pages processed counter
+                _pagesProcessed++;
+                
                 // Extract title from HTML
                 string title = "Unknown";
                 try
@@ -118,12 +251,92 @@ namespace WebScraperApi.Services.Adapters
                     LogWarning($"Could not extract title: {ex.Message}");
                 }
 
-                // Save to database
+                // Get the scraper ID from the configuration
+                string scraperId = Core.Config?.Name ?? "unknown";
+                
+                // Update scraper status in the database - WITH EXPLICIT ERROR HANDLING
                 try
                 {
-                    // Get the scraper ID from the configuration
-                    string scraperId = Core.Config?.Name ?? "unknown";
-                    LogInfo($"Attempting to save content to database for URL: {url} with ScraperId: {scraperId}");
+                    // Calculate elapsed time
+                    TimeSpan elapsed = DateTime.Now - _startTime;
+                    string elapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                    
+                    LogInfo($"CRITICAL DEBUG: About to update scraper status in database with ScraperId: {scraperId}, Processed URLs: {_pagesProcessed}");
+                    
+                    // Try to get the existing status first with error handling
+                    ScraperStatusEntity status = null;
+                    try 
+                    {
+                        status = await _repository.GetScraperStatusAsync(scraperId);
+                        LogInfo($"Successfully retrieved status for ScraperId: {scraperId}, IsRunning: {(status?.IsRunning ?? false)}");
+                    }
+                    catch (Exception getEx)
+                    {
+                        LogError(getEx, $"Failed to get existing status from database for ScraperId: {scraperId}");
+                        LogInfo($"Creating new status entity for ScraperId: {scraperId}");
+                        // Continue with null status, we'll create a new one
+                    }
+                    
+                    if (status == null)
+                    {
+                        LogInfo($"Creating new status entity for ScraperId: {scraperId}");
+                        status = new ScraperStatusEntity
+                        {
+                            ScraperId = scraperId,
+                            IsRunning = true,
+                            StartTime = _startTime,
+                            UrlsProcessed = _pagesProcessed,
+                            UrlsQueued = 0,
+                            DocumentsProcessed = _pagesProcessed,
+                            HasErrors = false,
+                            Message = $"Processing URL: {url}",
+                            ElapsedTime = elapsedTime,
+                            LastStatusUpdate = DateTime.Now,
+                            LastUpdate = DateTime.Now,
+                            LastError = ""
+                        };
+                    }
+                    else
+                    {
+                        LogInfo($"Updating existing status entity for ScraperId: {scraperId}");
+                        status.IsRunning = true;
+                        status.UrlsProcessed = _pagesProcessed;
+                        status.DocumentsProcessed = _pagesProcessed;
+                        status.Message = $"Processing URL: {url}";
+                        status.ElapsedTime = elapsedTime;
+                        status.LastStatusUpdate = DateTime.Now;
+                        status.LastUpdate = DateTime.Now;
+                    }
+                    
+                    try
+                    {
+                        var updatedStatus = await _repository.UpdateScraperStatusAsync(status);
+                        LogInfo($"SUCCESSFULLY updated scraper status in database: ScraperId={scraperId}, ProcessedURLs={_pagesProcessed}, ElapsedTime={elapsedTime}");
+                        if (updatedStatus != null)
+                        {
+                            LogInfo($"Updated status ID: {updatedStatus.ScraperId}, IsRunning: {updatedStatus.IsRunning}, URLs: {updatedStatus.UrlsProcessed}");
+                        }
+                    }
+                    catch (Exception updateEx)
+                    {
+                        LogError(updateEx, $"CRITICAL: Failed to update scraper status in database for ScraperId: {scraperId}");
+                        if (updateEx.InnerException != null)
+                        {
+                            LogError(updateEx.InnerException, $"Inner exception: {updateEx.InnerException.Message}");
+                        }
+                        LogError(updateEx, $"Stack trace: {updateEx.StackTrace}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, "Failed to update scraper status in database");
+                    LogError(ex, $"Stack trace: {ex.StackTrace}");
+                }
+
+                // Save to database with explicit error handling
+                try
+                {
+                    LogInfo($"CRITICAL DEBUG: About to save content to database for URL: {url} with ScraperId: {scraperId}");
 
                     var scrapedPage = new ScrapedPageEntity
                     {
@@ -137,9 +350,89 @@ namespace WebScraperApi.Services.Adapters
                     // Log the entity details before saving
                     LogInfo($"ScrapedPageEntity created with ScraperId: {scrapedPage.ScraperId}, URL: {scrapedPage.Url}, Content Length: {scrapedPage.HtmlContent.Length}, ScrapedAt: {scrapedPage.ScrapedAt}");
 
-                    // Save to database
-                    var savedEntity = await _repository.AddScrapedPageAsync(scrapedPage);
-                    LogInfo($"Successfully saved content to database for URL: {url}, Entity ID: {savedEntity.Id}");
+                    // Save to database with explicit try/catch
+                    ScrapedPageEntity savedEntity = null;
+                    try
+                    {
+                        savedEntity = await _repository.AddScrapedPageAsync(scrapedPage);
+                        LogInfo($"SUCCESSFULLY saved content to database for URL: {url}" + 
+                            (savedEntity != null ? $", Entity ID: {savedEntity.Id}" : ", but returned entity was null"));
+                    }
+                    catch (Exception saveEx)
+                    {
+                        LogError(saveEx, $"CRITICAL: Failed to save content to database for URL: {url}");
+                        if (saveEx.InnerException != null)
+                        {
+                            LogError(saveEx.InnerException, $"Inner exception: {saveEx.InnerException.Message}");
+                        }
+                        LogError(saveEx, $"Stack trace: {saveEx.StackTrace}");
+                    }
+                    
+                    // Add metric for pages processed - with explicit error handling
+                    try
+                    {
+                        LogInfo($"CRITICAL DEBUG: About to add metric to database: PagesProcessed={_pagesProcessed}");
+                        
+                        // Create metric entity using the correct namespace/type
+                        var metricEntity = new WebScraperApi.Data.ScraperMetricEntity
+                        {
+                            ScraperId = scraperId,
+                            MetricName = "PagesProcessed",
+                            MetricValue = _pagesProcessed,
+                            Timestamp = DateTime.Now
+                        };
+                        
+                        try
+                        {
+                            var savedMetric = await _repository.AddScraperMetricAsync(metricEntity);
+                            LogInfo($"SUCCESSFULLY added PagesProcessed metric to database: {_pagesProcessed}" +
+                                (savedMetric != null ? $", Metric ID: {savedMetric.Id}" : ", but returned metric was null"));
+                        }
+                        catch (Exception metricEx)
+                        {
+                            LogError(metricEx, $"CRITICAL: Failed to add metric to database");
+                            if (metricEx.InnerException != null)
+                            {
+                                LogError(metricEx.InnerException, $"Inner exception: {metricEx.InnerException.Message}");
+                            }
+                            LogError(metricEx, $"Stack trace: {metricEx.StackTrace}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex, $"Failed to add metric to database: {ex.Message}");
+                        LogError(ex, $"Stack trace: {ex.StackTrace}");
+                    }
+                    
+                    // Add log entry for successful processing - with explicit error handling
+                    try
+                    {
+                        var logEntry = new ScraperLogEntity
+                        {
+                            ScraperId = scraperId,
+                            Timestamp = DateTime.Now,
+                            LogLevel = "Info",
+                            Message = $"Processed URL: {url} (#{_pagesProcessed})"
+                        };
+
+                        try
+                        {
+                            var savedLog = await _repository.AddScraperLogAsync(logEntry);
+                            LogInfo($"SUCCESSFULLY added log entry to database for URL processing");
+                        }
+                        catch (Exception logEx)
+                        {
+                            LogError(logEx, $"Failed to add log entry to database");
+                            if (logEx.InnerException != null)
+                            {
+                                LogError(logEx.InnerException, $"Inner exception: {logEx.InnerException.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex, $"Failed to create log entry: {ex.Message}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -151,6 +444,11 @@ namespace WebScraperApi.Services.Adapters
                     }
                     LogError(ex, $"Stack trace: {ex.StackTrace}");
                 }
+
+                // Variable to track whether file saving was successful
+                bool fileSavingSuccess = false;
+                string htmlFilePath = string.Empty;
+                string textFilePath = string.Empty;
 
                 // Save to files if output directory is configured
                 if (!string.IsNullOrEmpty(_outputDirectory))
@@ -171,25 +469,22 @@ namespace WebScraperApi.Services.Adapters
                         LogInfo($"Generated safe filename: {filename} for URL: {url}");
 
                         // Save HTML file
-                        string htmlFilePath = Path.Combine(_outputDirectory, $"{filename}.html");
+                        htmlFilePath = Path.Combine(_outputDirectory, $"{filename}.html");
                         LogInfo($"Attempting to save HTML content to: {htmlFilePath}");
                         await TrySaveFileWithRetryAsync(htmlFilePath, htmlContent);
 
                         // Save text file
-                        string textFilePath = Path.Combine(_outputDirectory, $"{filename}.txt");
+                        textFilePath = Path.Combine(_outputDirectory, $"{filename}.txt");
                         LogInfo($"Attempting to save text content to: {textFilePath}");
                         await TrySaveFileWithRetryAsync(textFilePath, textContent);
 
                         // Log the file saving
                         LogInfo($"Successfully saved content to files: {htmlFilePath} and {textFilePath}");
+                        fileSavingSuccess = true;
 
                         // Add a log entry to the database
                         try
                         {
-                            // Get the scraper ID from the configuration
-                            string scraperId = Core.Config?.Name ?? "unknown";
-                            LogInfo($"Adding log entry to database for file saving, ScraperId: {scraperId}");
-
                             var logEntry = new ScraperLogEntity
                             {
                                 ScraperId = scraperId,
@@ -224,10 +519,183 @@ namespace WebScraperApi.Services.Adapters
                 {
                     LogWarning($"Output directory is not configured, skipping file saving for URL: {url}");
                 }
+
+                // Add the processed URL to the run history
+                urlProcessingStopwatch.Stop();
+                
+                try
+                {
+                    var urlInfo = new ProcessedUrlInfo
+                    {
+                        Url = url,
+                        ProcessedAt = DateTime.Now,
+                        ProcessingTime = urlProcessingStopwatch.Elapsed,
+                        Success = true, // Assume success since we got this far
+                        FilePath = fileSavingSuccess ? htmlFilePath : string.Empty,
+                        ContentSizeBytes = htmlContent.Length,
+                        Title = title
+                    };
+                    
+                    await _historyLogger.RecordProcessedUrlAsync(urlInfo);
+                    
+                    // Update metrics in the run history
+                    await _historyLogger.UpdateMetricsAsync(
+                        urlsQueued: 0, // We don't have this information here
+                        documentsProcessed: _pagesProcessed,
+                        peakMemoryUsageMb: _currentProcess.WorkingSet64 / 1024.0 / 1024.0
+                    );
+                    
+                    // Add a log entry to the run history
+                    await _historyLogger.AddLogEntryAsync("Info", $"Processed URL: {url} (#{_pagesProcessed})");
+                    
+                    LogInfo($"Added URL processing information to run history: {url}");
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, $"Failed to update run history with processed URL: {url}");
+                }
             }
             catch (Exception ex)
             {
                 LogError(ex, $"Error in SaveContentAsync for URL: {url}");
+                LogError(ex, $"Stack trace: {ex.StackTrace}");
+                
+                // Record the error in the run history
+                try
+                {
+                    // Add an error entry to the run history
+                    await _historyLogger.AddLogEntryAsync("Error", $"Failed to process URL: {url} - {ex.Message}");
+                    
+                    // Record this URL as failed
+                    var urlInfo = new ProcessedUrlInfo
+                    {
+                        Url = url,
+                        ProcessedAt = DateTime.Now,
+                        ProcessingTime = TimeSpan.Zero,
+                        Success = false,
+                        ContentSizeBytes = 0,
+                        ErrorMessage = ex.Message
+                    };
+                    
+                    await _historyLogger.RecordProcessedUrlAsync(urlInfo);
+                }
+                catch (Exception logEx)
+                {
+                    LogError(logEx, $"Failed to log error to run history: {logEx.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Called when scraping completes
+        /// </summary>
+        public override async Task OnScrapingCompletedAsync()
+        {
+            await base.OnScrapingCompletedAsync();
+            
+            try
+            {
+                string scraperId = Core.Config?.Name ?? "unknown";
+                LogInfo($"Scraping completed, updating status in database for ScraperId: {scraperId}");
+                
+                // Calculate elapsed time
+                TimeSpan elapsed = DateTime.Now - _startTime;
+                string elapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                
+                // Update the status
+                var status = await _repository.GetScraperStatusAsync(scraperId);
+                
+                if (status == null)
+                {
+                    status = new ScraperStatusEntity
+                    {
+                        ScraperId = scraperId,
+                        IsRunning = false,
+                        StartTime = _startTime,
+                        EndTime = DateTime.Now,
+                        UrlsProcessed = _pagesProcessed,
+                        UrlsQueued = 0,
+                        DocumentsProcessed = _pagesProcessed,
+                        HasErrors = false,
+                        Message = "Scraping completed",
+                        ElapsedTime = elapsedTime,
+                        LastStatusUpdate = DateTime.Now,
+                        LastUpdate = DateTime.Now,
+                        LastError = ""
+                    };
+                }
+                else
+                {
+                    status.IsRunning = false;
+                    status.EndTime = DateTime.Now;
+                    status.UrlsProcessed = _pagesProcessed;
+                    status.DocumentsProcessed = _pagesProcessed;
+                    status.Message = "Scraping completed";
+                    status.ElapsedTime = elapsedTime;
+                    status.LastStatusUpdate = DateTime.Now;
+                    status.LastUpdate = DateTime.Now;
+                }
+                
+                await _repository.UpdateScraperStatusAsync(status);
+                LogInfo($"Updated final scraper status in database: ProcessedURLs={_pagesProcessed}, ElapsedTime={elapsedTime}");
+                
+                // Also add a log entry to the database
+                var logEntry = new ScraperLogEntity
+                {
+                    ScraperId = scraperId,
+                    Timestamp = DateTime.Now,
+                    LogLevel = "Info",
+                    Message = $"Scraping completed. Processed {_pagesProcessed} pages in {elapsedTime}."
+                };
+                
+                await _repository.AddScraperLogAsync(logEntry);
+                LogInfo($"Successfully added completion log entry to database");
+                
+                // Complete the run history
+                try
+                {
+                    // Stop the overall performance stopwatch
+                    _stopwatch.Stop();
+                    
+                    // Get the final memory usage
+                    double peakMemoryUsageMb = _currentProcess.PeakWorkingSet64 / 1024.0 / 1024.0;
+                    
+                    // Update the metrics in the run history
+                    await _historyLogger.UpdateMetricsAsync(
+                        urlsQueued: 0, // We don't have this information here
+                        documentsProcessed: _pagesProcessed,
+                        peakMemoryUsageMb: peakMemoryUsageMb
+                    );
+                    
+                    // Complete the run history with success
+                    string completionMessage = $"Scraping completed successfully. Processed {_pagesProcessed} pages in {elapsedTime}.";
+                    await _historyLogger.CompleteRunAsync(true, completionMessage);
+                    
+                    LogInfo($"Successfully completed run history log at {_historyLogger.GetHistoryFilePath()}");
+                    
+                    // Dispose the history logger to ensure all resources are released
+                    _historyLogger.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, "Failed to complete run history log");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, "Failed to update completion status in database");
+                
+                // Try to complete the run history with an error
+                try
+                {
+                    string errorMessage = $"Scraping completed with errors: {ex.Message}";
+                    await _historyLogger.CompleteRunAsync(false, errorMessage);
+                    _historyLogger.Dispose();
+                }
+                catch (Exception historyEx)
+                {
+                    LogError(historyEx, "Failed to complete run history with error status");
+                }
             }
         }
 

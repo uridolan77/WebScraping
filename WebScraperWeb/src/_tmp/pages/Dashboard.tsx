@@ -12,7 +12,10 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Chip
+  Chip,
+  Collapse,
+  IconButton,
+  CircularProgress
 } from '@mui/material';
 import {
   Speed as SpeedIcon,
@@ -21,7 +24,10 @@ import {
   Sync as SyncIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
-  Web as WebIcon
+  Web as WebIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Link as LinkIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useScraperContext } from '../contexts/ScraperContext';
@@ -29,6 +35,7 @@ import { formatDate, formatRelativeTime } from '../utils/formatters';
 import { getStatusColor } from '../utils/helpers';
 import PageHeader from '../components/common/PageHeader';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import axios from 'axios';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -40,9 +47,14 @@ const Dashboard = () => {
     failed: 0,
     scheduled: 0
   });
+  const [expandedScraper, setExpandedScraper] = useState(null);
+  const [processingLogs, setProcessingLogs] = useState({});
+  const [loadingLogs, setLoadingLogs] = useState({});
 
   useEffect(() => {
     fetchScrapers();
+    const interval = setInterval(fetchScrapers, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
   }, [fetchScrapers]);
 
   // Calculate stats when scrapers or status changes
@@ -77,6 +89,35 @@ const Dashboard = () => {
     }
   }, [scrapers, scraperStatus]);
 
+  const fetchScraperLogs = async (scraperId) => {
+    try {
+      setLoadingLogs(prev => ({ ...prev, [scraperId]: true }));
+      const response = await axios.get(`/api/scrapers/${scraperId}/logs?limit=50`);
+      setProcessingLogs(prev => ({ ...prev, [scraperId]: response.data }));
+      setLoadingLogs(prev => ({ ...prev, [scraperId]: false }));
+    } catch (err) {
+      console.error(`Error fetching logs for scraper ${scraperId}:`, err);
+      setLoadingLogs(prev => ({ ...prev, [scraperId]: false }));
+      setProcessingLogs(prev => ({ ...prev, [scraperId]: [{ 
+        id: Date.now(), 
+        timestamp: new Date(),
+        message: 'Error loading logs', 
+        logLevel: 'Error' 
+      }] }));
+    }
+  };
+
+  const handleExpandScraper = (scraperId) => {
+    if (expandedScraper === scraperId) {
+      setExpandedScraper(null);
+    } else {
+      setExpandedScraper(scraperId);
+      if (!processingLogs[scraperId]) {
+        fetchScraperLogs(scraperId);
+      }
+    }
+  };
+
   const handleCreateScraper = () => {
     navigate('/scrapers/create');
   };
@@ -110,6 +151,11 @@ const Dashboard = () => {
   const recentScrapers = [...scrapers]
     .sort((a, b) => new Date(b.lastRun || 0) - new Date(a.lastRun || 0))
     .slice(0, 5);
+
+  // Get currently running scrapers
+  const runningScrapers = scrapers.filter(scraper => 
+    scraperStatus[scraper.id]?.isRunning
+  );
 
   return (
     <Box>
@@ -161,52 +207,6 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} sm={6} md={2.4}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <SpeedIcon color="warning" sx={{ fontSize: 40, mb: 1 }} />
-              <Typography variant="h4">{stats.scheduled}</Typography>
-              <Typography variant="body2" color="textSecondary">Scheduled</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Recent Scrapers */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Recent Scrapers</Typography>
-              <Button size="small" onClick={handleViewAllScrapers}>View All</Button>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-
-            {recentScrapers.length > 0 ? (
-              <List>
-                {recentScrapers.map((scraper) => {
-                  const status = scraperStatus[scraper.id] || {};
-                  const statusColor = getStatusColor(status.isRunning ? 'running' : status.hasErrors ? 'error' : 'completed');
-
-                  return (
-                    <ListItem
-                      key={scraper.id}
-                      button
-                      onClick={() => handleViewScraper(scraper.id)}
-                      sx={{
-                        borderLeft: `4px solid ${statusColor === 'success' ? 'green' :
-                                            statusColor === 'error' ? 'red' :
-                                            statusColor === 'warning' ? 'orange' : 'blue'}`,
-                        mb: 1,
-                        borderRadius: 1,
-                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
-                      }}
-                    >
-                      <ListItemIcon>
-                        <WebIcon />
-                      </ListItemIcon>
-                      <ListItemText
                         primary={scraper.name}
                         secondary={`Last run: ${scraper.lastRun ? formatRelativeTime(new Date(scraper.lastRun)) : 'Never'}`}
                       />

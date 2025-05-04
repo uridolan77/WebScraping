@@ -7,7 +7,9 @@ import {
   updateScraper,
   deleteScraper,
   startScraper,
-  stopScraper
+  stopScraper,
+  getScraperLogs,
+  getScraperMonitor
 } from '../api/scrapers';
 
 // Create the context
@@ -236,7 +238,9 @@ export const ScraperProvider = ({ children }) => {
     deleteScraper: removeScraper,
     startScraper: start,
     stopScraper: stop,
-    getScraperStatus
+    getScraperStatus,
+    getScraperLogs,
+    getScraperMonitor
   };
 
   return (

@@ -1039,41 +1039,130 @@ namespace WebScraperApi.Data.Repositories
         {
             try
             {
-                // First try to save to the custommetric table
-                var customMetric = new CustomMetricEntity
-                {
-                    ScraperMetricsId = 1, // Default value, will be auto-incremented
-                    MetricName = metric.MetricName,
-                    MetricValue = metric.MetricValue
-                };
-
-                _context.CustomMetric.Add(customMetric);
-                await _context.SaveChangesAsync();
-
-                // Also save to the scrapermetric table
-                _context.ScraperMetric.Add(metric);
-                await _context.SaveChangesAsync();
-
-                Console.WriteLine($"Successfully added metric: {metric.MetricName} with value {metric.MetricValue}");
-                return metric;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error adding metric: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-
-                // Try just the original table if the custom metric table fails
+                Console.WriteLine($"DEBUG: AddScraperMetricAsync called with metric name: {metric.MetricName}, value: {metric.MetricValue}, ScraperId: {metric.ScraperId}");
+                
+                // Save only to the scrapermetric table
                 try
                 {
                     _context.ScraperMetric.Add(metric);
                     await _context.SaveChangesAsync();
-                    Console.WriteLine($"Successfully added metric to original table: {metric.MetricName}");
+                    Console.WriteLine($"Successfully added metric to ScraperMetric table: {metric.MetricName} = {metric.MetricValue}");
                 }
-                catch (Exception innerEx)
+                catch (Exception primaryEx)
                 {
-                    Console.WriteLine($"Error adding to original metric table: {innerEx.Message}");
-                    Console.WriteLine($"Inner stack trace: {innerEx.StackTrace}");
+                    Console.WriteLine($"Error adding to ScraperMetric table: {primaryEx.Message}");
+                    if (primaryEx.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {primaryEx.InnerException.Message}");
+                    }
+                    Console.WriteLine($"Stack trace: {primaryEx.StackTrace}");
+                    
+                    // Try to manually execute the insert using raw SQL if EF Core fails
+                    try
+                    {
+                        Console.WriteLine("Attempting direct SQL insert to scrapermetric table");
+                        var connection = _context.Database.GetDbConnection();
+                        await connection.OpenAsync();
+                        
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = @"
+                                INSERT INTO scrapermetric (scraper_id, metric_name, metric_value, timestamp)
+                                VALUES (@scraperId, @metricName, @metricValue, @timestamp)";
+                            
+                            var scraperIdParam = command.CreateParameter();
+                            scraperIdParam.ParameterName = "@scraperId";
+                            scraperIdParam.Value = metric.ScraperId;
+                            command.Parameters.Add(scraperIdParam);
+                            
+                            var metricNameParam = command.CreateParameter();
+                            metricNameParam.ParameterName = "@metricName";
+                            metricNameParam.Value = metric.MetricName;
+                            command.Parameters.Add(metricNameParam);
+                            
+                            var metricValueParam = command.CreateParameter();
+                            metricValueParam.ParameterName = "@metricValue";
+                            metricValueParam.Value = metric.MetricValue;
+                            command.Parameters.Add(metricValueParam);
+                            
+                            var timestampParam = command.CreateParameter();
+                            timestampParam.ParameterName = "@timestamp";
+                            timestampParam.Value = metric.Timestamp;
+                            command.Parameters.Add(timestampParam);
+                            
+                            var result = await command.ExecuteNonQueryAsync();
+                            Console.WriteLine($"Direct SQL insert result: {result} rows affected");
+                        }
+                    }
+                    catch (Exception sqlEx)
+                    {
+                        Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
+                        if (sqlEx.InnerException != null)
+                        {
+                            Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
+                        }
+                        Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
+                    }
                 }
+
+                // Update the scraper status to display URLs processed in the monitor page
+                try 
+                {
+                    Console.WriteLine("Updating scraper status with latest metric information");
+                    var status = await _context.ScraperStatuses
+                        .FirstOrDefaultAsync(s => s.ScraperId == metric.ScraperId);
+                        
+                    if (status != null)
+                    {
+                        if (metric.MetricName == "PagesProcessed")
+                        {
+                            // Update URLs processed count
+                            status.UrlsProcessed = (int)metric.MetricValue;
+                            status.DocumentsProcessed = (int)metric.MetricValue;
+                            status.LastStatusUpdate = DateTime.Now;
+                            status.LastUpdate = DateTime.Now;
+                            
+                            // Keep original message if it's not a status message
+                            if (status.Message == null || status.Message.Contains("pages processed") || status.Message.Contains("Idle") || string.IsNullOrEmpty(status.Message))
+                            {
+                                status.Message = $"Processing content. {status.UrlsProcessed} pages processed.";
+                            }
+                            
+                            // Calculate elapsed time if we have a start time
+                            if (status.StartTime.HasValue)
+                            {
+                                TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
+                                status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                            }
+                            
+                            await _context.SaveChangesAsync();
+                            Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}, ElapsedTime = {status.ElapsedTime}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No scraper status found for ScraperId: {metric.ScraperId}");
+                    }
+                }
+                catch (Exception statusEx)
+                {
+                    Console.WriteLine($"Error updating scraper status with metric info: {statusEx.Message}");
+                    if (statusEx.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {statusEx.InnerException.Message}");
+                    }
+                }
+
+                return metric;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Critical error in AddScraperMetricAsync: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
 
                 return metric;
             }

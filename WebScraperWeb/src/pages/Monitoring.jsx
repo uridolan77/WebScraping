@@ -27,6 +27,16 @@ import {
   MenuItem,
   LinearProgress,
   Tooltip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  TextField,
+  InputAdornment,
+  Collapse,
+  AccordionSummary,
+  AccordionDetails,
+  Accordion
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -37,6 +47,9 @@ import {
   PlayArrow as PlayArrowIcon,
   Stop as StopIcon,
   Visibility as VisibilityIcon,
+  Link as LinkIcon,
+  Search as SearchIcon,
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { useScrapers } from '../hooks';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -81,12 +94,129 @@ const generateSampleUsageData = (hours = 24) => {
   return data.reverse();
 };
 
+/**
+ * Helper function to handle .NET-style response format with $values
+ * @param {any} data - The data to extract array from
+ * @returns {Array} - Array of items
+ */
+const getArrayFromResponse = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (data.$values && Array.isArray(data.$values)) return data.$values;
+  return [];
+};
+
+/**
+ * Component to display a list of logs
+ */
+const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, highlightErrors = false }) => {
+  if (!logs || logs.length === 0) {
+    return (
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <Typography variant="body1" color="textSecondary">
+          {emptyMessage}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <List
+      sx={{
+        maxHeight,
+        overflow: 'auto',
+        bgcolor: 'background.paper',
+        borderRadius: 1,
+        '& .MuiListItem-root': {
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          py: 1
+        }
+      }}
+      dense
+    >
+      {logs.map((log, index) => {
+        const isUrlLog = log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'));
+        const isError = log.logLevel === 'Error';
+        const isWarning = log.logLevel === 'Warning';
+        
+        let url = '';
+        if (isUrlLog) {
+          const urlMatch = log.message.match(/URL: (.+?)( |$)/);
+          if (urlMatch && urlMatch.length > 1) {
+            url = urlMatch[1];
+          }
+        }
+        
+        return (
+          <ListItem
+            key={index}
+            sx={{
+              bgcolor: isError ? 'rgba(255, 0, 0, 0.05)' : 
+                     isWarning ? 'rgba(255, 165, 0, 0.05)' : 
+                     isUrlLog ? 'rgba(0, 0, 255, 0.05)' : 'inherit'
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 36 }}>
+              {isError && <ErrorIcon color="error" fontSize="small" />}
+              {isWarning && <WarningIcon color="warning" fontSize="small" />}
+              {isUrlLog && <LinkIcon color="primary" fontSize="small" />}
+              {!isError && !isWarning && !isUrlLog && <InfoIcon color="action" fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Box>
+                  <Typography 
+                    variant="body2" 
+                    component="span" 
+                    sx={{ 
+                      fontWeight: (isError || isWarning) ? 'bold' : 'normal',
+                      fontFamily: 'monospace', 
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {log.message}
+                  </Typography>
+                  {url && (
+                    <Chip 
+                      label={url.length > 40 ? url.substring(0, 37) + '...' : url}
+                      size="small" 
+                      variant="outlined" 
+                      color="primary"
+                      component="a"
+                      href={url}
+                      target="_blank"
+                      clickable
+                      sx={{ ml: 1, maxWidth: '200px' }}
+                    />
+                  )}
+                </Box>
+              }
+              secondary={
+                <Typography variant="caption" color="textSecondary" sx={{ fontFamily: 'monospace' }}>
+                  {new Date(log.timestamp).toLocaleString()} - {log.logLevel}
+                </Typography>
+              }
+            />
+          </ListItem>
+        );
+      })}
+    </List>
+  );
+};
+
 const Monitoring = () => {
-  const { getScrapers, getScraperStatus, startScraper, stopScraper } = useScrapers();
+  const { getScrapers, getScraperStatus, getScraperLogs, getScraperMonitor, startScraper, stopScraper } = useScrapers();
   const [activeTab, setActiveTab] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [scrapers, setScrapers] = useState([]);
   const [scrapersStatus, setScrapersStatus] = useState({});
+  const [scrapersLogs, setScrapersLogs] = useState({});
+  const [scrapersMonitor, setScrapersMonitor] = useState({});
+  const [activeScraperLogs, setActiveScraperLogs] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedScrapers, setExpandedScrapers] = useState({});
+  const [loadingLogs, setLoadingLogs] = useState({});
   const [systemMetrics, setSystemMetrics] = useState({
     cpu: 32,
     memory: 68,
@@ -101,6 +231,44 @@ const Monitoring = () => {
   const [recentEvents, setRecentEvents] = useState([]);
   const [actionInProgress, setActionInProgress] = useState(null);
   const [timeRange, setTimeRange] = useState('24h');
+  
+  const toggleExpandScraper = (scraperId) => {
+    const isExpanded = expandedScrapers[scraperId];
+    setExpandedScrapers({
+      ...expandedScrapers,
+      [scraperId]: !isExpanded
+    });
+    
+    // If expanding and we don't have logs yet, fetch them
+    if (!isExpanded && !scrapersLogs[scraperId]) {
+      fetchScraperLogs(scraperId);
+    }
+  };
+  
+  const fetchScraperLogs = async (scraperId) => {
+    try {
+      setLoadingLogs({...loadingLogs, [scraperId]: true});
+      const logs = await getScraperLogs(scraperId, 100);
+      setScrapersLogs({
+        ...scrapersLogs,
+        [scraperId]: logs || {logs: []}
+      });
+    } catch (err) {
+      console.error(`Error fetching logs for scraper ${scraperId}:`, err);
+      setScrapersLogs({
+        ...scrapersLogs,
+        [scraperId]: {
+          logs: [{
+            timestamp: new Date(),
+            logLevel: 'Error',
+            message: `Failed to fetch logs: ${err.message || 'Unknown error'}`
+          }]
+        }
+      });
+    } finally {
+      setLoadingLogs({...loadingLogs, [scraperId]: false});
+    }
+  };
   
   // Load initial data
   useEffect(() => {
@@ -118,6 +286,19 @@ const Monitoring = () => {
           try {
             const status = await getScraperStatus(scraper.id);
             statusMap[scraper.id] = status;
+            
+            // If scraper is running, fetch monitor data
+            if (status?.isRunning) {
+              try {
+                const monitorData = await getScraperMonitor(scraper.id);
+                setScrapersMonitor(prev => ({
+                  ...prev,
+                  [scraper.id]: monitorData
+                }));
+              } catch (monErr) {
+                console.error(`Error fetching monitor data for ${scraper.id}:`, monErr);
+              }
+            }
           } catch (err) {
             console.error(`Error fetching status for scraper ${scraper.id}:`, err);
             statusMap[scraper.id] = { 
@@ -205,10 +386,41 @@ const Monitoring = () => {
         return newData;
       });
       
+      // Refresh active scrapers data
+      Object.entries(scrapersStatus).forEach(async ([scraperId, status]) => {
+        if (status.isRunning) {
+          try {
+            const newStatus = await getScraperStatus(scraperId);
+            setScrapersStatus(prev => ({
+              ...prev,
+              [scraperId]: newStatus
+            }));
+            
+            // If this scraper's logs are expanded, refresh them
+            if (expandedScrapers[scraperId]) {
+              fetchScraperLogs(scraperId);
+            }
+            
+            // Update monitor data
+            try {
+              const monitorData = await getScraperMonitor(scraperId);
+              setScrapersMonitor(prev => ({
+                ...prev,
+                [scraperId]: monitorData
+              }));
+            } catch (err) {
+              console.error(`Error updating monitor data for ${scraperId}:`, err);
+            }
+          } catch (err) {
+            console.error(`Error refreshing status for ${scraperId}:`, err);
+          }
+        }
+      });
+      
     }, 30000);
     
     return () => clearInterval(intervalId);
-  }, [getScrapers, getScraperStatus]);
+  }, [getScrapers, getScraperStatus, getScraperLogs, getScraperMonitor]);
   
   // Handle tab change
   const handleTabChange = (event, newValue) => {
@@ -265,6 +477,11 @@ const Monitoring = () => {
         try {
           const status = await getScraperStatus(scraper.id);
           statusMap[scraper.id] = status;
+          
+          // If scraper is running and expanded, refresh logs
+          if (status?.isRunning && expandedScrapers[scraper.id]) {
+            fetchScraperLogs(scraper.id);
+          }
         } catch (err) {
           console.error(`Error fetching status for scraper ${scraper.id}:`, err);
           statusMap[scraper.id] = { 
@@ -434,6 +651,176 @@ const Monitoring = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Active Scrapers with Real-time Logs Section */}
+      {Object.values(scrapersStatus).some(status => status.isRunning) && (
+        <Paper sx={{ p: 0, mb: 4 }}>
+          <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
+            <Typography variant="h6" gutterBottom>
+              Active Scrapers
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              Monitor real-time logs and progress for currently running scrapers
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 2 }}>
+            <TextField
+              fullWidth
+              placeholder="Search logs..."
+              size="small"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ mb: 3 }}
+            />
+
+            {scrapers
+              .filter(scraper => scrapersStatus[scraper.id]?.isRunning)
+              .map(scraper => {
+                const status = scrapersStatus[scraper.id] || {};
+                const isExpanded = expandedScrapers[scraper.id];
+                const logs = getArrayFromResponse(scrapersLogs[scraper.id]?.logs || []);
+                
+                // Filter logs based on search query
+                const filteredLogs = searchQuery
+                  ? logs.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
+                  : logs;
+                
+                // Filter for processed URLs and errors
+                const processedUrls = filteredLogs.filter(log => 
+                  log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'))
+                );
+                
+                const errorLogs = filteredLogs.filter(log => 
+                  log.logLevel === 'Error' || log.logLevel === 'Warning'
+                );
+
+                return (
+                  <Accordion 
+                    key={scraper.id} 
+                    expanded={isExpanded}
+                    onChange={() => toggleExpandScraper(scraper.id)}
+                    sx={{ 
+                      mb: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      '&:before': {
+                        display: 'none',
+                      },
+                    }}
+                  >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                      sx={{ 
+                        bgcolor: 'rgba(0, 0, 255, 0.03)',
+                        borderLeft: '4px solid blue',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                            {scraper.name}
+                            <Chip 
+                              label="Running" 
+                              color="success" 
+                              size="small" 
+                              sx={{ ml: 1, height: 20 }} 
+                            />
+                          </Typography>
+                          
+                          <Box>
+                            <Tooltip title="View Details">
+                              <IconButton 
+                                size="small" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.href = `/scrapers/${scraper.id}`;
+                                }}
+                              >
+                                <VisibilityIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            
+                            <Tooltip title="Stop Scraper">
+                              <IconButton 
+                                size="small" 
+                                color="warning"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleScraperAction(scraper.id, 'stop');
+                                }}
+                                disabled={actionInProgress === scraper.id}
+                              >
+                                {actionInProgress === scraper.id ? (
+                                  <CircularProgress size={20} />
+                                ) : (
+                                  <StopIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </Box>
+                        
+                        <Typography variant="body2" color="textSecondary">
+                          URLs Processed: {status.urlsProcessed || 0} | 
+                          Elapsed Time: {status.elapsedTime || '00:00:00'} | 
+                          Status: {status.message || 'Processing...'}
+                        </Typography>
+                      </Box>
+                    </AccordionSummary>
+                    
+                    <AccordionDetails sx={{ p: 0 }}>
+                      <Box sx={{ p: 2 }}>
+                        <Tabs value={activeScraperLogs === scraper.id ? 1 : 0} onChange={(e, v) => setActiveScraperLogs(v === 0 ? null : scraper.id)}>
+                          <Tab label={`All Logs (${filteredLogs.length})`} />
+                          <Tab 
+                            label={`Processed URLs (${processedUrls.length})`} 
+                            icon={<LinkIcon fontSize="small" />} 
+                            iconPosition="start"
+                          />
+                          <Tab 
+                            label={`Errors & Warnings (${errorLogs.length})`} 
+                            icon={<ErrorIcon fontSize="small" />} 
+                            iconPosition="start"
+                            sx={{ color: errorLogs.length > 0 ? 'error.main' : 'inherit' }}
+                          />
+                        </Tabs>
+                        
+                        <Box sx={{ mt: 2 }}>
+                          {loadingLogs[scraper.id] ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                              <CircularProgress size={24} />
+                            </Box>
+                          ) : activeScraperLogs === scraper.id ? (
+                            <LogsList 
+                              logs={processedUrls}
+                              emptyMessage="No processed URLs found"
+                              maxHeight={300}
+                              highlightUrls
+                            />
+                          ) : (
+                            <LogsList 
+                              logs={filteredLogs}
+                              emptyMessage="No logs found"
+                              maxHeight={300}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
+          </Box>
+        </Paper>
+      )}
       
       {/* Tabs */}
       <Paper sx={{ mb: 4 }}>
