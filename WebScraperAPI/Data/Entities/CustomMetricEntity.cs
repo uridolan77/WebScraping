@@ -4,18 +4,14 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace WebScraperApi.Data.Entities
 {
-    public class ScraperMetricEntity
+    public class CustomMetricEntity
     {
         [Key]
         public int Id { get; set; }
 
         [Required]
-        [Column("scraperId")]
-        public string ScraperId { get; set; }
-
-        [Required]
-        [Column("scraperName")]
-        public string ScraperName { get; set; }
+        [Column("scraperMetricsId")]
+        public int ScraperMetricsId { get; set; }
 
         [Required]
         [Column("metricName")]
@@ -24,12 +20,5 @@ namespace WebScraperApi.Data.Entities
         [Required]
         [Column("metricValue")]
         public double MetricValue { get; set; }
-
-        [Required]
-        [Column("timestamp")]
-        public DateTime Timestamp { get; set; } = DateTime.Now;
-
-        // Navigation property
-        public virtual ScraperConfigEntity ScraperConfig { get; set; }
     }
 }

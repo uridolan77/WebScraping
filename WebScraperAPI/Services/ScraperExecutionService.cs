@@ -10,6 +10,7 @@ using WebScraperApi.Models;
 using WebScraper.RegulatoryFramework.Configuration;
 using WebScraper.RegulatoryFramework.Implementation;
 using WebScraperApi.Services.Factories;
+using WebScraperAPI.Logging;
 
 namespace WebScraperApi.Services
 {
@@ -44,30 +45,60 @@ namespace WebScraperApi.Services
             WebScraperApi.Models.ScraperState scraperState,
             Action<string> logAction)
         {
+            // Create a file logger for this scraper run
+            ScraperFileLogger fileLogger = null;
             try
             {
-                logAction($"Starting scraper: {config.Name}");
+                // Create the output directory if it doesn't exist
+                string outputDirectory = config.OutputDirectory;
+                if (string.IsNullOrEmpty(outputDirectory))
+                {
+                    outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scrapers", config.Id);
+                }
+
+                if (!Directory.Exists(outputDirectory))
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                }
+
+                // Create a file logger
+                fileLogger = new ScraperFileLogger(config.Id, config.Name, outputDirectory, _logger);
+
+                // Create a combined log action that logs to both the original action and the file
+                Action<string> combinedLogAction = (message) =>
+                {
+                    logAction(message);
+                    fileLogger.LogInfo(message);
+                };
+
+                combinedLogAction($"Starting scraper: {config.Name}");
+                combinedLogAction($"Output directory: {outputDirectory}");
 
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
 
+                // Set the output directory in the scraper config
+                scraperConfig.OutputDirectory = outputDirectory;
+
                 // Validate the configuration
-                if (!await ValidateConfigurationAsync(scraperConfig, logAction))
+                if (!await ValidateConfigurationAsync(scraperConfig, combinedLogAction))
                 {
+                    await fileLogger.LogCompletionAsync(false, "Configuration validation failed");
                     return false;
                 }
 
                 // Always use EnhancedScraper for all scrapers
-                var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, logAction);
+                var enhancedScraper = await CreateEnhancedScraperAsync(scraperConfig, combinedLogAction);
+
                 // Create a standard Scraper that we can use with the existing code
                 var scraper = new Scraper(scraperConfig, _logger);
 
                 // Initialize the scraper
-                logAction("Initializing scraper...");
+                combinedLogAction("Initializing scraper...");
                 await scraper.InitializeAsync();
 
                 // Start scraping
-                logAction("Starting scraping process...");
+                combinedLogAction("Starting scraping process...");
                 await scraper.StartScrapingAsync();
 
                 // Set up continuous monitoring if enabled
@@ -75,10 +106,13 @@ namespace WebScraperApi.Services
                 {
                     var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
                     await scraper.SetupContinuousScrapingAsync(interval);
-                    logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
+                    combinedLogAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
                 }
 
-                logAction("Scraping operation completed successfully");
+                combinedLogAction("Scraping operation completed successfully");
+
+                // Log completion to file
+                await fileLogger.LogCompletionAsync(true, "Scraping completed successfully");
 
                 return true;
             }
@@ -86,6 +120,14 @@ namespace WebScraperApi.Services
             {
                 _logger.LogError(ex, $"Error executing scraper {config.Name}");
                 logAction($"Error during scraping: {ex.Message}");
+
+                // Log error to file if file logger was created
+                if (fileLogger != null)
+                {
+                    fileLogger.LogError($"Error during scraping", ex);
+                    await fileLogger.LogCompletionAsync(false, $"Scraping failed: {ex.Message}");
+                }
+
                 return false;
             }
         }
@@ -187,20 +229,53 @@ namespace WebScraperApi.Services
         /// </summary>
         /// <param name="scraper">The scraper to stop</param>
         /// <param name="logAction">Action for logging messages</param>
-        public void StopScraper(Scraper scraper, Action<string> logAction)
+        public async Task StopScraperAsync(Scraper scraper, Action<string> logAction)
         {
             if (scraper != null)
             {
+                // Create a file logger for this stop operation
+                ScraperFileLogger fileLogger = null;
                 try
                 {
+                    // Get the output directory from the scraper config
+                    string outputDirectory = scraper.Config.OutputDirectory;
+                    if (string.IsNullOrEmpty(outputDirectory))
+                    {
+                        outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scrapers", scraper.Config.Name);
+                    }
+
+                    // Create a file logger
+                    fileLogger = new ScraperFileLogger(
+                        scraper.Config.Name,
+                        scraper.Config.Name,
+                        outputDirectory,
+                        _logger);
+
+                    // Create a combined log action
+                    Action<string> combinedLogAction = (message) =>
+                    {
+                        logAction(message);
+                        fileLogger.LogInfo(message);
+                    };
+
                     // Stop the scraper's continuous monitoring if it's running
                     scraper.StopContinuousScraping();
-                    logAction("Scraping stopped by user");
+                    combinedLogAction("Scraping stopped by user");
+
+                    // Log completion to file
+                    await fileLogger.LogCompletionAsync(true, "Scraping stopped by user");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error stopping scraper");
                     logAction($"Error stopping scraper: {ex.Message}");
+
+                    // Log error to file if file logger was created
+                    if (fileLogger != null)
+                    {
+                        fileLogger.LogError($"Error stopping scraper", ex);
+                        await fileLogger.LogCompletionAsync(false, $"Error stopping scraper: {ex.Message}");
+                    }
                 }
             }
         }

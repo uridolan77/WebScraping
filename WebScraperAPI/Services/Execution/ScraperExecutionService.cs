@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using WebScraper;
 using WebScraper.Validation;
@@ -8,6 +9,9 @@ using WebScraperApi.Models;
 using WebScraperApi.Services.Factories;
 using WebScraper.RegulatoryFramework.Implementation;
 using WebScraper.RegulatoryFramework.Configuration;
+using WebScraperApi.Data.Repositories;
+using WebScraperApi.Services.Adapters;
+using WebScraperAPI.Logging;
 
 namespace WebScraperApi.Services.Execution
 {
@@ -19,16 +23,19 @@ namespace WebScraperApi.Services.Execution
         private readonly ILogger<ScraperExecutionService> _logger;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ScraperComponentFactory _componentFactory;
+        private readonly IScraperRepository _repository;
         private readonly Dictionary<string, WebScraperApi.Models.ScraperState> _scraperStates = new();
 
         public ScraperExecutionService(
             ILogger<ScraperExecutionService> logger,
             ILoggerFactory loggerFactory,
-            ScraperComponentFactory componentFactory)
+            ScraperComponentFactory componentFactory,
+            IScraperRepository repository)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
             _componentFactory = componentFactory;
+            _repository = repository;
         }
 
         /// <summary>
@@ -51,16 +58,16 @@ namespace WebScraperApi.Services.Execution
                 scraperState.StartTime = DateTime.Now;
                 scraperState.Message = $"Starting scraper: {config.Name}";
                 scraperState.LastUpdate = DateTime.Now;
-                
+
                 // Store the state for retrieval
                 _scraperStates[config.Id] = scraperState;
-                
+
                 logAction($"Starting scraper: {config.Name}");
                 _logger.LogInformation("Starting scraper '{Name}' with ID '{Id}'", config.Name, config.Id);
 
                 // Get the scraper configuration
                 var scraperConfig = config.ToScraperConfig();
-                
+
                 // Validate the configuration
                 if (!await ValidateConfigurationAsync(scraperConfig, logAction))
                 {
@@ -72,10 +79,10 @@ namespace WebScraperApi.Services.Execution
                     scraperState.HasErrors = true;
                     scraperState.LastError = "Configuration validation failed - check logs for details";
                     scraperState.LastUpdate = DateTime.Now;
-                    
+
                     // Update stored state
                     _scraperStates[config.Id] = scraperState;
-                    
+
                     _logger.LogError("Scraper '{Name}' failed validation", config.Name);
                     return false;
                 }
@@ -90,9 +97,50 @@ namespace WebScraperApi.Services.Execution
                     _logger.LogDebug("Creating standard scraper for '{Name}'", config.Name);
                     var scraper = new Scraper(scraperConfig, _logger);
 
+                    // Add the ContentSaverAdapter to the scraper
+                    try
+                    {
+                        var repository = _repository;
+                        if (repository != null)
+                        {
+                            // Get the scraper core using reflection
+                            var coreField = typeof(Scraper).GetField("_core", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (coreField != null)
+                            {
+                                var core = coreField.GetValue(scraper);
+                                if (core != null)
+                                {
+                                    // Get the AddComponent method using reflection
+                                    var addComponentMethod = core.GetType().GetMethod("AddComponent");
+                                    if (addComponentMethod != null)
+                                    {
+                                        // Create the ContentSaverAdapter
+                                        var contentSaver = new ContentSaverAdapter(repository, _loggerFactory.CreateLogger<ContentSaverAdapter>());
+
+                                        // Add the component to the scraper
+                                        addComponentMethod.Invoke(core, new object[] { contentSaver });
+
+                                        _logger.LogInformation("ContentSaverAdapter added to scraper '{Name}'", config.Name);
+                                        logAction("ContentSaverAdapter added to scraper");
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("IScraperRepository not found, ContentSaverAdapter will not be added");
+                            logAction("Warning: IScraperRepository not found, ContentSaverAdapter will not be added");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to add ContentSaverAdapter to scraper '{Name}'", config.Name);
+                        logAction($"Warning: Failed to add ContentSaverAdapter: {ex.Message}");
+                    }
+
                     // Store the enhanced scraper instance in the state
                     scraperState.Scraper = enhancedScraper;
-                    
+
                     // Update state
                     scraperState.Status = "Initializing";
                     scraperState.Message = "Initializing scraper...";
@@ -117,18 +165,18 @@ namespace WebScraperApi.Services.Execution
                         var interval = TimeSpan.FromHours(config.GetMonitoringInterval());
                         await scraper.SetupContinuousScrapingAsync(interval);
                         logAction($"Continuous monitoring enabled with interval: {interval.TotalHours:F1} hours");
-                        _logger.LogInformation("Continuous monitoring enabled for '{Name}' with interval: {Interval:F1} hours", 
+                        _logger.LogInformation("Continuous monitoring enabled for '{Name}' with interval: {Interval:F1} hours",
                             config.Name, interval.TotalHours);
                     }
 
                     logAction("Scraping operation completed successfully");
                     _logger.LogInformation("Scraping operation completed successfully for '{Name}'", config.Name);
-                    
+
                     // Update state on successful completion
                     scraperState.Status = "Completed";
                     scraperState.Message = "Scraping operation completed successfully";
                     scraperState.EndTime = DateTime.Now;
-                    
+
                     return true;
                 }
                 catch (Exception ex)
@@ -136,7 +184,7 @@ namespace WebScraperApi.Services.Execution
                     string errorMessage = $"Error during scraper execution for {config.Name}: {ex.Message}";
                     _logger.LogError(ex, errorMessage);
                     logAction($"Error during scraper execution: {ex.Message}");
-                    
+
                     // Capture inner exception details if available
                     string innerErrorMessage = null;
                     if (ex.InnerException != null)
@@ -145,17 +193,17 @@ namespace WebScraperApi.Services.Execution
                         _logger.LogError(ex.InnerException, $"Inner exception: {innerErrorMessage}");
                         logAction($"Inner error: {innerErrorMessage}");
                     }
-                    
+
                     // Update state with error information
                     scraperState.IsRunning = false;
                     scraperState.Status = "Failed";
                     scraperState.EndTime = DateTime.Now;
                     scraperState.HasErrors = true;
                     scraperState.Message = errorMessage;
-                    scraperState.LastError = innerErrorMessage != null 
-                        ? $"{errorMessage} - {innerErrorMessage}" 
+                    scraperState.LastError = innerErrorMessage != null
+                        ? $"{errorMessage} - {innerErrorMessage}"
                         : errorMessage;
-                    
+
                     return false;
                 }
             }
@@ -164,7 +212,7 @@ namespace WebScraperApi.Services.Execution
                 string errorMessage = $"Error executing scraper {config.Name}: {ex.Message}";
                 _logger.LogError(ex, errorMessage);
                 logAction($"Error during scraping: {ex.Message}");
-                
+
                 // Capture inner exception details if available
                 string innerErrorMessage = null;
                 if (ex.InnerException != null)
@@ -173,17 +221,17 @@ namespace WebScraperApi.Services.Execution
                     _logger.LogError(ex.InnerException, $"Inner exception: {innerErrorMessage}");
                     logAction($"Inner error: {innerErrorMessage}");
                 }
-                
+
                 // Update state with error information
                 scraperState.IsRunning = false;
                 scraperState.Status = "Failed";
                 scraperState.EndTime = DateTime.Now;
                 scraperState.HasErrors = true;
                 scraperState.Message = errorMessage;
-                scraperState.LastError = innerErrorMessage != null 
-                    ? $"{errorMessage} - {innerErrorMessage}" 
+                scraperState.LastError = innerErrorMessage != null
+                    ? $"{errorMessage} - {innerErrorMessage}"
                     : errorMessage;
-                
+
                 return false;
             }
         }
@@ -199,10 +247,10 @@ namespace WebScraperApi.Services.Execution
             try
             {
                 logAction("Creating enhanced scraper with specialized components");
-                
+
                 // Create a scraper-specific logger
                 var scraperLogger = _loggerFactory.CreateLogger<EnhancedScraper>();
-                
+
                 // Log configuration details for debugging
                 logAction($"Config details: Name={config.Name}, StartUrl={config.StartUrl}, MaxCrawlDepth={config.MaxCrawlDepth}");
 
@@ -222,27 +270,27 @@ namespace WebScraperApi.Services.Execution
                     EnableDynamicContentRendering = false,
                     EnableAlertSystem = config.NotifyOnChanges
                 };
-                
+
                 logAction("Creating crawl strategy component");
                 var crawlStrategy = _componentFactory.CreateCrawlStrategy(config, logAction);
-                
+
                 logAction("Creating content extractor component");
                 var contentExtractor = _componentFactory.CreateContentExtractor(config, logAction);
-                
+
                 logAction("Creating document processor component");
                 var documentProcessor = _componentFactory.CreateDocumentProcessor(config, logAction);
-                
+
                 logAction("Creating change detector component");
                 var changeDetector = _componentFactory.CreateChangeDetector(config, logAction);
-                
+
                 logAction("Creating content classifier component");
                 var contentClassifier = _componentFactory.CreateContentClassifier(config, logAction);
-                
+
                 logAction("Creating state store component");
                 var stateStore = _componentFactory.CreateStateStore(config, logAction);
 
                 logAction("Assembling enhanced scraper with all components");
-                
+
                 // Create the enhanced scraper with all components
                 var enhancedScraper = new EnhancedScraper(
                     regulatoryConfig,
@@ -257,7 +305,7 @@ namespace WebScraperApi.Services.Execution
                     stateStore);
 
                 logAction("Enhanced scraper created successfully");
-                
+
                 // Wait a moment to make this truly async
                 await Task.Delay(1);
 
@@ -268,13 +316,13 @@ namespace WebScraperApi.Services.Execution
             {
                 _logger.LogError(ex, $"Error creating enhanced scraper: {ex.Message}");
                 logAction($"Error creating enhanced scraper: {ex.Message}");
-                
+
                 if (ex.InnerException != null)
                 {
                     _logger.LogError(ex.InnerException, $"Inner exception: {ex.InnerException.Message}");
                     logAction($"Inner error: {ex.InnerException.Message}");
                 }
-                
+
                 throw; // Re-throw to let the caller handle it
             }
         }
@@ -320,7 +368,7 @@ namespace WebScraperApi.Services.Execution
                     logAction($"Output directory not specified, using default: {config.OutputDirectory}");
                     _logger.LogInformation("Output directory not specified, using default: {OutputDirectory}", config.OutputDirectory);
                 }
-                
+
                 // Ensure output directory exists
                 if (!Directory.Exists(config.OutputDirectory))
                 {
@@ -372,6 +420,7 @@ namespace WebScraperApi.Services.Execution
         /// </summary>
         /// <param name="scraper">The scraper to stop</param>
         /// <param name="logAction">Action for logging messages</param>
+        [Obsolete("Use StopScraperAsync instead")]
         public void StopScraper(Scraper scraper, Action<string> logAction)
         {
             try
@@ -391,6 +440,69 @@ namespace WebScraperApi.Services.Execution
             {
                 _logger.LogError(ex, "Error stopping scraper");
                 logAction($"Error stopping scraper: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Stops a running scraper asynchronously
+        /// </summary>
+        /// <param name="scraper">The scraper to stop</param>
+        /// <param name="logAction">Action for logging messages</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public async Task StopScraperAsync(Scraper scraper, Action<string> logAction)
+        {
+            // Create a file logger for this stop operation
+            ScraperFileLogger fileLogger = null;
+            try
+            {
+                if (scraper == null)
+                {
+                    logAction("No active scraper instance to stop");
+                    return;
+                }
+
+                // Get the output directory from the scraper config
+                string outputDirectory = scraper.Config.OutputDirectory;
+                if (string.IsNullOrEmpty(outputDirectory))
+                {
+                    outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scrapers", scraper.Config.Name);
+                }
+
+                // Create a file logger
+                fileLogger = new ScraperFileLogger(
+                    scraper.Config.Name,
+                    scraper.Config.Name,
+                    outputDirectory,
+                    _logger);
+
+                // Create a combined log action
+                Action<string> combinedLogAction = (message) =>
+                {
+                    logAction(message);
+                    fileLogger.LogInfo(message);
+                };
+
+                combinedLogAction("Stopping scraper...");
+
+                // Use the standard StopScraping method
+                scraper.StopScraping();
+
+                combinedLogAction("Scraper stopped successfully");
+
+                // Log completion to file
+                await fileLogger.LogCompletionAsync(true, "Scraping stopped by user");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping scraper");
+                logAction($"Error stopping scraper: {ex.Message}");
+
+                // Log error to file if file logger was created
+                if (fileLogger != null)
+                {
+                    fileLogger.LogError($"Error stopping scraper", ex);
+                    await fileLogger.LogCompletionAsync(false, $"Error stopping scraper: {ex.Message}");
+                }
             }
         }
 
@@ -489,7 +601,7 @@ namespace WebScraperApi.Services.Execution
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting detailed state for scraper with ID {Id}", id);
-                
+
                 // Return a state with error information
                 return new WebScraperApi.Models.ScraperState
                 {

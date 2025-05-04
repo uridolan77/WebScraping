@@ -1,21 +1,27 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace WebScraperApi.Data.Entities
 {
     public class ContentExtractorSelectorEntity
     {
         [Key]
+        [Column("id")]
         public int Id { get; set; }
-        
+
         [Required]
-        public string ScraperId { get; set; }
-        
+        [Column("scraperid")]
+        public string ScraperId { get; set; } = string.Empty;
+
         [Required]
-        public string Selector { get; set; }
-        
+        [Column("selector")]
+        public string Selector { get; set; } = string.Empty;
+
+        [Column("isexclude")]
         public bool IsExclude { get; set; }
 
         // Navigation property
-        public virtual ScraperConfigEntity ScraperConfig { get; set; }
+        [NotMapped]
+        public virtual ScraperConfigEntity? ScraperConfig { get; set; }
     }
 }

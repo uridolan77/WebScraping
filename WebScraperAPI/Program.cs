@@ -183,7 +183,7 @@ builder.Services.AddSwaggerGen(c =>
 
     // Use fully qualified object names to avoid conflicts
     c.CustomSchemaIds(type => type.FullName);
-    
+
     // Add a conflict resolver for actions with the same path
     c.ResolveConflictingActions(apiDescriptions =>
     {
@@ -194,6 +194,9 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// Initialize the ServiceLocator with the service provider
+WebScraperApi.Services.ServiceLocator.Initialize(app.Services);
 
 // Apply database migrations if enabled
 if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
@@ -283,7 +286,7 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Web Scraper API v1"));
-    
+
     // In development, check database table naming conventions
     try
     {
@@ -292,7 +295,7 @@ if (app.Environment.IsDevelopment())
         {
             // Check if all tables follow expected naming conventions
             WebScraperApi.Data.DatabaseTableNameFixer.EnsureCorrectTableNames(
-                app.Services, 
+                app.Services,
                 connectionString);
         }
     }
@@ -321,6 +324,56 @@ var configDir = Path.GetDirectoryName(configPath);
 if (!Directory.Exists(configDir) && configDir != null)
 {
     Directory.CreateDirectory(configDir);
+}
+
+// Check for phantom running scrapers on startup
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var scraperRepository = scope.ServiceProvider.GetRequiredService<IScraperRepository>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+        // Get all scrapers that are marked as running in the database
+        var runningScrapers = scraperRepository.GetAllRunningScrapersAsync().GetAwaiter().GetResult();
+
+        if (runningScrapers != null && runningScrapers.Count > 0)
+        {
+            logger.LogWarning("Found {Count} scrapers marked as running in the database on startup. These are likely phantom scrapers that were not properly stopped.", runningScrapers.Count);
+
+            // Update each scraper's status to not running
+            foreach (var scraper in runningScrapers)
+            {
+                logger.LogInformation("Updating phantom running scraper {ScraperId} to stopped status", scraper.ScraperId);
+
+                var status = new WebScraperApi.Data.Entities.ScraperStatusEntity
+                {
+                    ScraperId = scraper.ScraperId,
+                    IsRunning = false,
+                    EndTime = DateTime.Now,
+                    LastUpdate = DateTime.Now,
+                    Message = "Scraper marked as stopped due to server restart",
+                    StartTime = scraper.StartTime,
+                    UrlsProcessed = scraper.UrlsProcessed,
+                    UrlsQueued = scraper.UrlsQueued,
+                    DocumentsProcessed = scraper.DocumentsProcessed,
+                    HasErrors = scraper.HasErrors
+                };
+
+                scraperRepository.UpdateScraperStatusAsync(status).GetAwaiter().GetResult();
+            }
+
+            logger.LogInformation("Successfully updated {Count} phantom running scrapers to stopped status", runningScrapers.Count);
+        }
+        else
+        {
+            logger.LogInformation("No phantom running scrapers found on startup");
+        }
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Warning: Failed to check for phantom running scrapers: {ex.Message}");
 }
 
 app.Run();

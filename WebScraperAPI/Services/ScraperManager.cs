@@ -234,7 +234,7 @@ namespace WebScraperApi.Services
 
                 // Debug info about the scraper configuration
                 _monitoringService.AddLogMessage(id, $"Scraper configuration: Name={instance.Config.Name}, BaseUrl={instance.Config.BaseUrl}");
-                
+
                 // Skip if already running
                 if (instance.Status.IsRunning)
                 {
@@ -262,7 +262,7 @@ namespace WebScraperApi.Services
                 instance.Metrics.ExecutionCount++;
 
                 _monitoringService.AddLogMessage(id, "Converting config model to scraper config");
-                
+
                 // Log scraper configuration details
                 _monitoringService.AddLogMessage(id, $"Configuration details: MaxDepth={instance.Config.MaxDepth}, MaxConcurrentRequests={instance.Config.MaxConcurrentRequests}, DelayBetweenRequests={instance.Config.DelayBetweenRequests}ms");
                 if (instance.Config.IsUKGCWebsite)
@@ -287,15 +287,15 @@ namespace WebScraperApi.Services
                     // Update status - this will reflect any error messages set by the execution service
                     // We need to check the scraper state for error details
                     var scraperState = await _executionService.GetScraperStateAsync(id);
-                    
+
                     instance.Status.IsRunning = false;
                     instance.Status.HasErrors = true;
                     instance.Status.Message = scraperState?.Message ?? "Failed to start scraper";
                     instance.Status.LastError = scraperState?.LastError ?? "Unknown error occurred";
-                    
+
                     _monitoringService.AddLogMessage(id, $"Failed to start scraper: {instance.Status.LastError}");
                     _logger.LogError("Failed to start scraper {Id}: {Error}", id, instance.Status.LastError);
-                    
+
                     return false;
                 }
             }
@@ -304,12 +304,12 @@ namespace WebScraperApi.Services
                 _logger.LogError(ex, $"Error starting scraper {id}");
                 _monitoringService.AddLogMessage(id, $"Error starting scraper: {ex.Message}");
                 _monitoringService.AddLogMessage(id, $"Stack trace: {ex.StackTrace}");
-                
+
                 if (ex.InnerException != null)
                 {
                     _monitoringService.AddLogMessage(id, $"Inner exception: {ex.InnerException.Message}");
                 }
-                
+
                 // Update status
                 var instance = _stateService.GetScraperInstance(id);
                 if (instance != null)
@@ -350,7 +350,7 @@ namespace WebScraperApi.Services
                 Action<string> logAction = (message) => _monitoringService.AddLogMessage(id, message);
 
                 // Stop the scraper
-                _executionService.StopScraper(instance.Scraper, logAction);
+                await _executionService.StopScraperAsync(instance.Scraper, logAction);
 
                 // Update status
                 instance.Status.IsRunning = false;

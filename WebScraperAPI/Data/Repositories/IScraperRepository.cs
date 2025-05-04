@@ -19,9 +19,19 @@ namespace WebScraperApi.Data.Repositories
         Task<ScraperConfigEntity> UpdateScraperAsync(ScraperConfigEntity scraper);
         Task<bool> DeleteScraperAsync(string id);
 
+        // Related entity operations
+        Task<List<ScraperStartUrlEntity>> GetScraperStartUrlsAsync(string scraperId);
+        Task<List<ContentExtractorSelectorEntity>> GetContentExtractorSelectorsAsync(string scraperId);
+        Task<List<KeywordAlertEntity>> GetKeywordAlertsAsync(string scraperId);
+        Task<List<DomainRateLimitEntity>> GetDomainRateLimitsAsync(string scraperId);
+        Task<List<ProxyConfigurationEntity>> GetProxyConfigurationsAsync(string scraperId);
+        Task<List<WebhookTriggerEntity>> GetWebhookTriggersAsync(string scraperId);
+        Task<List<ScraperScheduleEntity>> GetScraperSchedulesAsync(string scraperId);
+
         // Scraper Status operations
         Task<ScraperStatusEntity> GetScraperStatusAsync(string scraperId);
         Task<ScraperStatusEntity> UpdateScraperStatusAsync(ScraperStatusEntity status);
+        Task<List<ScraperStatusEntity>> GetAllRunningScrapersAsync();
 
         // Scraper Log operations - Added missing methods
         Task<List<ScraperLogEntity>> GetScraperLogsAsync(string scraperId, int limit = 100);
@@ -50,6 +60,7 @@ namespace WebScraperApi.Data.Repositories
         Task<ProcessedDocumentEntity> AddProcessedDocumentAsync(ProcessedDocumentEntity document);
 
         // Metrics operations
+        Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId); // Added overload
         Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId, string metricName, DateTime from, DateTime to);
         Task<ScraperMetricEntity> AddScraperMetricAsync(ScraperMetricEntity metric);
 

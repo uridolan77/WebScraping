@@ -41,70 +41,271 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<List<ScraperConfigEntity>> GetAllScrapersAsync()
         {
-            return await _context.ScraperConfigs
-                .Include(s => s.Status)
-                .OrderByDescending(s => s.LastModified)
-                .ToListAsync();
+            try
+            {
+                Console.WriteLine("GetAllScrapersAsync: Attempting to fetch all scrapers from database");
+
+                var scrapers = await _context.ScraperConfigs
+                    .OrderByDescending(s => s.LastModified)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetAllScrapersAsync: Successfully retrieved {scrapers.Count} scrapers");
+                return scrapers;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetAllScrapersAsync: Error retrieving scrapers: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetAllScrapersAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetAllScrapersAsync: Stack trace: {ex.StackTrace}");
+
+                // Rethrow the exception to be handled by the caller
+                throw;
+            }
         }
 
         public async Task<ScraperConfigEntity> GetScraperByIdAsync(string id)
         {
             try
             {
+                Console.WriteLine($"GetScraperByIdAsync: Attempting to fetch scraper with ID {id}");
+
+                // Get the main scraper config without any includes
                 var scraperConfig = await _context.ScraperConfigs
-                    .Include(s => s.Status)
-                    .Include(s => s.StartUrls)
-                    .Include(s => s.ContentExtractorSelectors)
-                    .Include(s => s.KeywordAlerts)
-                    .Include(s => s.WebhookTriggers)
-                    .Include(s => s.DomainRateLimits)
-                    .Include(s => s.ProxyConfigurations)
-                    .Include(s => s.Schedules)
+                    .AsNoTracking()  // Use AsNoTracking for better performance
                     .FirstOrDefaultAsync(s => s.Id == id);
 
-                // Initialize collections if they are null
-                if (scraperConfig != null)
+                if (scraperConfig == null)
                 {
-                    // Initialize collections if they are null
-                    // Initialize collections if they are null
-                    if (scraperConfig.StartUrls == null)
-                        scraperConfig.StartUrls = new List<WebScraperApi.Data.Entities.ScraperStartUrlEntity>();
-
-                    if (scraperConfig.ContentExtractorSelectors == null)
-                        scraperConfig.ContentExtractorSelectors = new List<WebScraperApi.Data.Entities.ContentExtractorSelectorEntity>();
-
-                    if (scraperConfig.KeywordAlerts == null)
-                        scraperConfig.KeywordAlerts = new List<WebScraperApi.Data.Entities.KeywordAlertEntity>();
-
-                    if (scraperConfig.WebhookTriggers == null)
-                        scraperConfig.WebhookTriggers = new List<WebScraperApi.Data.Entities.WebhookTriggerEntity>();
-
-                    if (scraperConfig.DomainRateLimits == null)
-                        scraperConfig.DomainRateLimits = new List<WebScraperApi.Data.Entities.DomainRateLimitEntity>();
-
-                    if (scraperConfig.ProxyConfigurations == null)
-                        scraperConfig.ProxyConfigurations = new List<WebScraperApi.Data.Entities.ProxyConfigurationEntity>();
-
-                    if (scraperConfig.Schedules == null)
-                        scraperConfig.Schedules = new List<WebScraperApi.Data.Entities.ScraperScheduleEntity>();
+                    Console.WriteLine($"GetScraperByIdAsync: Scraper with ID {id} not found");
+                    return null;
                 }
 
+                Console.WriteLine($"GetScraperByIdAsync: Successfully retrieved scraper with ID {id}");
                 return scraperConfig;
             }
             catch (Exception ex)
             {
                 // Log the error
-                Console.WriteLine($"Error retrieving scraper with ID {id}: {ex.Message}");
-
-                // If the error is related to a missing table, return a default scraper config
-                if (ex.Message.Contains("doesn't exist"))
+                Console.WriteLine($"GetScraperByIdAsync: Error retrieving scraper with ID {id}: {ex.Message}");
+                if (ex.InnerException != null)
                 {
-                    return await _context.ScraperConfigs
-                        .FirstOrDefaultAsync(s => s.Id == id);
+                    Console.WriteLine($"GetScraperByIdAsync: Inner exception: {ex.InnerException.Message}");
                 }
+                Console.WriteLine($"GetScraperByIdAsync: Stack trace: {ex.StackTrace}");
 
                 // Rethrow the exception
                 throw;
+            }
+        }
+
+        public async Task<List<ScraperStartUrlEntity>> GetScraperStartUrlsAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetScraperStartUrlsAsync: Attempting to fetch start URLs for scraper with ID {scraperId}");
+
+                var startUrls = await _context.ScraperStartUrls
+                    .AsNoTracking()
+                    .Where(s => s.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetScraperStartUrlsAsync: Successfully retrieved {startUrls.Count} start URLs for scraper with ID {scraperId}");
+                return startUrls;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetScraperStartUrlsAsync: Error retrieving start URLs for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetScraperStartUrlsAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetScraperStartUrlsAsync: Stack trace: {ex.StackTrace}");
+
+                // Rethrow the exception
+                throw;
+            }
+        }
+
+        public async Task<List<ContentExtractorSelectorEntity>> GetContentExtractorSelectorsAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetContentExtractorSelectorsAsync: Attempting to fetch content extractor selectors for scraper with ID {scraperId}");
+
+                var selectors = await _context.ContentExtractorSelector
+                    .AsNoTracking()
+                    .Where(s => s.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetContentExtractorSelectorsAsync: Successfully retrieved {selectors.Count} content extractor selectors for scraper with ID {scraperId}");
+                return selectors;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetContentExtractorSelectorsAsync: Error retrieving content extractor selectors for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetContentExtractorSelectorsAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetContentExtractorSelectorsAsync: Stack trace: {ex.StackTrace}");
+
+                // Rethrow the exception
+                throw;
+            }
+        }
+
+        public async Task<List<KeywordAlertEntity>> GetKeywordAlertsAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetKeywordAlertsAsync: Attempting to fetch keyword alerts for scraper with ID {scraperId}");
+
+                // Use Entity Framework with AsNoTracking for better performance
+                var keywordAlerts = await _context.KeywordAlert
+                    .AsNoTracking()
+                    .Where(k => k.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetKeywordAlertsAsync: Successfully retrieved {keywordAlerts.Count} keyword alerts for scraper with ID {scraperId}");
+                return keywordAlerts;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetKeywordAlertsAsync: Error retrieving keyword alerts for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetKeywordAlertsAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetKeywordAlertsAsync: Stack trace: {ex.StackTrace}");
+
+                // Return an empty list instead of throwing an exception
+                return new List<KeywordAlertEntity>();
+            }
+        }
+
+        public async Task<List<DomainRateLimitEntity>> GetDomainRateLimitsAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetDomainRateLimitsAsync: Attempting to fetch domain rate limits for scraper with ID {scraperId}");
+
+                // Use Entity Framework with AsNoTracking for better performance
+                var domainRateLimits = await _context.DomainRateLimit
+                    .AsNoTracking()
+                    .Where(d => d.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetDomainRateLimitsAsync: Successfully retrieved {domainRateLimits.Count} domain rate limits for scraper with ID {scraperId}");
+                return domainRateLimits;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetDomainRateLimitsAsync: Error retrieving domain rate limits for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetDomainRateLimitsAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetDomainRateLimitsAsync: Stack trace: {ex.StackTrace}");
+
+                // Return an empty list instead of throwing an exception
+                return new List<DomainRateLimitEntity>();
+            }
+        }
+
+        public async Task<List<ProxyConfigurationEntity>> GetProxyConfigurationsAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetProxyConfigurationsAsync: Attempting to fetch proxy configurations for scraper with ID {scraperId}");
+
+                // Use Entity Framework with AsNoTracking for better performance
+                var proxyConfigurations = await _context.ProxyConfiguration
+                    .AsNoTracking()
+                    .Where(p => p.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetProxyConfigurationsAsync: Successfully retrieved {proxyConfigurations.Count} proxy configurations for scraper with ID {scraperId}");
+                return proxyConfigurations;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetProxyConfigurationsAsync: Error retrieving proxy configurations for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetProxyConfigurationsAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetProxyConfigurationsAsync: Stack trace: {ex.StackTrace}");
+
+                // Return an empty list instead of throwing an exception
+                return new List<ProxyConfigurationEntity>();
+            }
+        }
+
+        public async Task<List<WebhookTriggerEntity>> GetWebhookTriggersAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetWebhookTriggersAsync: Attempting to fetch webhook triggers for scraper with ID {scraperId}");
+
+                // Use Entity Framework with AsNoTracking for better performance
+                var webhookTriggers = await _context.WebhookTrigger
+                    .AsNoTracking()
+                    .Where(w => w.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetWebhookTriggersAsync: Successfully retrieved {webhookTriggers.Count} webhook triggers for scraper with ID {scraperId}");
+                return webhookTriggers;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetWebhookTriggersAsync: Error retrieving webhook triggers for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetWebhookTriggersAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetWebhookTriggersAsync: Stack trace: {ex.StackTrace}");
+
+                // Return an empty list instead of throwing an exception
+                return new List<WebhookTriggerEntity>();
+            }
+        }
+
+        public async Task<List<ScraperScheduleEntity>> GetScraperSchedulesAsync(string scraperId)
+        {
+            try
+            {
+                Console.WriteLine($"GetScraperSchedulesAsync: Attempting to fetch schedules for scraper with ID {scraperId}");
+
+                // Use Entity Framework with AsNoTracking for better performance
+                var schedules = await _context.ScraperSchedule
+                    .AsNoTracking()
+                    .Where(s => s.ScraperId == scraperId)
+                    .ToListAsync();
+
+                Console.WriteLine($"GetScraperSchedulesAsync: Successfully retrieved {schedules.Count} schedules for scraper with ID {scraperId}");
+                return schedules;
+            }
+            catch (Exception ex)
+            {
+                // Log the error
+                Console.WriteLine($"GetScraperSchedulesAsync: Error retrieving schedules for scraper with ID {scraperId}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"GetScraperSchedulesAsync: Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"GetScraperSchedulesAsync: Stack trace: {ex.StackTrace}");
+
+                // Return an empty list instead of throwing an exception
+                return new List<ScraperScheduleEntity>();
             }
         }
 
@@ -141,10 +342,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingSelectors = await _context.ContentExtractorSelectors
+                    var existingSelectors = await _context.ContentExtractorSelector
                         .Where(s => s.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.ContentExtractorSelectors.RemoveRange(existingSelectors);
+                    _context.ContentExtractorSelector.RemoveRange(existingSelectors);
                 }
                 catch (Exception ex)
                 {
@@ -154,10 +355,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingKeywords = await _context.KeywordAlerts
+                    var existingKeywords = await _context.KeywordAlert
                         .Where(k => k.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.KeywordAlerts.RemoveRange(existingKeywords);
+                    _context.KeywordAlert.RemoveRange(existingKeywords);
                 }
                 catch (Exception ex)
                 {
@@ -167,10 +368,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingWebhooks = await _context.WebhookTriggers
+                    var existingWebhooks = await _context.WebhookTrigger
                         .Where(w => w.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.WebhookTriggers.RemoveRange(existingWebhooks);
+                    _context.WebhookTrigger.RemoveRange(existingWebhooks);
                 }
                 catch (Exception ex)
                 {
@@ -180,10 +381,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingDomainRateLimits = await _context.DomainRateLimits
+                    var existingDomainRateLimits = await _context.DomainRateLimit
                         .Where(d => d.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.DomainRateLimits.RemoveRange(existingDomainRateLimits);
+                    _context.DomainRateLimit.RemoveRange(existingDomainRateLimits);
                 }
                 catch (Exception ex)
                 {
@@ -193,10 +394,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingProxyConfigurations = await _context.ProxyConfigurations
+                    var existingProxyConfigurations = await _context.ProxyConfiguration
                         .Where(p => p.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.ProxyConfigurations.RemoveRange(existingProxyConfigurations);
+                    _context.ProxyConfiguration.RemoveRange(existingProxyConfigurations);
                 }
                 catch (Exception ex)
                 {
@@ -206,10 +407,10 @@ namespace WebScraperApi.Data.Repositories
 
                 try
                 {
-                    var existingSchedules = await _context.ScraperSchedules
+                    var existingSchedules = await _context.ScraperSchedule
                         .Where(s => s.ScraperId == scraper.Id)
                         .ToListAsync();
-                    _context.ScraperSchedules.RemoveRange(existingSchedules);
+                    _context.ScraperSchedule.RemoveRange(existingSchedules);
                 }
                 catch (Exception ex)
                 {
@@ -280,7 +481,7 @@ namespace WebScraperApi.Data.Repositories
                                 IsExclude = selector.IsExclude
                             };
 
-                            _context.ContentExtractorSelectors.Add(newSelector);
+                            _context.ContentExtractorSelector.Add(newSelector);
                         }
                         catch (Exception ex)
                         {
@@ -310,7 +511,7 @@ namespace WebScraperApi.Data.Repositories
                         Keyword = keyword.Keyword
                     };
 
-                    _context.KeywordAlerts.Add(newKeyword);
+                    _context.KeywordAlert.Add(newKeyword);
                 }
             }
 
@@ -328,7 +529,7 @@ namespace WebScraperApi.Data.Repositories
                         TriggerName = webhook.TriggerName
                     };
 
-                    _context.WebhookTriggers.Add(newWebhook);
+                    _context.WebhookTrigger.Add(newWebhook);
                 }
             }
 
@@ -354,7 +555,7 @@ namespace WebScraperApi.Data.Repositories
                         requestsPerMinuteProperty.SetValue(newDomainRateLimit, 60); // Default value for rate limiting
                     }
 
-                    _context.DomainRateLimits.Add(newDomainRateLimit);
+                    _context.DomainRateLimit.Add(newDomainRateLimit);
                 }
             }
 
@@ -441,7 +642,7 @@ namespace WebScraperApi.Data.Repositories
                         proxyUrlProperty.SetValue(newProxyConfig, $"{username}:{password}@{hostValue}");
                     }
 
-                    _context.ProxyConfigurations.Add(newProxyConfig);
+                    _context.ProxyConfiguration.Add(newProxyConfig);
                 }
             }
 
@@ -465,7 +666,7 @@ namespace WebScraperApi.Data.Repositories
                         NotificationEmail = schedule.NotificationEmail
                     };
 
-                    _context.ScraperSchedules.Add(newSchedule);
+                    _context.ScraperSchedule.Add(newSchedule);
                 }
             }
 
@@ -599,13 +800,39 @@ namespace WebScraperApi.Data.Repositories
             return status;
         }
 
+        public async Task<List<ScraperStatusEntity>> GetAllRunningScrapersAsync()
+        {
+            try
+            {
+                // Get all scraper statuses where IsRunning is true
+                var runningScrapers = await _context.ScraperStatuses
+                    .Where(s => s.IsRunning)
+                    .ToListAsync();
+
+                // Ensure non-nullable string properties have default values
+                foreach (var status in runningScrapers)
+                {
+                    status.Message = status.Message ?? string.Empty;
+                    status.ElapsedTime = status.ElapsedTime ?? string.Empty;
+                    status.LastError = status.LastError ?? string.Empty;
+                }
+
+                return runningScrapers;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting running scrapers: {ex.Message}");
+                return new List<ScraperStatusEntity>();
+            }
+        }
+
         #endregion
 
         #region Scraper Run Operations
 
         public async Task<List<ScraperRunEntity>> GetScraperRunsAsync(string scraperId, int limit = 10)
         {
-            return await _context.ScraperRuns
+            return await _context.ScraperRun
                 .Where(r => r.ScraperId == scraperId)
                 .OrderByDescending(r => r.StartTime)
                 .Take(limit)
@@ -614,7 +841,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ScraperRunEntity> GetScraperRunByIdAsync(string runId)
         {
-            return await _context.ScraperRuns
+            return await _context.ScraperRun
                 .Include(r => r.LogEntries)
                 .Include(r => r.ContentChangeRecords)
                 .Include(r => r.ProcessedDocuments)
@@ -623,7 +850,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ScraperRunEntity> CreateScraperRunAsync(ScraperRunEntity run)
         {
-            _context.ScraperRuns.Add(run);
+            _context.ScraperRun.Add(run);
             await _context.SaveChangesAsync();
 
             // Update the scraper's LastRun property
@@ -652,7 +879,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<List<LogEntryEntity>> GetLogEntriesAsync(string scraperId, int limit = 100)
         {
-            return await _context.LogEntries
+            return await _context.LogEntry
                 .Where(l => l.ScraperId == scraperId)
                 .OrderByDescending(l => l.Timestamp)
                 .Take(limit)
@@ -661,7 +888,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<LogEntryEntity> AddLogEntryAsync(LogEntryEntity logEntry)
         {
-            _context.LogEntries.Add(logEntry);
+            _context.LogEntry.Add(logEntry);
             await _context.SaveChangesAsync();
 
             return logEntry;
@@ -673,7 +900,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<List<ContentChangeRecordEntity>> GetContentChangesAsync(string scraperId, int limit = 50)
         {
-            return await _context.ContentChangeRecords
+            return await _context.ContentChangeRecord
                 .Where(c => c.ScraperId == scraperId)
                 .OrderByDescending(c => c.DetectedAt)
                 .Take(limit)
@@ -682,7 +909,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ContentChangeRecordEntity> AddContentChangeAsync(ContentChangeRecordEntity change)
         {
-            _context.ContentChangeRecords.Add(change);
+            _context.ContentChangeRecord.Add(change);
             await _context.SaveChangesAsync();
 
             return change;
@@ -694,7 +921,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<List<ProcessedDocumentEntity>> GetProcessedDocumentsAsync(string scraperId, int limit = 50)
         {
-            return await _context.ProcessedDocuments
+            return await _context.ProcessedDocument
                 .Where(p => p.ScraperId == scraperId)
                 .OrderByDescending(p => p.ProcessedAt)
                 .Take(limit)
@@ -703,14 +930,14 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ProcessedDocumentEntity> GetDocumentByIdAsync(string documentId)
         {
-            return await _context.ProcessedDocuments
+            return await _context.ProcessedDocument
                 .Include(p => p.Metadata)
                 .FirstOrDefaultAsync(p => p.Id == documentId);
         }
 
         public async Task<ProcessedDocumentEntity> AddProcessedDocumentAsync(ProcessedDocumentEntity document)
         {
-            _context.ProcessedDocuments.Add(document);
+            _context.ProcessedDocument.Add(document);
             await _context.SaveChangesAsync();
 
             return document;
@@ -720,27 +947,136 @@ namespace WebScraperApi.Data.Repositories
 
         #region Metrics Operations
 
+        public async Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId)
+        {
+            try
+            {
+                // Default to retrieving metrics from the last 24 hours
+                var from = DateTime.Now.AddDays(-1);
+                var to = DateTime.Now;
+
+                // Try to get metrics from the custommetric table instead
+                // Create empty ScraperMetricEntity objects with data from custommetric
+                var customMetrics = await _context.CustomMetric
+                    .Select(cm => new ScraperMetricEntity
+                    {
+                        Id = cm.Id,
+                        ScraperId = scraperId,
+                        MetricName = cm.MetricName,
+                        MetricValue = cm.MetricValue,
+                        Timestamp = DateTime.Now
+                    })
+                    .ToListAsync();
+
+                if (customMetrics.Count > 0)
+                {
+                    return customMetrics;
+                }
+
+                // Fallback to the original query if no custom metrics found
+                return await _context.ScraperMetric
+                    .Where(m => m.ScraperId == scraperId && m.Timestamp >= from && m.Timestamp <= to)
+                    .OrderBy(m => m.Timestamp)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting metrics: {ex.Message}");
+                // Return an empty list if there's an error
+                return [];
+            }
+        }
+
         public async Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId, string metricName, DateTime from, DateTime to)
         {
-            var query = _context.ScraperMetrics
-                .Where(m => m.ScraperId == scraperId && m.Timestamp >= from && m.Timestamp <= to);
-
-            if (!string.IsNullOrEmpty(metricName))
+            try
             {
-                query = query.Where(m => m.MetricName == metricName);
-            }
+                // Try to get metrics from the custommetric table first
+                var customMetrics = await _context.CustomMetric
+                    .Select(cm => new ScraperMetricEntity
+                    {
+                        Id = cm.Id,
+                        ScraperId = scraperId,
+                        MetricName = cm.MetricName,
+                        MetricValue = cm.MetricValue,
+                        Timestamp = DateTime.Now
+                    })
+                    .ToListAsync();
 
-            return await query
-                .OrderBy(m => m.Timestamp)
-                .ToListAsync();
+                if (customMetrics.Count > 0)
+                {
+                    // Filter the custom metrics based on the metricName parameter
+                    if (!string.IsNullOrEmpty(metricName))
+                    {
+                        customMetrics = customMetrics.Where(m => m.MetricName == metricName).ToList();
+                    }
+
+                    return customMetrics;
+                }
+
+                // Fallback to the original query if no custom metrics found
+                var query = _context.ScraperMetric
+                    .Where(m => m.ScraperId == scraperId && m.Timestamp >= from && m.Timestamp <= to);
+
+                if (!string.IsNullOrEmpty(metricName))
+                {
+                    query = query.Where(m => m.MetricName == metricName);
+                }
+
+                return await query
+                    .OrderBy(m => m.Timestamp)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting metrics: {ex.Message}");
+                // Return an empty list if there's an error
+                return [];
+            }
         }
 
         public async Task<ScraperMetricEntity> AddScraperMetricAsync(ScraperMetricEntity metric)
         {
-            _context.ScraperMetrics.Add(metric);
-            await _context.SaveChangesAsync();
+            try
+            {
+                // First try to save to the custommetric table
+                var customMetric = new CustomMetricEntity
+                {
+                    ScraperMetricsId = 1, // Default value, will be auto-incremented
+                    MetricName = metric.MetricName,
+                    MetricValue = metric.MetricValue
+                };
 
-            return metric;
+                _context.CustomMetric.Add(customMetric);
+                await _context.SaveChangesAsync();
+
+                // Also save to the scrapermetric table
+                _context.ScraperMetric.Add(metric);
+                await _context.SaveChangesAsync();
+
+                Console.WriteLine($"Successfully added metric: {metric.MetricName} with value {metric.MetricValue}");
+                return metric;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding metric: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+                // Try just the original table if the custom metric table fails
+                try
+                {
+                    _context.ScraperMetric.Add(metric);
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"Successfully added metric to original table: {metric.MetricName}");
+                }
+                catch (Exception innerEx)
+                {
+                    Console.WriteLine($"Error adding to original metric table: {innerEx.Message}");
+                    Console.WriteLine($"Inner stack trace: {innerEx.StackTrace}");
+                }
+
+                return metric;
+            }
         }
 
         #endregion
@@ -749,7 +1085,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<PipelineMetricEntity> GetLatestPipelineMetricAsync(string scraperId)
         {
-            return await _context.PipelineMetrics
+            return await _context.PipelineMetric
                 .Where(p => p.ScraperId == scraperId)
                 .OrderByDescending(p => p.Timestamp)
                 .FirstOrDefaultAsync();
@@ -757,7 +1093,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<PipelineMetricEntity> AddPipelineMetricAsync(PipelineMetricEntity metric)
         {
-            _context.PipelineMetrics.Add(metric);
+            _context.PipelineMetric.Add(metric);
             await _context.SaveChangesAsync();
 
             return metric;
@@ -769,7 +1105,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<List<ScraperLogEntity>> GetScraperLogsAsync(string scraperId, int limit = 100)
         {
-            return await _context.ScraperLogs
+            return await _context.ScraperLog
                 .Where(l => l.ScraperId == scraperId)
                 .OrderByDescending(l => l.Timestamp)
                 .Take(limit)
@@ -778,7 +1114,7 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry)
         {
-            _context.ScraperLogs.Add(logEntry);
+            _context.ScraperLog.Add(logEntry);
             await _context.SaveChangesAsync();
 
             return logEntry;
@@ -790,10 +1126,39 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ScrapedPageEntity> AddScrapedPageAsync(ScrapedPageEntity page)
         {
-            _context.ScrapedPages.Add(page);
-            await _context.SaveChangesAsync();
+            try
+            {
+                Console.WriteLine($"Adding scraped page to database: URL={page.Url}, ScraperId={page.ScraperId}");
 
-            return page;
+                // Check if the ScrapedPage DbSet exists
+                if (_context.ScrapedPage == null)
+                {
+                    Console.WriteLine("Error: ScrapedPage DbSet is null");
+                    throw new InvalidOperationException("ScrapedPage DbSet is null");
+                }
+
+                // Add the entity to the context
+                _context.ScrapedPage.Add(page);
+                Console.WriteLine($"Added scraped page to context, saving changes...");
+
+                // Save changes to the database
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"Successfully saved scraped page to database with ID: {page.Id}");
+
+                return page;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding scraped page to database: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+                // Rethrow the exception to be handled by the caller
+                throw;
+            }
         }
 
         #endregion

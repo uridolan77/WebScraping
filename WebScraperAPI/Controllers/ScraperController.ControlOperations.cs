@@ -17,7 +17,7 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation($"Starting scraper with ID {id}");
-                
+
                 // First, try to get the scraper from the database
                 var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
                 ScraperConfigModel config;
@@ -43,7 +43,7 @@ namespace WebScraperAPI.Controllers
                         LastRun = dbScraper.LastRun,
                         RunCount = dbScraper.RunCount
                     };
-                    
+
                     _logger.LogInformation($"Found scraper {id} in database, starting it");
                 }
                 else
@@ -51,15 +51,15 @@ namespace WebScraperAPI.Controllers
                     // Fallback to JSON file if not found in database
                     var configs = await LoadScraperConfigsAsync();
                     config = configs.FirstOrDefault(c => c.Id == id);
-                    
+
                     if (config == null)
                     {
                         return NotFound($"Scraper with ID {id} not found");
                     }
-                    
+
                     _logger.LogWarning($"Scraper with ID {id} not found in database, falling back to JSON file.");
                 }
-                
+
                 // Check if the scraper is already running
                 if (_activeScrapers.TryGetValue(id, out var existingScraper))
                 {
@@ -70,7 +70,7 @@ namespace WebScraperAPI.Controllers
                         Message = "Scraper is already running"
                     });
                 }
-                
+
                 // Validate the configuration
                 if (string.IsNullOrEmpty(config.StartUrl))
                 {
@@ -81,9 +81,9 @@ namespace WebScraperAPI.Controllers
                         Message = "The scraper has an invalid or empty start URL"
                     });
                 }
-                
+
                 _logger.LogInformation($"Creating scraper configuration for {id}. Start URL: {config.StartUrl}, MaxDepth: {config.MaxDepth}");
-                
+
                 // Create and configure scraper with all available settings
                 var scraperConfig = new ScraperConfig
                 {
@@ -100,13 +100,13 @@ namespace WebScraperAPI.Controllers
 
                 // Get the monitoring service during the request
                 var monitoringService = HttpContext.RequestServices.GetService<WebScraperApi.Services.Monitoring.IScraperMonitoringService>();
-                
+
                 // Create logger action that logs to console and monitoring service
                 Action<string> logAction = (message) =>
                 {
                     _logger.LogInformation($"Scraper {id}: {message}");
                     Console.WriteLine($"Scraper {id}: {message}");
-                    
+
                     // Also log to monitoring service if it was available
                     if (monitoringService != null)
                     {
@@ -122,10 +122,10 @@ namespace WebScraperAPI.Controllers
                 };
 
                 _logger.LogInformation($"Creating scraper instance for {id}");
-                
+
                 // Create the scraper instance
                 var scraper = new Scraper(scraperConfig, logAction);
-                
+
                 // Initialize and start scraping in a background task
                 _ = Task.Run(async () =>
                 {
@@ -133,16 +133,16 @@ namespace WebScraperAPI.Controllers
                     {
                         _logger.LogInformation($"Initializing scraper {id}");
                         await scraper.InitializeAsync();
-                        
+
                         _logger.LogInformation($"Starting scraping process for {id}");
                         await scraper.StartScrapingAsync();
-                        
+
                         _logger.LogInformation($"Scraping completed for {id}");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, $"Error running scraper {id}: {ex.Message}");
-                        
+
                         if (ex.InnerException != null)
                         {
                             _logger.LogError($"Inner exception: {ex.InnerException.Message}");
@@ -158,7 +158,7 @@ namespace WebScraperAPI.Controllers
 
                 // Store the scraper in the active scrapers dictionary
                 _activeScrapers[id] = scraper;
-                
+
                 // Update the scraper status
                 if (dbScraper != null)
                 {
@@ -182,7 +182,7 @@ namespace WebScraperAPI.Controllers
                         await SaveScraperConfigsAsync(configs);
                     }
                 }
-                
+
                 // Try to update scraper status in database if monitoring service is available
                 try
                 {
@@ -196,16 +196,16 @@ namespace WebScraperAPI.Controllers
                         HasErrors = false,
                         Message = "Scraper started successfully"
                     };
-                    
+
                     await _scraperRepository.UpdateScraperStatusAsync(status);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning($"Could not update scraper status in database: {ex.Message}");
                 }
-                
+
                 _logger.LogInformation($"Scraper {id} started successfully");
-                
+
                 return Ok(new
                 {
                     Status = "Started",
@@ -229,42 +229,61 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation($"Attempting to stop scraper with ID {id}");
-                
-                if (!_activeScrapers.TryGetValue(id, out var scraper))
+
+                bool scraperWasActive = false;
+
+                // Check if the scraper is in the active scrapers dictionary
+                if (_activeScrapers.TryGetValue(id, out var scraper))
                 {
-                    _logger.LogWarning($"No running scraper found with ID {id}");
-                    return NotFound($"No running scraper found with ID {id}");
+                    _logger.LogInformation($"Found active scraper with ID {id}, stopping it");
+
+                    // Stop the scraper
+                    scraper.StopScraping();
+                    _activeScrapers.Remove(id);
+
+                    _logger.LogInformation($"Successfully stopped scraper with ID {id}");
+                    scraperWasActive = true;
                 }
-                
-                _logger.LogInformation($"Found active scraper with ID {id}, stopping it");
-                
-                // Stop the scraper
-                scraper.StopScraping();
-                _activeScrapers.Remove(id);
-                
-                _logger.LogInformation($"Successfully stopped scraper with ID {id}");
-                
+                else
+                {
+                    _logger.LogWarning($"No active scraper instance found with ID {id}, but will update database status anyway");
+                }
+
                 // First, check if the scraper exists in the database
                 var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
-                
+
                 if (dbScraper != null)
                 {
                     // Update the database record
                     _logger.LogInformation($"Updating status for scraper {id} in database");
                     await _scraperRepository.UpdateScraperAsync(dbScraper);
-                    
+
                     // Update scraper status
                     try
                     {
+                        // Get current status to preserve any fields we don't want to change
+                        var currentStatus = await _scraperRepository.GetScraperStatusAsync(id);
+
+                        // Create new status object
                         var status = new WebScraperApi.Data.Entities.ScraperStatusEntity
                         {
                             ScraperId = id,
                             IsRunning = false,
                             EndTime = DateTime.Now,
                             LastUpdate = DateTime.Now,
-                            Message = "Scraper stopped by user"
+                            Message = scraperWasActive ? "Scraper stopped by user" : "Scraper marked as stopped (no active instance found)"
                         };
-                        
+
+                        // If we have current status, preserve some fields
+                        if (currentStatus != null)
+                        {
+                            status.StartTime = currentStatus.StartTime;
+                            status.UrlsProcessed = currentStatus.UrlsProcessed;
+                            status.UrlsQueued = currentStatus.UrlsQueued;
+                            status.DocumentsProcessed = currentStatus.DocumentsProcessed;
+                            status.HasErrors = currentStatus.HasErrors;
+                        }
+
                         await _scraperRepository.UpdateScraperStatusAsync(status);
                         _logger.LogInformation($"Updated scraper status in database for {id}");
                     }
@@ -279,7 +298,7 @@ namespace WebScraperAPI.Controllers
                     _logger.LogWarning($"Scraper with ID {id} not found in database, updating JSON file");
                     var configs = await LoadScraperConfigsAsync();
                     var config = configs.FirstOrDefault(c => c.Id == id);
-                    
+
                     if (config != null)
                     {
                         config.LastModified = DateTime.Now;
@@ -287,11 +306,11 @@ namespace WebScraperAPI.Controllers
                         _logger.LogInformation($"Updated scraper configuration in JSON file for {id}");
                     }
                 }
-                
+
                 return Ok(new
                 {
                     Status = "Stopped",
-                    Message = "Scraper stopped successfully"
+                    Message = scraperWasActive ? "Scraper stopped successfully" : "Scraper marked as stopped (no active instance found)"
                 });
             }
             catch (Exception ex)

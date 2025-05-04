@@ -9,7 +9,7 @@ using WebScraper.Scraping.Components;
 namespace WebScraper
 {
     /// <summary>
-    /// Comprehensive modular web scraper that handles all scraping functionality 
+    /// Comprehensive modular web scraper that handles all scraping functionality
     /// through pluggable components
     /// </summary>
     public class Scraper : IDisposable
@@ -43,7 +43,7 @@ namespace WebScraper
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _core = new ScraperCore(config, logger);
-            
+
             RegisterComponents();
         }
 
@@ -65,7 +65,7 @@ namespace WebScraper
             : this(config, new ActionLogger(s => Console.WriteLine(s)))
         {
         }
-        
+
         /// <summary>
         /// Initializes a new instance of the Scraper class with a default configuration
         /// </summary>
@@ -85,47 +85,49 @@ namespace WebScraper
             // Core components
             _core.AddComponent(new HttpUrlProcessor());
             _core.AddComponent(new ContentExtractionComponent());
-            
+
             // Optional components based on configuration
             if (_config.EnablePersistentState)
             {
                 _core.AddComponent(new StateManagerComponent());
             }
-            
+
             if (_config.ProcessJsHeavyPages || _config.IsUKGCWebsite)
             {
                 _core.AddComponent(new HeadlessBrowserComponent());
             }
-            
+
             if (_config.ProcessPdfDocuments || _config.ProcessOfficeDocuments)
             {
                 _core.AddComponent(new DocumentProcessingComponent());
             }
-            
+
             if (_config.EnableChangeDetection)
             {
                 _core.AddComponent(new ChangeDetectionComponent());
             }
-            
+
             if (_config.EnableRegulatoryContentAnalysis)
             {
                 _core.AddComponent(new RegulatoryContentComponent());
             }
-            
+
             if (_config.EnableAdaptiveCrawling)
             {
                 _core.AddComponent(new AdaptiveCrawlingComponent());
             }
-            
+
             if (_config.EnableRateLimiting)
             {
                 _core.AddComponent(new RateLimitingComponent());
             }
-            
+
             if (_config.EnableMetricsTracking)
             {
                 _core.AddComponent(new MetricsTrackingComponent(Metrics));
             }
+
+            // ContentSaverComponent will be added by the ScraperService in WebScraperAPI
         }
 
         #region Public API
@@ -137,7 +139,7 @@ namespace WebScraper
         {
             if (_isInitialized)
                 return;
-                
+
             try
             {
                 _logger.LogInformation("Starting scraper initialization...");
@@ -161,13 +163,13 @@ namespace WebScraper
             {
                 _logger.LogError(ex, "Failed to initialize scraper");
                 _logger.LogError($"Error details: {ex.Message}");
-                
+
                 if (ex.InnerException != null)
                 {
                     _logger.LogError($"Inner exception: {ex.InnerException.Message}");
                     _logger.LogError($"Inner exception stack trace: {ex.InnerException.StackTrace}");
                 }
-                
+
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
                 throw;
             }
@@ -183,16 +185,16 @@ namespace WebScraper
                 _logger.LogInformation("Scraper not initialized, initializing now...");
                 await InitializeAsync();
             }
-            
+
             try
             {
                 _logger.LogInformation("Starting scraping process...");
                 _logger.LogInformation($"Configuration details: MaxDepth={_config.MaxDepth}, MaxConcurrentRequests={_config.MaxConcurrentRequests}");
-                
+
                 await _core.StartScrapingAsync();
-                
+
                 _logger.LogInformation("Scraping process completed successfully");
-                
+
                 // Update metrics
                 Metrics.LastRunTime = DateTime.Now;
                 if (Metrics.FirstRunTime == DateTime.MinValue)
@@ -206,13 +208,13 @@ namespace WebScraper
             {
                 _logger.LogError(ex, "Error during scraping");
                 _logger.LogError($"Error details: {ex.Message}");
-                
+
                 if (ex.InnerException != null)
                 {
                     _logger.LogError($"Inner exception: {ex.InnerException.Message}");
                     _logger.LogError($"Inner exception stack trace: {ex.InnerException.StackTrace}");
                 }
-                
+
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
                 Metrics.FailedRuns++;
                 throw;
@@ -243,7 +245,7 @@ namespace WebScraper
             {
                 await InitializeAsync();
             }
-            
+
             if (string.IsNullOrEmpty(url))
             {
                 _logger.LogWarning("Attempted to process null or empty URL");
@@ -254,7 +256,7 @@ namespace WebScraper
             {
                 _logger.LogInformation($"Processing URL: {url}");
                 var urlProcessor = _core.GetComponent<IUrlProcessor>();
-                
+
                 if (urlProcessor != null)
                 {
                     await urlProcessor.ProcessUrlAsync(url);
@@ -283,12 +285,12 @@ namespace WebScraper
                 _logger.LogWarning("Continuous scraping already active, stopping previous instance");
                 StopContinuousScraping();
             }
-            
+
             _continuousScrapingCts = new CancellationTokenSource();
             var token = _continuousScrapingCts.Token;
-            
+
             _logger.LogInformation($"Setting up continuous scraping with interval of {interval.TotalMinutes} minutes");
-            
+
             try
             {
                 while (!token.IsCancellationRequested)
@@ -296,7 +298,7 @@ namespace WebScraper
                     _logger.LogInformation("Starting scheduled scraping run");
                     await StartScrapingAsync();
                     _logger.LogInformation($"Scheduled scraping completed, waiting {interval.TotalMinutes} minutes until next run");
-                    
+
                     try
                     {
                         await Task.Delay(interval, token);
@@ -343,9 +345,9 @@ namespace WebScraper
         {
             if (_isDisposed)
                 return;
-                
+
             _isDisposed = true;
-            
+
             try
             {
                 StopContinuousScraping();
@@ -372,14 +374,14 @@ namespace WebScraper
             }
 
             public IDisposable BeginScope<TState>(TState state) => null;
-            
+
             public bool IsEnabled(LogLevel logLevel) => true;
 
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
             {
                 var message = formatter(state, exception);
                 _logAction($"[{logLevel}] {message}");
-                
+
                 if (exception != null)
                 {
                     _logAction($"[{logLevel}] Exception: {exception}");

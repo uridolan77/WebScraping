@@ -17,12 +17,12 @@ namespace WebScraperApi.Services.Monitoring
         private readonly ILogger<ScraperMonitoringService> _logger;
         private readonly IScraperStateService _stateService;
         private readonly Dictionary<string, List<LogEntry>> _logStore;
-        
+
         /// <summary>
         /// Maximum number of log entries to keep per scraper
         /// </summary>
         private const int MaxLogEntries = 1000;
-        
+
         public ScraperMonitoringService(
             ILogger<ScraperMonitoringService> logger,
             IScraperStateService stateService)
@@ -31,7 +31,7 @@ namespace WebScraperApi.Services.Monitoring
             _stateService = stateService;
             _logStore = new Dictionary<string, List<LogEntry>>();
         }
-        
+
         /// <summary>
         /// Gets the current status of a scraper
         /// </summary>
@@ -40,13 +40,13 @@ namespace WebScraperApi.Services.Monitoring
         public ScraperStatus GetScraperStatus(string id)
         {
             var instance = _stateService.GetScraperInstance(id);
-            return instance?.Status ?? new ScraperStatus 
+            return instance?.Status ?? new ScraperStatus
             {
                 IsRunning = false,
                 Message = "Scraper not found"
             };
         }
-        
+
         /// <summary>
         /// Gets the logs for a scraper
         /// </summary>
@@ -59,7 +59,7 @@ namespace WebScraperApi.Services.Monitoring
             {
                 return new List<LogEntry>();
             }
-            
+
             lock (_logStore)
             {
                 return _logStore[id]
@@ -68,7 +68,7 @@ namespace WebScraperApi.Services.Monitoring
                     .ToList();
             }
         }
-        
+
         /// <summary>
         /// Adds a log message for a scraper
         /// </summary>
@@ -81,7 +81,7 @@ namespace WebScraperApi.Services.Monitoring
                 Timestamp = DateTime.Now,
                 Message = message
             };
-            
+
             // Add to log store
             lock (_logStore)
             {
@@ -89,31 +89,31 @@ namespace WebScraperApi.Services.Monitoring
                 {
                     _logStore[id] = new List<LogEntry>();
                 }
-                
+
                 _logStore[id].Add(logEntry);
-                
+
                 // Trim if exceeds max entries
                 if (_logStore[id].Count > MaxLogEntries)
                 {
                     _logStore[id] = _logStore[id].OrderByDescending(log => log.Timestamp).Take(MaxLogEntries).ToList();
                 }
             }
-            
+
             // Update status in the instance if available
             var instance = _stateService.GetScraperInstance(id);
             if (instance != null)
             {
                 instance.Status.LastStatusUpdate = DateTime.Now;
                 instance.Status.Message = message;
-                
+
                 // Add log to status log messages too
                 if (instance.Status.LogMessages == null)
                 {
                     instance.Status.LogMessages = new List<LogEntry>();
                 }
-                
+
                 instance.Status.LogMessages.Add(logEntry);
-                
+
                 // If log message contains "error" or "fail", mark the status as having errors
                 if (message.ToLower().Contains("error") || message.ToLower().Contains("fail"))
                 {
@@ -121,18 +121,18 @@ namespace WebScraperApi.Services.Monitoring
                     instance.Status.LastError = message;
                 }
             }
-            
+
             // Log to the application logs as well
             _logger.LogInformation($"Scraper {id}: {message}");
         }
-        
+
         /// <summary>
         /// Run a monitoring check for all scrapers that have monitoring enabled
         /// </summary>
         public async Task RunAllMonitoringChecksAsync()
         {
             _logger.LogInformation("Running monitoring checks for all scrapers");
-            
+
             foreach (var scraper in _stateService.GetScrapers())
             {
                 try
@@ -147,10 +147,10 @@ namespace WebScraperApi.Services.Monitoring
                     _logger.LogError(ex, $"Error running monitoring check for scraper {scraper.Key}");
                 }
             }
-            
+
             _logger.LogInformation("Completed monitoring checks for all scrapers");
         }
-        
+
         /// <summary>
         /// Runs a monitoring check for a specific scraper
         /// </summary>
@@ -163,42 +163,42 @@ namespace WebScraperApi.Services.Monitoring
                 _logger.LogWarning($"Cannot run monitoring check for scraper {id}: not found");
                 return;
             }
-            
+
             // Skip if the scraper is already running
             if (instance.Status.IsRunning)
             {
                 _logger.LogInformation($"Skipping monitoring check for scraper {id}: already running");
                 return;
             }
-            
+
             // Skip if not yet time for a check based on interval
             if (instance.Status.LastMonitorCheck.HasValue)
             {
                 var interval = TimeSpan.FromMinutes(instance.Config.GetMonitoringInterval());
                 var nextCheckTime = instance.Status.LastMonitorCheck.Value.Add(interval);
-                
+
                 if (DateTime.Now < nextCheckTime)
                 {
                     _logger.LogInformation($"Skipping monitoring check for scraper {id}: not yet time for next check (next check: {nextCheckTime})");
                     return;
                 }
             }
-            
+
             // Update last check time
             instance.Status.LastMonitorCheck = DateTime.Now;
-            
+
             _logger.LogInformation($"Running monitoring check for scraper {id}");
             AddLogMessage(id, "Running scheduled monitoring check");
-            
+
             // If continuous monitoring is enabled, start the scraper
             if (instance.Config.EnableContinuousMonitoring && !instance.Status.IsRunning)
             {
                 try
                 {
                     // Get the scraper manager to start the scraper
-                    // This is a temporary approach - in a more advanced design, 
+                    // This is a temporary approach - in a more advanced design,
                     // we would use a message queue or event system to avoid circular dependencies
-                    var scraperManager = (ScraperManager)ServiceLocator.GetService(typeof(ScraperManager));
+                    var scraperManager = ServiceLocator.GetService<ScraperManager>();
                     if (scraperManager != null)
                     {
                         await scraperManager.StartScraperAsync(id);

@@ -23,7 +23,7 @@ namespace WebScraperAPI.Controllers
         private readonly Dictionary<string, Scraper> _activeScrapers = new Dictionary<string, Scraper>();
         private readonly string _configFilePath;
         private readonly IScraperRepository _scraperRepository;
-        
+
         public ScraperController(
             ILogger<ScraperController> logger,
             IConfiguration configuration,
@@ -42,14 +42,14 @@ namespace WebScraperAPI.Controllers
             {
                 return new List<ScraperConfigModel>();
             }
-            
+
             string json = await System.IO.File.ReadAllTextAsync(_configFilePath);
             return JsonSerializer.Deserialize<List<ScraperConfigModel>>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             }) ?? new List<ScraperConfigModel>();
         }
-        
+
         private async Task SaveScraperConfigsAsync(List<ScraperConfigModel> configs)
         {
             string json = JsonSerializer.Serialize(configs, new JsonSerializerOptions
@@ -66,26 +66,26 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation("Getting scraper with ID {Id}", id);
-                
+
                 // First try to get the scraper from the database
                 var isConnected = _scraperRepository.TestDatabaseConnection();
                 _logger.LogInformation("Database connection test result: {IsConnected}", isConnected);
-                
+
                 if (isConnected)
                 {
                     _logger.LogInformation("Attempting to fetch scraper {Id} from database...", id);
                     var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
-                    
+
                     if (dbScraper != null)
                     {
                         _logger.LogInformation("Found scraper {Id} in database", id);
-                        
+
                         // Log related entity counts to help diagnose issues
-                        _logger.LogInformation("Related entities for {Id}: StartUrls={StartUrlsCount}, ContentExtractorSelectors={SelectorsCount}", 
-                            dbScraper.Id, 
+                        _logger.LogInformation("Related entities for {Id}: StartUrls={StartUrlsCount}, ContentExtractorSelectors={SelectorsCount}",
+                            dbScraper.Id,
                             dbScraper.StartUrls?.Count ?? 0,
                             dbScraper.ContentExtractorSelectors?.Count ?? 0);
-                        
+
                         // Convert database entity to API model
                         var scraperModel = new ScraperConfigModel
                         {
@@ -104,12 +104,61 @@ namespace WebScraperAPI.Controllers
                             LastModified = dbScraper.LastModified,
                             LastRun = dbScraper.LastRun,
                             RunCount = dbScraper.RunCount,
-                            // Initialize empty collections to prevent null references
-                            StartUrls = dbScraper.StartUrls?.Select(u => u.Url)?.ToList() ?? new List<string>(),
-                            ContentExtractorSelectors = dbScraper.ContentExtractorSelectors?.Where(c => !c.IsExclude)?.Select(c => c.Selector)?.ToList() ?? new List<string>(),
-                            ContentExtractorExcludeSelectors = dbScraper.ContentExtractorSelectors?.Where(c => c.IsExclude)?.Select(c => c.Selector)?.ToList() ?? new List<string>()
+                            // Initialize empty collections since we're not loading related entities anymore
+                            StartUrls = new List<string>(),
+                            ContentExtractorSelectors = new List<string>(),
+                            ContentExtractorExcludeSelectors = new List<string>()
                         };
-                        
+
+                        // Fetch related entities separately if needed
+                        try
+                        {
+                            var startUrls = await _scraperRepository.GetScraperStartUrlsAsync(id);
+                            if (startUrls != null && startUrls.Count > 0)
+                            {
+                                scraperModel.StartUrls = startUrls.Select(u => u.Url).ToList();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error fetching start URLs for scraper {Id}", id);
+                        }
+
+                        try
+                        {
+                            var selectors = await _scraperRepository.GetContentExtractorSelectorsAsync(id);
+                            if (selectors != null && selectors.Count > 0)
+                            {
+                                scraperModel.ContentExtractorSelectors = selectors
+                                    .Where(c => !c.IsExclude)
+                                    .Select(c => c.Selector)
+                                    .ToList();
+
+                                scraperModel.ContentExtractorExcludeSelectors = selectors
+                                    .Where(c => c.IsExclude)
+                                    .Select(c => c.Selector)
+                                    .ToList();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error fetching content extractor selectors for scraper {Id}", id);
+                        }
+
+                        try
+                        {
+                            var keywordAlerts = await _scraperRepository.GetKeywordAlertsAsync(id);
+                            if (keywordAlerts != null && keywordAlerts.Count > 0)
+                            {
+                                _logger.LogInformation("Found {Count} keyword alerts for scraper {Id}", keywordAlerts.Count, id);
+                                // Add keyword alerts to the model if needed
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error fetching keyword alerts for scraper {Id}", id);
+                        }
+
                         return Ok(scraperModel);
                     }
                     else
@@ -117,18 +166,18 @@ namespace WebScraperAPI.Controllers
                         _logger.LogWarning("Scraper {Id} not found in database, falling back to JSON file", id);
                     }
                 }
-                
+
                 // Fallback to JSON file if database retrieval failed
                 _logger.LogInformation("Fallback: Looking for scraper {Id} in JSON file", id);
                 var configs = await LoadScraperConfigsAsync();
                 var config = configs.FirstOrDefault(c => c.Id == id);
-                
+
                 if (config == null)
                 {
                     _logger.LogWarning("Scraper {Id} not found in JSON file either", id);
                     return NotFound();
                 }
-                
+
                 _logger.LogInformation("Found scraper {Id} in JSON file", id);
                 return Ok(config);
             }
@@ -136,6 +185,205 @@ namespace WebScraperAPI.Controllers
             {
                 _logger.LogError(ex, "Error getting scraper with ID {Id}", id);
                 return StatusCode(500, "An error occurred while retrieving the scraper.");
+            }
+        }
+
+        // Get scraper status
+        [HttpGet("{id}/status")]
+        public async Task<ActionResult<object>> GetScraperStatus(string id)
+        {
+            try
+            {
+                _logger.LogInformation("Getting status for scraper with ID {Id}", id);
+
+                var status = await _scraperRepository.GetScraperStatusAsync(id);
+
+                if (status == null)
+                {
+                    // If no status exists, return a default status
+                    return Ok(new
+                    {
+                        ScraperId = id,
+                        IsRunning = false,
+                        StartTime = (DateTime?)null,
+                        EndTime = (DateTime?)null,
+                        ElapsedTime = "00:00:00",
+                        UrlsProcessed = 0,
+                        UrlsQueued = 0,
+                        DocumentsProcessed = 0,
+                        HasErrors = false,
+                        Message = "Scraper has not been run yet",
+                        LastStatusUpdate = DateTime.Now,
+                        LastUpdate = DateTime.Now
+                    });
+                }
+
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting status for scraper with ID {Id}", id);
+                return StatusCode(500, "An error occurred while retrieving the scraper status.");
+            }
+        }
+
+        // Get scraper logs from database
+        [HttpGet("{id}/db-logs")]
+        public async Task<ActionResult<IEnumerable<object>>> GetScraperDbLogs(string id, [FromQuery] int limit = 100)
+        {
+            try
+            {
+                _logger.LogInformation("Getting database logs for scraper with ID {Id}, limit {Limit}", id, limit);
+
+                var logs = await _scraperRepository.GetScraperLogsAsync(id, limit);
+
+                if (logs == null || logs.Count == 0)
+                {
+                    // Return empty array rather than 404
+                    return Ok(new List<object>());
+                }
+
+                return Ok(logs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting database logs for scraper with ID {Id}", id);
+                return StatusCode(500, "An error occurred while retrieving the scraper database logs.");
+            }
+        }
+
+        // Get scraper monitor data
+        [HttpGet("{id}/monitor")]
+        public async Task<ActionResult<object>> GetScraperMonitor(string id)
+        {
+            try
+            {
+                _logger.LogInformation("Getting monitor data for scraper with ID {Id}", id);
+
+                // First try to get the scraper from the database
+                string scraperName = "Unknown Scraper";
+                bool scraperFound = false;
+
+                var isConnected = _scraperRepository.TestDatabaseConnection();
+                _logger.LogInformation("Database connection test result: {IsConnected}", isConnected);
+
+                if (isConnected)
+                {
+                    _logger.LogInformation("Attempting to fetch scraper {Id} from database...", id);
+                    var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
+
+                    if (dbScraper != null)
+                    {
+                        _logger.LogInformation("Found scraper {Id} in database", id);
+                        scraperName = dbScraper.Name;
+                        scraperFound = true;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Scraper {Id} not found in database, falling back to JSON file", id);
+                    }
+                }
+
+                // Fallback to JSON file if database retrieval failed
+                if (!scraperFound)
+                {
+                    _logger.LogInformation("Fallback: Looking for scraper {Id} in JSON file", id);
+                    var configs = await LoadScraperConfigsAsync();
+                    var config = configs.FirstOrDefault(c => c.Id == id);
+
+                    if (config == null)
+                    {
+                        _logger.LogWarning("Scraper {Id} not found in JSON file either", id);
+                        return NotFound($"Scraper with ID {id} not found");
+                    }
+
+                    _logger.LogInformation("Found scraper {Id} in JSON file", id);
+                    scraperName = config.Name ?? "Unknown Scraper";
+                }
+
+                try
+                {
+                    // Get status
+                    var status = await _scraperRepository.GetScraperStatusAsync(id);
+
+                    // Create default status if null
+                    var statusToUse = status ?? new WebScraperApi.Data.Entities.ScraperStatusEntity
+                    {
+                        ScraperId = id,
+                        IsRunning = false,
+                        StartTime = null,
+                        EndTime = null,
+                        ElapsedTime = "00:00:00",
+                        UrlsProcessed = 0,
+                        UrlsQueued = 0,
+                        DocumentsProcessed = 0,
+                        HasErrors = false,
+                        Message = "Scraper has not been run yet",
+                        LastStatusUpdate = DateTime.Now,
+                        LastUpdate = DateTime.Now
+                    };
+
+                    // Get metrics separately to isolate potential issues
+                    List<object> metricsArray = new List<object>();
+                    try
+                    {
+                        var metrics = await _scraperRepository.GetScraperMetricsAsync(id);
+                        if (metrics != null && metrics.Count > 0)
+                        {
+                            metricsArray = metrics.Select(m => new {
+                                m.Id,
+                                m.ScraperId,
+                                ScraperName = scraperName, // Use the scraper name from config
+                                MetricName = m.MetricName,
+                                MetricValue = m.MetricValue,
+                                Timestamp = m.Timestamp
+                            }).Cast<object>().ToList();
+                        }
+                    }
+                    catch (Exception metricEx)
+                    {
+                        _logger.LogError(metricEx, "Error getting metrics for scraper with ID {Id}. Continuing with empty metrics list", id);
+                        // Continue with empty metrics list
+                    }
+
+                    // Create response object
+                    var monitorData = new
+                    {
+                        ScraperId = id,
+                        ScraperName = scraperName,
+                        Status = statusToUse,
+                        Metrics = metricsArray,
+                        LastUpdated = DateTime.Now
+                    };
+
+                    return Ok(monitorData);
+                }
+                catch (Exception innerEx)
+                {
+                    _logger.LogError(innerEx, "Error processing monitor data for scraper with ID {Id}", id);
+
+                    // Return a simplified response with just the scraper info
+                    var fallbackResponse = new
+                    {
+                        ScraperId = id,
+                        ScraperName = scraperName,
+                        Status = new
+                        {
+                            IsRunning = false,
+                            Message = "Unable to retrieve status information",
+                            Error = innerEx.Message
+                        },
+                        Metrics = new List<object>(),
+                        LastUpdated = DateTime.Now
+                    };
+
+                    return Ok(fallbackResponse);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting monitor data for scraper with ID {Id}: {Message}", id, ex.Message);
+                return StatusCode(500, "An error occurred while retrieving the scraper monitor data.");
             }
         }
 
@@ -147,17 +395,17 @@ namespace WebScraperAPI.Controllers
             {
                 var configs = LoadScraperConfigsAsync().Result;
                 var config = configs.FirstOrDefault(c => c.Id == id);
-                
+
                 if (config == null)
                 {
                     return NotFound("Scraper not found.");
                 }
-                
+
                 if (string.IsNullOrEmpty(config.OutputDirectory) || !Directory.Exists(config.OutputDirectory))
                 {
                     return new List<object>();
                 }
-                
+
                 // Get all files in the output directory
                 var files = Directory.GetFiles(config.OutputDirectory)
                     .Select(f => new FileInfo(f))
@@ -169,7 +417,7 @@ namespace WebScraperAPI.Controllers
                         Path = f.FullName
                     })
                     .ToList();
-                
+
                 return Ok(files);
             }
             catch (Exception ex)
@@ -199,9 +447,9 @@ namespace WebScraperAPI.Controllers
                 LastMonitorCheck = DateTime.Now,
                 LastError = string.Empty
             };
-            
+
             await _scraperRepository.UpdateScraperStatusAsync(status);
-            
+
             // Also log the scraper start
             await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
             {
@@ -218,7 +466,7 @@ namespace WebScraperAPI.Controllers
             try
             {
                 var status = await _scraperRepository.GetScraperStatusAsync(scraperId);
-                
+
                 if (status == null)
                 {
                     status = new WebScraperApi.Data.Entities.ScraperStatusEntity
@@ -229,25 +477,25 @@ namespace WebScraperAPI.Controllers
                         UrlsProcessed = 0
                     };
                 }
-                
+
                 // Update status
                 status.IsRunning = true;
                 status.UrlsProcessed++;
                 status.LastStatusUpdate = DateTime.Now;
                 status.LastUpdate = DateTime.Now;
-                
+
                 if (status.StartTime.HasValue)
                 {
                     TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
                     status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
                 }
-                
+
                 if (hasError)
                 {
                     status.HasErrors = true;
                     status.LastError = errorMessage;
                     status.Message = $"Error processing URL: {currentUrl}";
-                    
+
                     // Log error
                     await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
                     {
@@ -260,7 +508,7 @@ namespace WebScraperAPI.Controllers
                 else
                 {
                     status.Message = $"Processing URL: {currentUrl}";
-                    
+
                     // Log info
                     await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
                     {
@@ -270,7 +518,7 @@ namespace WebScraperAPI.Controllers
                         Message = $"Processed URL: {currentUrl}"
                     });
                 }
-                
+
                 await _scraperRepository.UpdateScraperStatusAsync(status);
             }
             catch (Exception ex)
@@ -293,38 +541,38 @@ namespace WebScraperAPI.Controllers
                     TextContent = textContent,
                     ScrapedAt = DateTime.Now
                 });
-                
+
                 // Also save to files if output directory is configured
                 var configs = await LoadScraperConfigsAsync();
                 var config = configs.FirstOrDefault(c => c.Id == scraperId);
-                
+
                 if (config != null && !string.IsNullOrEmpty(config.OutputDirectory))
                 {
                     if (!Directory.Exists(config.OutputDirectory))
                     {
                         Directory.CreateDirectory(config.OutputDirectory);
                     }
-                    
+
                     // Create a safe filename from the URL
                     string filename = Uri.UnescapeDataString(new Uri(url).PathAndQuery)
                         .Replace("/", "_")
                         .Replace("?", "_")
                         .Replace("&", "_")
                         .Replace("=", "_");
-                    
+
                     if (string.IsNullOrEmpty(filename) || filename == "_")
                     {
                         filename = "index";
                     }
-                    
+
                     // Save HTML file
                     string htmlFilePath = Path.Combine(config.OutputDirectory, $"{filename}.html");
                     await System.IO.File.WriteAllTextAsync(htmlFilePath, htmlContent);
-                    
+
                     // Save text file
                     string textFilePath = Path.Combine(config.OutputDirectory, $"{filename}.txt");
                     await System.IO.File.WriteAllTextAsync(textFilePath, textContent);
-                    
+
                     // Log the file saving
                     await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
                     {
@@ -344,9 +592,15 @@ namespace WebScraperAPI.Controllers
         // Helper method specifically to create the correct entity type for AddScraperMetricAsync
         private WebScraperApi.Data.Entities.ScraperMetricEntity CreateMetricEntity(string scraperId, string metricName, double value)
         {
+            // Get scraper name from configs
+            var configs = LoadScraperConfigsAsync().Result;
+            var config = configs.FirstOrDefault(c => c.Id == scraperId);
+            string scraperName = config?.Name ?? "Unknown Scraper";
+
             return new WebScraperApi.Data.Entities.ScraperMetricEntity
             {
                 ScraperId = scraperId,
+                ScraperName = scraperName,
                 MetricName = metricName,
                 MetricValue = value,
                 Timestamp = DateTime.Now
@@ -358,16 +612,23 @@ namespace WebScraperAPI.Controllers
         {
             try
             {
-                // Force dynamic typing to bypass the type checking at compile time
+                // Get scraper name from configs
+                var configs = await LoadScraperConfigsAsync();
+                var config = configs.FirstOrDefault(c => c.Id == scraperId);
+                string scraperName = config?.Name ?? "Unknown Scraper";
+
+                // Use dynamic to bypass type checking at compile time
+                // This allows us to handle different versions of ScraperMetricEntity
                 dynamic metricEntity = new WebScraperApi.Data.Entities.ScraperMetricEntity
                 {
                     ScraperId = scraperId,
+                    ScraperName = scraperName,
                     MetricName = metricName,
                     MetricValue = value,
                     Timestamp = DateTime.Now
                 };
-                
-                // This will be resolved at runtime rather than compile time
+
+                // Add to database - will be resolved at runtime
                 await _scraperRepository.AddScraperMetricAsync(metricEntity);
             }
             catch (Exception ex)
@@ -383,24 +644,24 @@ namespace WebScraperAPI.Controllers
             {
                 // Update scraper status
                 var status = await _scraperRepository.GetScraperStatusAsync(scraperId);
-                
+
                 if (status != null)
                 {
                     status.IsRunning = false;
                     status.EndTime = DateTime.Now;
-                    
+
                     if (status.StartTime.HasValue && status.EndTime.HasValue)
                     {
                         TimeSpan elapsed = status.EndTime.Value - status.StartTime.Value;
                         status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
                     }
-                    
+
                     status.Message = "Scraping completed";
                     status.LastUpdate = DateTime.Now;
-                    
+
                     await _scraperRepository.UpdateScraperStatusAsync(status);
                 }
-                
+
                 // Log scraper completion
                 await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
                 {
@@ -409,18 +670,18 @@ namespace WebScraperAPI.Controllers
                     LogLevel = "Info",
                     Message = "Scraping completed"
                 });
-                
+
                 // Update scraper config
                 var configs = await LoadScraperConfigsAsync();
                 var config = configs.FirstOrDefault(c => c.Id == scraperId);
-                
+
                 if (config != null)
                 {
                     config.LastRun = DateTime.Now;
                     config.LastModified = DateTime.Now;
                     await SaveScraperConfigsAsync(configs);
                 }
-                
+
                 // Remove from active scrapers
                 _activeScrapers.Remove(scraperId);
             }
@@ -430,7 +691,7 @@ namespace WebScraperAPI.Controllers
             }
         }
     }
-    
+
     // Simple model class for scraper configuration
     public class ScraperConfigModel
     {

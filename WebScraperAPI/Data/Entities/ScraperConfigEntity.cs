@@ -148,21 +148,21 @@ namespace WebScraperApi.Data.Entities
         public string? ScraperType { get; set; }
 
         // Navigation properties
-        public virtual ICollection<ScraperStartUrlEntity> StartUrls { get; set; }
-        public virtual ICollection<ContentExtractorSelectorEntity> ContentExtractorSelectors { get; set; }
-        public virtual ICollection<KeywordAlertEntity> KeywordAlerts { get; set; }
-        public virtual ICollection<WebhookTriggerEntity> WebhookTriggers { get; set; }
-        public virtual ICollection<DomainRateLimitEntity> DomainRateLimits { get; set; }
-        public virtual ICollection<ProxyConfigurationEntity> ProxyConfigurations { get; set; }
-        public virtual ICollection<ScraperScheduleEntity> Schedules { get; set; }
-        public virtual ICollection<ScraperRunEntity> Runs { get; set; }
-        public virtual ScraperStatusEntity Status { get; set; }
-        public virtual ICollection<PipelineMetricEntity> PipelineMetrics { get; set; }
-        public virtual ICollection<LogEntryEntity> LogEntries { get; set; }
-        public virtual ICollection<ContentChangeRecordEntity> ContentChangeRecords { get; set; }
-        public virtual ICollection<ProcessedDocumentEntity> ProcessedDocuments { get; set; }
-        public virtual ICollection<ScraperMetricEntity> Metrics { get; set; }
-        public virtual ICollection<ScraperLogEntity> Logs { get; set; }
-        public virtual ICollection<ScrapedPageEntity> ScrapedPages { get; set; }
+        public virtual ICollection<ScraperStartUrlEntity> StartUrls { get; set; } = new List<ScraperStartUrlEntity>();
+        public virtual ICollection<ContentExtractorSelectorEntity> ContentExtractorSelectors { get; set; } = new List<ContentExtractorSelectorEntity>();
+        public virtual ICollection<KeywordAlertEntity> KeywordAlerts { get; set; } = new List<KeywordAlertEntity>();
+        public virtual ICollection<WebhookTriggerEntity> WebhookTriggers { get; set; } = new List<WebhookTriggerEntity>();
+        public virtual ICollection<DomainRateLimitEntity> DomainRateLimits { get; set; } = new List<DomainRateLimitEntity>();
+        public virtual ICollection<ProxyConfigurationEntity> ProxyConfigurations { get; set; } = new List<ProxyConfigurationEntity>();
+        public virtual ICollection<ScraperScheduleEntity> Schedules { get; set; } = new List<ScraperScheduleEntity>();
+        public virtual ICollection<ScraperRunEntity> Runs { get; set; } = new List<ScraperRunEntity>();
+        public virtual ScraperStatusEntity? Status { get; set; }
+        public virtual ICollection<PipelineMetricEntity> PipelineMetrics { get; set; } = new List<PipelineMetricEntity>();
+        public virtual ICollection<LogEntryEntity> LogEntries { get; set; } = new List<LogEntryEntity>();
+        public virtual ICollection<ContentChangeRecordEntity> ContentChangeRecords { get; set; } = new List<ContentChangeRecordEntity>();
+        public virtual ICollection<ProcessedDocumentEntity> ProcessedDocuments { get; set; } = new List<ProcessedDocumentEntity>();
+        public virtual ICollection<ScraperMetricEntity> Metrics { get; set; } = new List<ScraperMetricEntity>();
+        public virtual ICollection<ScraperLogEntity> Logs { get; set; } = new List<ScraperLogEntity>();
+        public virtual ICollection<ScrapedPageEntity> ScrapedPages { get; set; } = new List<ScrapedPageEntity>();
     }
 }

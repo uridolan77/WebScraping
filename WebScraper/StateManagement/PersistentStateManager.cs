@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -77,17 +78,85 @@ namespace WebScraper.StateManagement
         /// </summary>
         public async Task SaveScraperStateAsync(ScraperState state)
         {
-            var stateFile = Path.Combine(_stateDirectory, $"{state.ScraperId}.json");
+            // Create a timestamped filename for the state file
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var stateFile = Path.Combine(_stateDirectory, $"{state.ScraperId}_{timestamp}.json");
+
+            _logAction($"Saving scraper state to timestamped file: {stateFile}");
 
             try
             {
                 var json = JsonSerializer.Serialize(state);
-                await File.WriteAllTextAsync(stateFile, json);
+                await TrySaveFileWithRetryAsync(stateFile, json);
+
+                // Also save a "latest" version for backward compatibility
+                var latestStateFile = Path.Combine(_stateDirectory, $"{state.ScraperId}_latest.json");
+                await TrySaveFileWithRetryAsync(latestStateFile, json);
             }
             catch (Exception ex)
             {
                 _logAction($"Error saving scraper state: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Tries to save a file with retry logic and alternative file creation if needed
+        /// </summary>
+        private async Task TrySaveFileWithRetryAsync(string filePath, string content, int maxRetries = 3)
+        {
+            Exception lastException = null;
+
+            // Try a few times with the original file
+            for (int i = 0; i < maxRetries; i++)
+            {
+                try
+                {
+                    await File.WriteAllTextAsync(filePath, content);
+                    return; // Success
+                }
+                catch (IOException ex) when (IsFileLocked(ex))
+                {
+                    lastException = ex;
+                    _logAction($"File {filePath} is locked, retrying in 100ms... (Attempt {i+1}/{maxRetries})");
+                    await Task.Delay(100); // Wait a bit before retrying
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logAction($"Error writing to file {filePath}: {ex.Message}");
+                    break; // Don't retry for other types of exceptions
+                }
+            }
+
+            // If we couldn't save to the original file, create an alternative file
+            try
+            {
+                string directory = Path.GetDirectoryName(filePath);
+                string fileName = Path.GetFileNameWithoutExtension(filePath);
+                string extension = Path.GetExtension(filePath);
+                string timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+                string alternativeFilePath = Path.Combine(directory, $"{fileName}_{timestamp}{extension}");
+
+                _logAction($"Creating alternative file: {alternativeFilePath}");
+                await File.WriteAllTextAsync(alternativeFilePath, content);
+
+                // Log success with alternative file
+                _logAction($"Successfully saved to alternative file: {alternativeFilePath}");
+            }
+            catch (Exception ex)
+            {
+                _logAction($"Failed to create alternative file: {ex.Message}");
+                throw new AggregateException($"Failed to save file after retries and alternative file creation", lastException, ex);
+            }
+        }
+
+        /// <summary>
+        /// Checks if the exception is due to a locked file
+        /// </summary>
+        private bool IsFileLocked(IOException exception)
+        {
+            int errorCode = Marshal.GetHRForException(exception) & 0xFFFF;
+            return errorCode == 32 || errorCode == 33 || errorCode == 0x20; // 32=ERROR_SHARING_VIOLATION, 33=ERROR_LOCK_VIOLATION
         }
 
         /// <summary>
@@ -231,11 +300,11 @@ namespace WebScraper.StateManagement
             try
             {
                 var json = JsonSerializer.Serialize(localVersion);
-                await File.WriteAllTextAsync(contentFile, json);
+                await TrySaveFileWithRetryAsync(contentFile, json);
 
                 // Store historical version
                 var historyFile = Path.Combine(_stateDirectory, $"{ComputeHash(version.Url)}_{DateTime.Now.Ticks}.json");
-                await File.WriteAllTextAsync(historyFile, json);
+                await TrySaveFileWithRetryAsync(historyFile, json);
             }
             catch (Exception ex)
             {
@@ -322,7 +391,7 @@ namespace WebScraper.StateManagement
             try
             {
                 var json = JsonSerializer.Serialize(value);
-                await File.WriteAllTextAsync(keyFile, json);
+                await TrySaveFileWithRetryAsync(keyFile, json);
             }
             catch (Exception ex)
             {
@@ -417,11 +486,19 @@ namespace WebScraper.StateManagement
             string versionFileName = Path.GetFileName(versionFilePath);
             string metaFilePath = Path.Combine(versionFolder, $"{versionFileName}.meta.json");
 
-            File.WriteAllText(versionFilePath, contentItem.RawContent);
+            try
+            {
+                // Use async methods with retry
+                await TrySaveFileWithRetryAsync(versionFilePath, contentItem.RawContent);
 
-            // Save metadata
-            string json = System.Text.Json.JsonSerializer.Serialize(version);
-            File.WriteAllText(metaFilePath, json);
+                // Save metadata
+                string json = System.Text.Json.JsonSerializer.Serialize(version);
+                await TrySaveFileWithRetryAsync(metaFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                _logAction($"Error saving version files: {ex.Message}");
+            }
 
             _logAction?.Invoke($"Saved version {versionFilePath}");
         }
