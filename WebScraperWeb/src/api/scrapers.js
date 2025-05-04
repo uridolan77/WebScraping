@@ -425,3 +425,50 @@ export const compressStoredContent = async (id) => {
     throw handleApiError(error, `Failed to compress content for scraper with ID ${id}`);
   }
 };
+
+/**
+ * Get scraper metrics
+ * @param {string} id - Scraper ID
+ * @returns {Promise<Object>} Scraper performance metrics
+ */
+export const getScraperMetrics = async (id) => {
+  try {
+    const response = await handleResponse(apiClient.get(`/Scraper/${id}/metrics`));
+    
+    // Process the metrics to make them easier to use in the UI
+    const metrics = response.metrics || [];
+    const metricSummaries = response.metricSummaries || {};
+    
+    // Calculate success and failure rates
+    const successfulUrls = metricSummaries.successfulUrls || 0;
+    const failedUrls = metricSummaries.failedUrls || 0;
+    const totalUrls = successfulUrls + failedUrls;
+    
+    const successRate = totalUrls > 0 
+      ? Math.round((successfulUrls / totalUrls) * 100) 
+      : 100;
+    
+    const failureRate = totalUrls > 0 
+      ? Math.round((failedUrls / totalUrls) * 100) 
+      : 0;
+    
+    // Return a simplified metrics object for the UI
+    return {
+      status: response.status,
+      metrics: metrics,
+      metricSummaries: metricSummaries,
+      successRate: successRate,
+      failureRate: failureRate,
+      performance: metricSummaries.performance || 0,
+      urlsProcessed: metricSummaries.urlsProcessed || 0,
+      documentsProcessed: metricSummaries.documentsProcessed || 0,
+      bytesDownloaded: metricSummaries.bytesDownloaded || 0,
+      clientErrors: metricSummaries.clientErrors || 0,
+      serverErrors: metricSummaries.serverErrors || 0,
+      memoryUsage: metricSummaries.memoryUsage || 0,
+      averageResponseTime: metricSummaries.performance || 0
+    };
+  } catch (error) {
+    throw handleApiError(error, `Failed to get metrics for scraper with ID ${id}`);
+  }
+};

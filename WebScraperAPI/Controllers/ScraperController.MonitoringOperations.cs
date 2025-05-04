@@ -7,11 +7,115 @@ using System.Reflection;
 using WebScraperApi.Data.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using WebScraper; // Added import for Scraper class
+using WebScraper.Monitoring; // Added import for ScraperMetrics
 
 namespace WebScraperAPI.Controllers
 {
     public partial class ScraperController
     {
+        // New method to update metrics from the scraper to the database
+        private async Task UpdateScraperMetricsFromRuntime(string id, Scraper scraper)
+        {
+            try
+            {
+                _logger.LogInformation($"Updating metrics for scraper {id}");
+                
+                // Get the ScraperCore instance using reflection
+                var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (coreField == null || scraper == null)
+                {
+                    _logger.LogWarning("Could not access scraper core field");
+                    return;
+                }
+
+                var core = coreField.GetValue(scraper);
+                if (core == null)
+                {
+                    _logger.LogWarning("Scraper core is null");
+                    return;
+                }
+
+                // Get the metrics object using reflection
+                var metricsProperty = core.GetType().GetProperty("Metrics");
+                if (metricsProperty == null)
+                {
+                    _logger.LogWarning("Could not find Metrics property");
+                    return;
+                }
+
+                var metrics = metricsProperty.GetValue(core) as ScraperMetrics;
+                if (metrics == null)
+                {
+                    _logger.LogWarning("Metrics object is null");
+                    return;
+                }
+
+                // Get scraper name
+                string scraperName = "Unknown";
+                var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                if (scraperConfig != null)
+                {
+                    scraperName = scraperConfig.Name;
+                }
+
+                // Update key metrics in the database
+                await UpdateMetric(id, scraperName, "PagesProcessed", metrics.PagesProcessed);
+                await UpdateMetric(id, scraperName, "ProcessedUrls", metrics.ProcessedUrls);
+                await UpdateMetric(id, scraperName, "SuccessfulUrls", metrics.SuccessfulUrls);
+                await UpdateMetric(id, scraperName, "FailedUrls", metrics.FailedUrls);
+                await UpdateMetric(id, scraperName, "DocumentsProcessed", metrics.DocumentsProcessed);
+                await UpdateMetric(id, scraperName, "TotalLinksExtracted", metrics.TotalLinksExtracted);
+                await UpdateMetric(id, scraperName, "ContentItemsExtracted", metrics.ContentItemsExtracted);
+                await UpdateMetric(id, scraperName, "TotalBytesDownloaded", metrics.TotalBytesDownloaded);
+                await UpdateMetric(id, scraperName, "ClientErrors", metrics.ClientErrors);
+                await UpdateMetric(id, scraperName, "ServerErrors", metrics.ServerErrors);
+                await UpdateMetric(id, scraperName, "AveragePageProcessingTimeMs", metrics.AveragePageProcessingTimeMs);
+                await UpdateMetric(id, scraperName, "AverageLinksPerPage", metrics.AverageLinksPerPage);
+                await UpdateMetric(id, scraperName, "CurrentMemoryUsageMB", metrics.CurrentMemoryUsageMB);
+                await UpdateMetric(id, scraperName, "PeakMemoryUsageMB", metrics.PeakMemoryUsageMB);
+
+                // Update scraper status entity
+                var status = await _scraperRepository.GetScraperStatusAsync(id);
+                if (status != null)
+                {
+                    status.UrlsProcessed = metrics.PagesProcessed;
+                    status.DocumentsProcessed = metrics.DocumentsProcessed;
+                    status.HasErrors = metrics.ClientErrors > 0 || metrics.ServerErrors > 0;
+                    status.LastStatusUpdate = DateTime.Now;
+                    status.LastUpdate = DateTime.Now;
+                    
+                    await _scraperRepository.UpdateScraperStatusAsync(status);
+                    _logger.LogInformation($"Updated scraper status for {id}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating metrics for scraper {id}");
+            }
+        }
+
+        // Helper method to update a single metric
+        private async Task UpdateMetric(string scraperId, string scraperName, string metricName, double metricValue)
+        {
+            try
+            {
+                var metric = new ScraperMetricEntity
+                {
+                    ScraperId = scraperId,
+                    ScraperName = scraperName,
+                    MetricName = metricName,
+                    MetricValue = metricValue,
+                    Timestamp = DateTime.Now
+                };
+                
+                await _scraperRepository.AddScraperMetricAsync(metric);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating metric {metricName} for scraper {scraperId}");
+            }
+        }
+
         [HttpGet("{id}/detailed-status")]
         public async Task<IActionResult> GetScraperDetailedStatus(string id)
         {
@@ -26,6 +130,9 @@ namespace WebScraperAPI.Controllers
                 if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
                 {
                     _logger.LogInformation($"Scraper {id} is currently running");
+                    
+                    // Update metrics from the running scraper to the database
+                    await UpdateScraperMetricsFromRuntime(id, scraper);
 
                     // Access the ScraperCore to get more details
                     var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -256,6 +363,100 @@ namespace WebScraperAPI.Controllers
                     Error = ex.Message
                 });
             }
+        }
+
+        [HttpGet("{id}/metrics")]
+        public async Task<IActionResult> GetScraperMetrics(string id)
+        {
+            try
+            {
+                _logger.LogInformation("Getting metrics for scraper with ID {Id}", id);
+                
+                // Check if scraper is currently running
+                bool isRunning = _activeScrapers.ContainsKey(id);
+                
+                // If the scraper is running, update the metrics from runtime first
+                if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
+                {
+                    await UpdateScraperMetricsFromRuntime(id, scraper);
+                }
+
+                // Get metrics from the database
+                var from = DateTime.Now.AddHours(-24); // Last 24 hours by default
+                var to = DateTime.Now;
+
+                var metrics = await _scraperRepository.GetScraperMetricsAsync(id, null, from, to);
+                
+                // Process metrics into a more usable format
+                var groupedMetrics = metrics
+                    .GroupBy(m => m.MetricName)
+                    .Select(g => new
+                    {
+                        name = g.Key,
+                        latestValue = g.OrderByDescending(m => m.Timestamp).FirstOrDefault()?.MetricValue ?? 0,
+                        history = g.OrderBy(m => m.Timestamp)
+                            .Select(m => new
+                            {
+                                timestamp = m.Timestamp,
+                                value = m.MetricValue
+                            }).ToList()
+                    })
+                    .ToList();
+
+                // Get scraper status
+                var status = await _scraperRepository.GetScraperStatusAsync(id);
+                
+                // Return combined metrics and status info
+                return Ok(new
+                {
+                    status = status != null ? new
+                    {
+                        isRunning = status.IsRunning,
+                        urlsProcessed = status.UrlsProcessed,
+                        documentsProcessed = status.DocumentsProcessed,
+                        startTime = status.StartTime,
+                        endTime = status.EndTime,
+                        elapsedTime = status.ElapsedTime,
+                        lastUpdate = status.LastUpdate,
+                        hasErrors = status.HasErrors,
+                        message = status.Message
+                    } : null,
+                    metrics = groupedMetrics,
+                    metricSummaries = new
+                    {
+                        performance = GetMetricValue(metrics, "AveragePageProcessingTimeMs"),
+                        pagesProcessed = GetMetricValue(metrics, "PagesProcessed"),
+                        urlsProcessed = GetMetricValue(metrics, "ProcessedUrls"),
+                        successfulUrls = GetMetricValue(metrics, "SuccessfulUrls"),
+                        failedUrls = GetMetricValue(metrics, "FailedUrls"),
+                        documentsProcessed = GetMetricValue(metrics, "DocumentsProcessed"),
+                        linksExtracted = GetMetricValue(metrics, "TotalLinksExtracted"),
+                        contentExtracted = GetMetricValue(metrics, "ContentItemsExtracted"),
+                        bytesDownloaded = GetMetricValue(metrics, "TotalBytesDownloaded"),
+                        clientErrors = GetMetricValue(metrics, "ClientErrors"),
+                        serverErrors = GetMetricValue(metrics, "ServerErrors"),
+                        memoryUsage = GetMetricValue(metrics, "CurrentMemoryUsageMB")
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting metrics for scraper with ID {Id}", id);
+                return StatusCode(500, new
+                {
+                    Message = $"An error occurred while getting metrics for scraper {id}",
+                    Error = ex.Message
+                });
+            }
+        }
+
+        // Helper method to get the latest value of a specific metric
+        private double GetMetricValue(List<ScraperMetricEntity> metrics, string metricName)
+        {
+            return metrics
+                .Where(m => m.MetricName == metricName)
+                .OrderByDescending(m => m.Timestamp)
+                .FirstOrDefault()?.MetricValue ?? 0;
         }
     }
 }

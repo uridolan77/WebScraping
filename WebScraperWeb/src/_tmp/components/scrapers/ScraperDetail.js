@@ -5,7 +5,7 @@ import {
   Container, Typography, Box, Button, Tabs, Tab, Paper, Divider,
   Grid, Card, CardContent, Chip, IconButton, Tooltip, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  List, ListItem, ListItemText, Alert, Snackbar
+  List, ListItem, ListItemText, Alert, Snackbar, LinearProgress
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -19,13 +19,18 @@ import {
   TimerOff as TimerOffIcon,
   Timer as TimerIcon,
   ErrorOutline as ErrorIcon,
-  Storage as StorageIcon
+  Storage as StorageIcon,
+  Speed as SpeedIcon,
+  CheckCircle as SuccessIcon,
+  Cancel as FailIcon,
+  Memory as MemoryIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import {
   getScraper,
   getScraperStatus,
   getScraperLogs,
+  getScraperMetrics,
   startScraper,
   stopScraper,
   deleteScraper,
@@ -63,6 +68,7 @@ const ScraperDetail = () => {
   const [logs, setLogs] = useState([]);
   const [changes, setChanges] = useState([]);
   const [documents, setDocuments] = useState({ documents: [], totalCount: 0 });
+  const [metrics, setMetrics] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState(false);
@@ -85,6 +91,10 @@ const ScraperDetail = () => {
       // Fetch logs
       const logsData = await getScraperLogs(id, 100); // Get last 100 logs
       setLogs(logsData.logs || []);
+
+      // Fetch metrics
+      const metricsData = await getScraperMetrics(id);
+      setMetrics(metricsData);
 
       // Don't load all tabs' data at once to improve performance
       if (activeTab === 2) {
@@ -428,6 +438,69 @@ const ScraperDetail = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Performance Metrics */}
+      {metrics && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Average Response Time
+                </Typography>
+                <Typography variant="h4">
+                  {metrics.averageResponseTime} ms
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Success Rate
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <SuccessIcon color="success" sx={{ mr: 1 }} />
+                  <Typography variant="h4">
+                    {metrics.successRate}%
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Failure Rate
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <FailIcon color="error" sx={{ mr: 1 }} />
+                  <Typography variant="h4">
+                    {metrics.failureRate}%
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Memory Usage
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <MemoryIcon color="primary" sx={{ mr: 1 }} />
+                  <Typography variant="h4">
+                    {metrics.memoryUsage} MB
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
       {/* Tabs */}
       <Paper sx={{ mb: 3 }}>
