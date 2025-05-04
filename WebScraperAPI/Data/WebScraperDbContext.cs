@@ -267,22 +267,23 @@ namespace WebScraperApi.Data
             modelBuilder.Entity<ScraperStatusEntity>(entity =>
             {
                 entity.ToTable("scraperstatus");
+                entity.HasKey(e => e.ScraperId);
 
-                // Configure columns explicitly
-                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
-                entity.Property(e => e.IsRunning).HasColumnName("isrunning");
-                entity.Property(e => e.StartTime).HasColumnName("starttime");
-                entity.Property(e => e.EndTime).HasColumnName("endtime");
-                entity.Property(e => e.ElapsedTime).HasColumnName("elapsedtime");
-                entity.Property(e => e.UrlsProcessed).HasColumnName("urlsprocessed");
-                entity.Property(e => e.UrlsQueued).HasColumnName("urlsqueued");
-                entity.Property(e => e.DocumentsProcessed).HasColumnName("documentsprocessed");
-                entity.Property(e => e.HasErrors).HasColumnName("haserrors");
+                // Configure columns explicitly to match the actual database column names (camelCase)
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
+                entity.Property(e => e.IsRunning).HasColumnName("isRunning");
+                entity.Property(e => e.StartTime).HasColumnName("startTime");
+                entity.Property(e => e.EndTime).HasColumnName("endTime");
+                entity.Property(e => e.ElapsedTime).HasColumnName("elapsedTime");
+                entity.Property(e => e.UrlsProcessed).HasColumnName("urlsProcessed");
+                entity.Property(e => e.UrlsQueued).HasColumnName("urlsQueued");
+                entity.Property(e => e.DocumentsProcessed).HasColumnName("documentsProcessed");
+                entity.Property(e => e.HasErrors).HasColumnName("hasErrors");
                 entity.Property(e => e.Message).HasColumnName("message");
-                entity.Property(e => e.LastStatusUpdate).HasColumnName("laststatusupdate");
-                entity.Property(e => e.LastUpdate).HasColumnName("lastupdate");
-                entity.Property(e => e.LastMonitorCheck).HasColumnName("lastmonitorcheck");
-                entity.Property(e => e.LastError).HasColumnName("lasterror");
+                entity.Property(e => e.LastStatusUpdate).HasColumnName("lastStatusUpdate");
+                entity.Property(e => e.LastUpdate).HasColumnName("lastUpdate");
+                entity.Property(e => e.LastMonitorCheck).HasColumnName("lastMonitorCheck");
+                entity.Property(e => e.LastError).HasColumnName("lastError");
 
                 // Ignore ScraperConfig property in queries
                 entity.Ignore(e => e.ScraperConfig);
@@ -338,37 +339,59 @@ namespace WebScraperApi.Data
                 .ToTable("documentmetadata");
 
             // Configure ScraperMetricEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperMetricEntity>()
-                .ToTable("scrapermetric")
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.Metrics)
-                .HasForeignKey(s => s.ScraperId)
-                .HasPrincipalKey(c => c.Id);
+            modelBuilder.Entity<ScraperMetricEntity>(entity =>
+            {
+                entity.ToTable("scrapermetric");
+
+                // Configure columns explicitly to match the actual database column names (camelCase)
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
+                entity.Property(e => e.MetricName).HasColumnName("metricName");
+                entity.Property(e => e.MetricValue).HasColumnName("metricValue");
+                entity.Property(e => e.Timestamp).HasColumnName("timestamp");
+
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne<ScraperConfigEntity>()
+                    .WithMany()
+                    .HasForeignKey(s => s.ScraperId)
+                    .HasPrincipalKey(c => c.Id);
+            });
 
             // Configure CustomMetricEntity
             modelBuilder.Entity<WebScraperApi.Data.Entities.CustomMetricEntity>()
                 .ToTable("custommetric");
 
             // Configure ScraperLogEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.ScraperLogEntity>()
-                .ToTable("scraperlog")
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.Logs)
-                .HasForeignKey(s => s.ScraperId)
-                .HasPrincipalKey(c => c.Id);
+            modelBuilder.Entity<ScraperLogEntity>(entity =>
+            {
+                entity.ToTable("scraperlog");
+
+                // Configure columns explicitly to match the actual database column names (camelCase)
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
+                entity.Property(e => e.Timestamp).HasColumnName("timestamp");
+                entity.Property(e => e.LogLevel).HasColumnName("logLevel");
+                entity.Property(e => e.Message).HasColumnName("message");
+
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne(s => s.ScraperConfig)
+                    .WithMany(c => c.Logs)
+                    .HasForeignKey(s => s.ScraperId)
+                    .HasPrincipalKey(c => c.Id);
+            });
 
             // Configure ScrapedPageEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.ScrapedPageEntity>(entity =>
+            modelBuilder.Entity<ScrapedPageEntity>(entity =>
             {
                 entity.ToTable("scrapedpage");
 
-                // Configure columns explicitly
+                // Configure columns explicitly to match the actual database column names (camelCase)
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
                 entity.Property(e => e.Url).HasColumnName("url");
-                entity.Property(e => e.HtmlContent).HasColumnName("htmlcontent");
-                entity.Property(e => e.TextContent).HasColumnName("textcontent");
-                entity.Property(e => e.ScrapedAt).HasColumnName("scrapedat");
+                entity.Property(e => e.HtmlContent).HasColumnName("htmlContent");
+                entity.Property(e => e.TextContent).HasColumnName("textContent");
+                entity.Property(e => e.ScrapedAt).HasColumnName("scrapedAt");
 
                 // Ignore ScraperConfig property in queries
                 entity.Ignore(e => e.ScraperConfig);
