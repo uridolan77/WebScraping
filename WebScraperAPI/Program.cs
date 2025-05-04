@@ -145,8 +145,13 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 
 // Register repositories
 builder.Services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
-builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>();
-builder.Services.AddScoped<IScraperRepository, ScraperRepository>();
+builder.Services.AddScoped<IScraperStatusRepository, ScraperStatusRepository>();
+builder.Services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
+builder.Services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();
+builder.Services.AddScoped<IMetricsRepository, MetricsRepository>();
+
+// Replace the original repository with our facade for backward compatibility
+builder.Services.AddScoped<IScraperRepository, ScraperRepositoryFacade>();
 
 // Register factory services
 WebScraperApi.Services.Factories.ScraperFactoryExtensions.AddScraperFactories(builder.Services); // Using the fully qualified method name to avoid ambiguity

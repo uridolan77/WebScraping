@@ -888,10 +888,111 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<LogEntryEntity> AddLogEntryAsync(LogEntryEntity logEntry)
         {
-            _context.LogEntry.Add(logEntry);
-            await _context.SaveChangesAsync();
+            try
+            {
+                Console.WriteLine($"Adding log entry to database: ScraperId={logEntry.ScraperId}, Message={logEntry.Message?.Substring(0, Math.Min(50, logEntry.Message?.Length ?? 0))}...");
+                
+                // Clear any tracked entities to prevent tracking issues
+                _context.ChangeTracker.Clear();
+                
+                // Set timestamp if not already set
+                if (logEntry.Timestamp == default)
+                {
+                    logEntry.Timestamp = DateTime.Now;
+                }
+                
+                // Create a new entity to avoid tracking issues
+                var newLogEntry = new LogEntryEntity
+                {
+                    ScraperId = logEntry.ScraperId,
+                    Message = logEntry.Message,
+                    Timestamp = logEntry.Timestamp,
+                    Level = logEntry.Level ?? "Info", // Using Level instead of LogLevel
+                    RunId = logEntry.RunId
+                };
+                
+                // Add the log entry to the context
+                _context.LogEntry.Add(newLogEntry);
+                
+                // Save changes to the database
+                await _context.SaveChangesAsync();
+                
+                // Copy back the generated ID
+                logEntry.Id = newLogEntry.Id;
+                
+                Console.WriteLine($"Successfully added log entry to database with ID: {logEntry.Id}");
+                return logEntry;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding log entry to database: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                
+                // Return the original entry even though it wasn't saved
+                return logEntry;
+            }
+        }
 
-            return logEntry;
+        public async Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry)
+        {
+            try
+            {
+                Console.WriteLine($"Adding log entry to database: ScraperId={logEntry.ScraperId}, LogLevel={logEntry.LogLevel}");
+                
+                // IMPORTANT: Clear the change tracker to avoid EntityState.Unchanged errors
+                _context.ChangeTracker.Clear();
+                
+                // Ensure the ID is 0 for new entities
+                logEntry.Id = 0;
+                
+                // Ensure non-null values for required fields
+                logEntry.ScraperId = logEntry.ScraperId ?? string.Empty;
+                logEntry.LogLevel = logEntry.LogLevel ?? "Info";
+                logEntry.Message = logEntry.Message ?? string.Empty;
+                
+                // Set timestamp if not already set
+                if (logEntry.Timestamp == default)
+                {
+                    logEntry.Timestamp = DateTime.Now;
+                }
+                
+                // Create a completely new entity to avoid any tracking issues
+                var newLogEntry = new ScraperLogEntity
+                {
+                    ScraperId = logEntry.ScraperId,
+                    Timestamp = logEntry.Timestamp,
+                    LogLevel = logEntry.LogLevel,
+                    Message = logEntry.Message
+                };
+                
+                // Add the new entity to the context
+                _context.ScraperLog.Add(newLogEntry);
+                
+                // Save changes to the database
+                await _context.SaveChangesAsync();
+                
+                // Copy back the generated ID
+                logEntry.Id = newLogEntry.Id;
+                
+                Console.WriteLine($"Successfully added log entry to database with ID: {logEntry.Id}");
+                return logEntry;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding log entry to database: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                
+                // Just return the original entry - we've done our best to save it
+                return logEntry;
+            }
         }
 
         #endregion
@@ -1201,14 +1302,6 @@ namespace WebScraperApi.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry)
-        {
-            _context.ScraperLog.Add(logEntry);
-            await _context.SaveChangesAsync();
-
-            return logEntry;
-        }
-
         #endregion
 
         #region Content Classification Operations
@@ -1320,104 +1413,115 @@ namespace WebScraperApi.Data.Repositories
                     throw new InvalidOperationException("ScrapedPage DbSet is null");
                 }
 
+                // IMPORTANT: Clear the change tracker to avoid EntityState.Unchanged errors
+                _context.ChangeTracker.Clear();
+
+                // Get the scraper configuration to check MaxPages limit
+                var scraperConfig = await _context.ScraperConfigs
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == page.ScraperId);
+                
+                if (scraperConfig != null)
+                {
+                    // Get current page count for this scraper
+                    var currentPageCount = await _context.ScrapedPage
+                        .CountAsync(p => p.ScraperId == page.ScraperId);
+                    
+                    // Check if we've reached the MaxPages limit
+                    if (scraperConfig.MaxPages > 0 && currentPageCount >= scraperConfig.MaxPages)
+                    {
+                        Console.WriteLine($"MaxPages limit of {scraperConfig.MaxPages} reached for scraper {page.ScraperId}. Not adding page: {page.Url}");
+                        
+                        // Update scraper status to indicate completion
+                        await UpdateScraperStatusForMaxPagesReached(page.ScraperId, currentPageCount, scraperConfig.MaxPages);
+                        
+                        // Return the page without saving it
+                        return page;
+                    }
+                    
+                    Console.WriteLine($"Current page count: {currentPageCount}, MaxPages limit: {scraperConfig.MaxPages}");
+                }
+
+                // Create a new, detached entity to avoid tracking issues
+                var newPage = new ScrapedPageEntity
+                {
+                    ScraperId = page.ScraperId,
+                    Url = page.Url,
+                    HtmlContent = page.HtmlContent,
+                    TextContent = page.TextContent,
+                    ScrapedAt = page.ScrapedAt
+                };
+
                 // Add the entity to the context
-                _context.ScrapedPage.Add(page);
+                _context.ScrapedPage.Add(newPage);
                 Console.WriteLine($"Added scraped page to context, saving changes...");
 
+                // Save changes to the database
+                await _context.SaveChangesAsync();
+                
+                // Copy the generated ID back to the original page
+                page.Id = newPage.Id;
+                Console.WriteLine($"Successfully saved scraped page to database with ID: {page.Id}");
+
+                // Update the scraper status with a separate operation to avoid tracking issues
                 try
                 {
-                    // Save changes to the database
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Successfully saved scraped page to database with ID: {page.Id}");
-                }
-                catch (Exception saveEx)
-                {
-                    Console.WriteLine($"Error saving scraped page with EF Core: {saveEx.Message}");
-                    if (saveEx.InnerException != null)
-                    {
-                        Console.WriteLine($"Inner exception: {saveEx.InnerException.Message}");
-                    }
-                    Console.WriteLine($"Stack trace: {saveEx.StackTrace}");
-
-                    // Try direct SQL insert as a fallback
-                    try
-                    {
-                        Console.WriteLine("Attempting direct SQL insert to scrapedpage table");
-                        var connection = _context.Database.GetDbConnection();
-                        await connection.OpenAsync();
-
-                        using (var command = connection.CreateCommand())
-                        {
-                            command.CommandText = @"
-                                INSERT INTO scrapedpage (scraperId, url, htmlContent, textContent, scrapedAt)
-                                VALUES (@scraperId, @url, @htmlContent, @textContent, @scrapedAt)";
-
-                            var scraperIdParam = command.CreateParameter();
-                            scraperIdParam.ParameterName = "@scraperId";
-                            scraperIdParam.Value = page.ScraperId;
-                            command.Parameters.Add(scraperIdParam);
-
-                            var urlParam = command.CreateParameter();
-                            urlParam.ParameterName = "@url";
-                            urlParam.Value = page.Url;
-                            command.Parameters.Add(urlParam);
-
-                            var htmlContentParam = command.CreateParameter();
-                            htmlContentParam.ParameterName = "@htmlContent";
-                            htmlContentParam.Value = page.HtmlContent;
-                            command.Parameters.Add(htmlContentParam);
-
-                            var textContentParam = command.CreateParameter();
-                            textContentParam.ParameterName = "@textContent";
-                            textContentParam.Value = page.TextContent;
-                            command.Parameters.Add(textContentParam);
-
-                            var scrapedAtParam = command.CreateParameter();
-                            scrapedAtParam.ParameterName = "@scrapedAt";
-                            scrapedAtParam.Value = page.ScrapedAt;
-                            command.Parameters.Add(scrapedAtParam);
-
-                            var result = await command.ExecuteNonQueryAsync();
-                            Console.WriteLine($"Direct SQL insert result: {result} rows affected");
-                        }
-                    }
-                    catch (Exception sqlEx)
-                    {
-                        Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
-                        if (sqlEx.InnerException != null)
-                        {
-                            Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
-                        }
-                        Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
-                        throw; // Rethrow if both methods fail
-                    }
-                }
-
-                // Update the scraper status to display URLs processed in the monitor page
-                try
-                {
+                    // Clear tracking before updating status
+                    _context.ChangeTracker.Clear();
+                    
                     Console.WriteLine("Updating scraper status with latest page information");
                     var status = await _context.ScraperStatuses
+                        .AsNoTracking() // Use AsNoTracking to avoid EntityState issues
                         .FirstOrDefaultAsync(s => s.ScraperId == page.ScraperId);
 
                     if (status != null)
                     {
-                        // Increment URLs processed count
-                        status.UrlsProcessed += 1;
-                        status.DocumentsProcessed += 1;
-                        status.LastStatusUpdate = DateTime.Now;
-                        status.LastUpdate = DateTime.Now;
-                        status.Message = $"Processing content. {status.UrlsProcessed} pages processed. Last URL: {page.Url}";
+                        // Create a new status entity
+                        var updatedStatus = new ScraperStatusEntity
+                        {
+                            ScraperId = status.ScraperId,
+                            IsRunning = status.IsRunning,
+                            StartTime = status.StartTime,
+                            EndTime = status.EndTime,
+                            UrlsProcessed = status.UrlsProcessed + 1,
+                            DocumentsProcessed = status.DocumentsProcessed + 1,
+                            UrlsQueued = status.UrlsQueued,
+                            HasErrors = status.HasErrors,
+                            Message = $"Processing content. {status.UrlsProcessed + 1} pages processed.",
+                            LastStatusUpdate = DateTime.Now,
+                            LastUpdate = DateTime.Now,
+                            LastMonitorCheck = status.LastMonitorCheck,
+                            LastError = status.LastError ?? string.Empty
+                        };
 
                         // Calculate elapsed time if we have a start time
                         if (status.StartTime.HasValue)
                         {
                             TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
-                            status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                            updatedStatus.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                        }
+                        else
+                        {
+                            updatedStatus.ElapsedTime = status.ElapsedTime ?? string.Empty;
                         }
 
-                        await _context.SaveChangesAsync();
-                        Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}, ElapsedTime = {status.ElapsedTime}");
+                        // Check if we've reached the MaxPages limit
+                        if (scraperConfig != null && scraperConfig.MaxPages > 0)
+                        {
+                            var newPageCount = await _context.ScrapedPage
+                                .CountAsync(p => p.ScraperId == page.ScraperId);
+                                
+                            if (newPageCount >= scraperConfig.MaxPages)
+                            {
+                                updatedStatus.Message = $"Completed. Reached maximum of {scraperConfig.MaxPages} pages.";
+                                updatedStatus.IsRunning = false;
+                                updatedStatus.EndTime = DateTime.Now;
+                            }
+                        }
+
+                        // Use existing method to update status
+                        await UpdateScraperStatusAsync(updatedStatus);
+                        Console.WriteLine($"Updated scraper status with UrlsProcessed = {updatedStatus.UrlsProcessed}, ElapsedTime = {updatedStatus.ElapsedTime}");
                     }
                     else
                     {
@@ -1431,6 +1535,7 @@ namespace WebScraperApi.Data.Repositories
                     {
                         Console.WriteLine($"Inner exception: {statusEx.InnerException.Message}");
                     }
+                    // Don't rethrow - we don't want status update failure to affect page saving
                 }
 
                 return page;
@@ -1446,6 +1551,58 @@ namespace WebScraperApi.Data.Repositories
 
                 // Rethrow the exception to be handled by the caller
                 throw;
+            }
+        }
+        
+        private async Task UpdateScraperStatusForMaxPagesReached(string scraperId, int pageCount, int maxPages)
+        {
+            try
+            {
+                // Clear tracking before updating status
+                _context.ChangeTracker.Clear();
+                
+                var status = await _context.ScraperStatuses
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.ScraperId == scraperId);
+                
+                if (status != null)
+                {
+                    var updatedStatus = new ScraperStatusEntity
+                    {
+                        ScraperId = status.ScraperId,
+                        IsRunning = false, // Set to false since we're stopping due to max pages
+                        StartTime = status.StartTime,
+                        EndTime = DateTime.Now, // Set end time
+                        UrlsProcessed = pageCount,
+                        DocumentsProcessed = pageCount,
+                        UrlsQueued = status.UrlsQueued,
+                        HasErrors = status.HasErrors,
+                        Message = $"Completed. Reached maximum of {maxPages} pages.",
+                        LastStatusUpdate = DateTime.Now,
+                        LastUpdate = DateTime.Now,
+                        LastMonitorCheck = status.LastMonitorCheck,
+                        LastError = status.LastError ?? string.Empty
+                    };
+                    
+                    // Calculate elapsed time if we have a start time
+                    if (status.StartTime.HasValue)
+                    {
+                        TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
+                        updatedStatus.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                    }
+                    else
+                    {
+                        updatedStatus.ElapsedTime = status.ElapsedTime ?? string.Empty;
+                    }
+                    
+                    await UpdateScraperStatusAsync(updatedStatus);
+                    Console.WriteLine($"Updated scraper status to indicate MaxPages limit reached: {maxPages} pages");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating scraper status for MaxPages reached: {ex.Message}");
+                // Don't rethrow - this is a helper method
             }
         }
 

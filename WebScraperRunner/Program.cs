@@ -77,6 +77,16 @@ namespace WebScraperRunner
                 // Add repositories
                 services.AddScoped<IScraperRepository, ScraperRepository>();
 
+                // Add specialized repositories
+                services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
+                services.AddScoped<IScraperStatusRepository, ScraperStatusRepository>();
+                services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
+                services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();
+                services.AddScoped<IMetricsRepository, MetricsRepository>();
+                
+                // Replace the original repository with our facade for backward compatibility
+                services.AddScoped<IScraperRepository, ScraperRepositoryFacade>();
+
                 // Build service provider
                 var serviceProvider = services.BuildServiceProvider();
 
@@ -113,23 +123,33 @@ namespace WebScraperRunner
                     Console.WriteLine($"Scraper {scraperId}: {message}");
                     logger.LogInformation($"Scraper {scraperId}: {message}");
 
-                    // Also log to database
-                    try
-                    {
-                        var logEntry = new WebScraperApi.Data.Entities.ScraperLogEntity
+                    // Also log to database - but don't block or throw exceptions
+                    Task.Run(async () => {
+                        try
                         {
-                            ScraperId = scraperId,
-                            Timestamp = DateTime.Now,
-                            LogLevel = "Info",
-                            Message = message
-                        };
+                            // Create the log entry - don't set the Id as it's auto-incremented
+                            var logEntry = new WebScraperApi.Data.Entities.ScraperLogEntity
+                            {
+                                ScraperId = scraperId,
+                                Timestamp = DateTime.Now,
+                                LogLevel = "Info",
+                                Message = message?.Substring(0, Math.Min(message?.Length ?? 0, 2000)) ?? "No message" // Truncate long messages and handle null
+                            };
 
-                        repository.AddScraperLogAsync(logEntry).Wait();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error logging to database: {ex.Message}");
-                    }
+                            // Use async properly without .Wait()
+                            await repository.AddScraperLogAsync(logEntry);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log detailed error information
+                            Console.WriteLine($"Error logging to database: {ex.Message}");
+                            if (ex.InnerException != null)
+                            {
+                                Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                            }
+                            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                        }
+                    });
                 };
 
                 // Update scraper status to running

@@ -33,6 +33,41 @@ namespace WebScraperApi.Data
         public DbSet<LogEntryEntity> ScraperLogs { get; set; }
 
         /// <summary>
+        /// Gets or sets the scraper start URLs
+        /// </summary>
+        public DbSet<ScraperStartUrlEntity> ScraperStartUrls { get; set; }
+
+        /// <summary>
+        /// Gets or sets the content extractor selectors
+        /// </summary>
+        public DbSet<ContentExtractorSelectorEntity> ContentExtractorSelectors { get; set; }
+
+        /// <summary>
+        /// Gets or sets the keyword alerts
+        /// </summary>
+        public DbSet<KeywordAlertEntity> KeywordAlerts { get; set; }
+
+        /// <summary>
+        /// Gets or sets the domain rate limits
+        /// </summary>
+        public DbSet<DomainRateLimitEntity> DomainRateLimits { get; set; }
+
+        /// <summary>
+        /// Gets or sets the proxy configurations
+        /// </summary>
+        public DbSet<ProxyConfigurationEntity> ProxyConfigurations { get; set; }
+
+        /// <summary>
+        /// Gets or sets the webhook triggers
+        /// </summary>
+        public DbSet<WebhookTriggerEntity> WebhookTriggers { get; set; }
+
+        /// <summary>
+        /// Gets or sets the scraper schedules
+        /// </summary>
+        public DbSet<ScraperScheduleEntity> ScraperSchedules { get; set; }
+
+        /// <summary>
         /// Configures the model that was discovered by convention from the entity types
         /// </summary>
         /// <param name="modelBuilder">The builder being used to construct the model for this context</param>
@@ -72,6 +107,52 @@ namespace WebScraperApi.Data
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Message).IsRequired();
+            });
+            
+            // Configure additional entities
+            modelBuilder.Entity<ScraperStartUrlEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Url).IsRequired().HasMaxLength(500);
+            });
+            
+            modelBuilder.Entity<ContentExtractorSelectorEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Selector).IsRequired().HasMaxLength(500);
+            });
+            
+            modelBuilder.Entity<KeywordAlertEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Keyword).IsRequired().HasMaxLength(100);
+            });
+            
+            modelBuilder.Entity<DomainRateLimitEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Domain).IsRequired().HasMaxLength(255);
+            });
+            
+            modelBuilder.Entity<ProxyConfigurationEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Username).HasMaxLength(100);
+                entity.Property(e => e.Password).HasMaxLength(100);
+            });
+            
+            modelBuilder.Entity<WebhookTriggerEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.TriggerName).IsRequired().HasMaxLength(100);
+            });
+            
+            modelBuilder.Entity<ScraperScheduleEntity>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.CronExpression).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.NotificationEmail).HasMaxLength(255);
             });
         }
     }

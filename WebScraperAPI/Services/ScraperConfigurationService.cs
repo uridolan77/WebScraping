@@ -34,7 +34,7 @@ namespace WebScraperApi.Services
         {
             try
             {
-                var configs = await _configRepository.GetAllAsync();
+                var configs = await _configRepository.GetAllScrapersAsync();
                 return configs.Select(ToModel).ToList();
             }
             catch (Exception ex)
@@ -51,13 +51,7 @@ namespace WebScraperApi.Services
         {
             try
             {
-                if (!Guid.TryParse(id, out var guidId))
-                {
-                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
-                    return null;
-                }
-
-                var entity = await _configRepository.GetByIdAsync(guidId);
+                var entity = await _configRepository.GetScraperByIdAsync(id);
                 if (entity == null)
                 {
                     return null;
@@ -95,7 +89,7 @@ namespace WebScraperApi.Services
                 var entity = ToEntity(config);
 
                 // Save to repository
-                await _configRepository.CreateAsync(entity);
+                await _configRepository.CreateScraperAsync(entity);
 
                 // Get the saved entity with generated ID
                 config.Id = entity.Id.ToString();
@@ -120,15 +114,8 @@ namespace WebScraperApi.Services
                 // Ensure the ID stays the same
                 config.Id = id;
 
-                // Convert to entity for the repository
-                if (!Guid.TryParse(id, out var guidId))
-                {
-                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
-                    return false;
-                }
-
                 // Get the existing entity
-                var existingEntity = await _configRepository.GetByIdAsync(guidId);
+                var existingEntity = await _configRepository.GetScraperByIdAsync(id);
                 if (existingEntity == null)
                 {
                     _logger.LogWarning($"Scraper with ID {id} not found in database");
@@ -139,7 +126,7 @@ namespace WebScraperApi.Services
                 var entity = ToEntity(config);
 
                 // Update in repository
-                await _configRepository.UpdateAsync(entity);
+                await _configRepository.UpdateScraperAsync(entity);
 
                 _logger.LogInformation($"Updated scraper configuration: {config.Name} ({config.Id})");
                 return true;
@@ -158,22 +145,15 @@ namespace WebScraperApi.Services
         {
             try
             {
-                // Parse the ID to GUID
-                if (!Guid.TryParse(id, out var guidId))
-                {
-                    _logger.LogWarning($"Invalid GUID format for scraper ID: {id}");
-                    return false;
-                }
-
                 // Delete from repository
-                var entity = await _configRepository.GetByIdAsync(guidId);
+                var entity = await _configRepository.GetScraperByIdAsync(id);
                 if (entity == null)
                 {
                     _logger.LogWarning($"Scraper with ID {id} not found in database");
                     return false;
                 }
 
-                await _configRepository.DeleteAsync(guidId);
+                await _configRepository.DeleteScraperAsync(id);
                 _logger.LogInformation($"Deleted scraper configuration with ID {id}");
                 return true;
             }
@@ -191,7 +171,7 @@ namespace WebScraperApi.Services
         {
             try
             {
-                var configs = await _configRepository.GetAllAsync();
+                var configs = await _configRepository.GetAllScrapersAsync();
                 var configModels = configs.Select(ToModel).ToList();
                 _logger.LogInformation($"Loaded {configModels.Count} scraper configurations from database");
                 return configModels;

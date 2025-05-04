@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `scrapedpage` (
   `htmlContent` mediumtext,
   `textContent` mediumtext,
   `scrapedAt` datetime NOT NULL,
-  `scraperConfigId` int NULL,
+  `scraperConfigId` varchar(255) NULL,
   PRIMARY KEY (`id`),
   KEY `idx_scrapedpage_scraperid` (`scraperId`),
   KEY `idx_scrapedpage_url` (`url`(768))
@@ -40,11 +40,16 @@ CHANGE COLUMN `scraper_id` `scraperId` VARCHAR(255) NOT NULL,
 CHANGE COLUMN `html_content` `htmlContent` MEDIUMTEXT,
 CHANGE COLUMN `text_content` `textContent` MEDIUMTEXT,
 CHANGE COLUMN `scraped_at` `scrapedAt` DATETIME NOT NULL;
+
+-- Make sure scraperConfigId exists and has the correct type
+ALTER TABLE scrapedpage
+ADD COLUMN IF NOT EXISTS `scraperConfigId` VARCHAR(255) NULL;
 ");
 
 -- Execute the appropriate SQL based on conditions
 SET @sql = IF(@table_exists = 0, @create_table,
-              IF(@column_exists > 0, 'SELECT "scrapedpage table already has camelCase column names, no changes needed" AS Result',
+              IF(@column_exists > 0, 'SELECT "scrapedpage table already has camelCase column names, checking for scraperConfigId column" AS Result;
+                 ALTER TABLE scrapedpage ADD COLUMN IF NOT EXISTS `scraperConfigId` VARCHAR(255) NULL;',
                  IF(@snake_column_exists > 0, @alter_table, 'SELECT "scrapedpage table has unexpected column names, manual inspection needed" AS Result')));
 
 PREPARE stmt FROM @sql;

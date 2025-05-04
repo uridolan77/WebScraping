@@ -29,8 +29,15 @@ namespace WebScraperApi.Services
                 );
             }
 
-            // Add repositories
-            services.AddScoped<IScraperRepository, ScraperRepository>();
+            // Add specialized repositories
+            services.AddScoped<IScraperConfigRepository, ScraperConfigRepository>();
+            services.AddScoped<IScraperStatusRepository, ScraperStatusRepository>();
+            services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
+            services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();
+            services.AddScoped<IMetricsRepository, MetricsRepository>();
+            
+            // Add facade that implements the original interface for backward compatibility
+            services.AddScoped<IScraperRepository, ScraperRepositoryFacade>();
 
             // Add services
             services.AddScoped<ScraperConfigService>();

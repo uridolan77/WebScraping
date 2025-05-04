@@ -24,51 +24,71 @@ namespace WebScraperApi.Data.Repositories.PostgreSQL
         }
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<ScraperConfigEntity>> GetAllAsync()
+        public bool TestDatabaseConnection()
+        {
+            try
+            {
+                // Try to connect to the database
+                return _context.Database.CanConnect();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Database connection error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<ScraperConfigEntity>> GetAllScrapersAsync()
         {
             return await _context.ScraperConfigs
                 .AsNoTracking()
+                .OrderByDescending(s => s.LastModified)
                 .ToListAsync();
         }
 
         /// <inheritdoc/>
-        public async Task<ScraperConfigEntity> GetByIdAsync(Guid id)
+        public async Task<ScraperConfigEntity> GetScraperByIdAsync(string id)
         {
             return await _context.ScraperConfigs
-                .Include(c => c.Runs.OrderByDescending(r => r.StartTime).Take(5))
-                .FirstOrDefaultAsync(c => c.Id == id.ToString());
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == id);
         }
 
         /// <inheritdoc/>
-        public async Task<ScraperConfigEntity> CreateAsync(ScraperConfigEntity config)
+        public async Task<ScraperConfigEntity> CreateScraperAsync(ScraperConfigEntity scraper)
         {
-            _context.ScraperConfigs.Add(config);
+            scraper.CreatedAt = DateTime.Now;
+            scraper.LastModified = DateTime.Now;
+
+            _context.ScraperConfigs.Add(scraper);
             await _context.SaveChangesAsync();
-            return config;
+            return scraper;
         }
 
         /// <inheritdoc/>
-        public async Task<bool> UpdateAsync(ScraperConfigEntity config)
+        public async Task<ScraperConfigEntity> UpdateScraperAsync(ScraperConfigEntity scraper)
         {
-            _context.Entry(config).State = EntityState.Modified;
+            scraper.LastModified = DateTime.Now;
+            _context.Entry(scraper).State = EntityState.Modified;
 
             try
             {
                 await _context.SaveChangesAsync();
-                return true;
+                return scraper;
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!await _context.ScraperConfigs.AnyAsync(c => c.Id == config.Id))
+                if (!await _context.ScraperConfigs.AnyAsync(c => c.Id == scraper.Id))
                 {
-                    return false;
+                    throw new KeyNotFoundException($"Scraper with ID {scraper.Id} not found");
                 }
                 throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<bool> DeleteAsync(Guid id)
+        public async Task<bool> DeleteScraperAsync(string id)
         {
             var config = await _context.ScraperConfigs.FindAsync(id);
             if (config == null)
@@ -82,6 +102,95 @@ namespace WebScraperApi.Data.Repositories.PostgreSQL
         }
 
         /// <inheritdoc/>
+        public async Task<List<ScraperStartUrlEntity>> GetScraperStartUrlsAsync(string scraperId)
+        {
+            return await _context.ScraperStartUrls
+                .AsNoTracking()
+                .Where(s => s.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<ContentExtractorSelectorEntity>> GetContentExtractorSelectorsAsync(string scraperId)
+        {
+            return await _context.ContentExtractorSelectors
+                .AsNoTracking()
+                .Where(s => s.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<KeywordAlertEntity>> GetKeywordAlertsAsync(string scraperId)
+        {
+            return await _context.KeywordAlerts
+                .AsNoTracking()
+                .Where(k => k.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<DomainRateLimitEntity>> GetDomainRateLimitsAsync(string scraperId)
+        {
+            return await _context.DomainRateLimits
+                .AsNoTracking()
+                .Where(d => d.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<ProxyConfigurationEntity>> GetProxyConfigurationsAsync(string scraperId)
+        {
+            return await _context.ProxyConfigurations
+                .AsNoTracking()
+                .Where(p => p.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<WebhookTriggerEntity>> GetWebhookTriggersAsync(string scraperId)
+        {
+            return await _context.WebhookTriggers
+                .AsNoTracking()
+                .Where(w => w.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<ScraperScheduleEntity>> GetScraperSchedulesAsync(string scraperId)
+        {
+            return await _context.ScraperSchedules
+                .AsNoTracking()
+                .Where(s => s.ScraperId == scraperId)
+                .ToListAsync();
+        }
+
+        // Legacy methods kept for compatibility
+        public async Task<IEnumerable<ScraperConfigEntity>> GetAllAsync()
+        {
+            return await GetAllScrapersAsync();
+        }
+
+        public async Task<ScraperConfigEntity> GetByIdAsync(Guid id)
+        {
+            return await GetScraperByIdAsync(id.ToString());
+        }
+
+        public async Task<ScraperConfigEntity> CreateAsync(ScraperConfigEntity config)
+        {
+            return await CreateScraperAsync(config);
+        }
+
+        public async Task<bool> UpdateAsync(ScraperConfigEntity config)
+        {
+            await UpdateScraperAsync(config);
+            return true;
+        }
+
+        public async Task<bool> DeleteAsync(Guid id)
+        {
+            return await DeleteScraperAsync(id.ToString());
+        }
+
         public async Task<IEnumerable<LogEntryEntity>> GetLogsAsync(Guid scraperId, int limit = 100)
         {
             return await _context.ScraperLogs
@@ -91,14 +200,12 @@ namespace WebScraperApi.Data.Repositories.PostgreSQL
                 .ToListAsync();
         }
 
-        /// <inheritdoc/>
         public async Task AddLogAsync(LogEntryEntity log)
         {
             _context.ScraperLogs.Add(log);
             await _context.SaveChangesAsync();
         }
 
-        /// <inheritdoc/>
         public async Task<IEnumerable<ScraperRunEntity>> GetRunsAsync(Guid scraperId, int limit = 10)
         {
             return await _context.ScraperRuns
@@ -108,7 +215,6 @@ namespace WebScraperApi.Data.Repositories.PostgreSQL
                 .ToListAsync();
         }
 
-        /// <inheritdoc/>
         public async Task<ScraperRunEntity> AddRunAsync(ScraperRunEntity run)
         {
             _context.ScraperRuns.Add(run);
@@ -116,7 +222,6 @@ namespace WebScraperApi.Data.Repositories.PostgreSQL
             return run;
         }
 
-        /// <inheritdoc/>
         public async Task<bool> UpdateRunAsync(ScraperRunEntity run)
         {
             _context.Entry(run).State = EntityState.Modified;

@@ -71,17 +71,20 @@ namespace WebScraperApi.Services.Monitoring
                     
                     if (dbLogs != null && dbLogs.Count > 0)
                     {
+                        _logger.LogInformation($"Retrieved {dbLogs.Count} log entries from database for scraper {id}");
+                        
                         foreach (var dbLog in dbLogs)
                         {
+                            // Ensure we're mapping the correct fields from the database
                             databaseLogs.Add(new LogEntry
                             {
                                 Timestamp = dbLog.Timestamp,
-                                Message = dbLog.Message,
-                                Level = dbLog.LogLevel
+                                Message = dbLog.Message ?? string.Empty,
+                                Level = dbLog.LogLevel ?? "Info" // Map LogLevel correctly
                             });
                         }
                         
-                        _logger.LogInformation($"Retrieved {databaseLogs.Count} log entries from database for scraper {id}");
+                        _logger.LogDebug($"First log entry for {id}: Timestamp={dbLogs[0].Timestamp}, LogLevel={dbLogs[0].LogLevel}, Message={dbLogs[0].Message?.Substring(0, Math.Min(50, dbLogs[0].Message?.Length ?? 0))}...");
                     }
                     else
                     {
