@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Typography,
   Alert,
@@ -56,10 +56,35 @@ const MonitorTab = ({
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const refreshIntervalRef = useRef(null);
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
+
+  // Setup auto-refresh for logs
+  useEffect(() => {
+    // Clear any existing interval
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
+    }
+
+    // Only set up auto-refresh when the scraper is running and auto-refresh is enabled
+    if (status?.isRunning && autoRefresh) {
+      refreshIntervalRef.current = setInterval(() => {
+        onRefreshMonitor();
+      }, 5000); // Update every 5 seconds
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [status?.isRunning, autoRefresh, onRefreshMonitor]);
 
   // Extract logs from monitorData and filter for URLs and errors
   const logs = getArrayFromResponse(monitorData?.logs || []);
@@ -89,14 +114,25 @@ const MonitorTab = ({
         <Typography variant="h6">
           Real-time Scraper Monitoring
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={onRefreshMonitor}
-          disabled={isActionInProgress || isMonitorLoading || !status?.isRunning}
-        >
-          Refresh
-        </Button>
+        <Box>
+          <Button
+            variant={autoRefresh ? "contained" : "outlined"}
+            color={autoRefresh ? "success" : "primary"}
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            sx={{ mr: 1 }}
+            disabled={!status?.isRunning}
+          >
+            {autoRefresh ? 'Auto-refresh: On' : 'Auto-refresh: Off'}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={onRefreshMonitor}
+            disabled={isActionInProgress || isMonitorLoading || !status?.isRunning}
+          >
+            Refresh
+          </Button>
+        </Box>
       </Box>
 
       {!status?.isRunning ? (
@@ -221,6 +257,15 @@ const MonitorTab = ({
  * Component to display a list of logs
  */
 const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, highlightErrors = false }) => {
+  const endRef = useRef(null);
+  
+  // Auto-scroll to bottom when new logs arrive
+  useEffect(() => {
+    if (logs.length > 0 && endRef.current) {
+      endRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
   if (!logs || logs.length === 0) {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
@@ -312,6 +357,7 @@ const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, 
           </ListItem>
         );
       })}
+      <div ref={endRef} />
     </List>
   );
 };

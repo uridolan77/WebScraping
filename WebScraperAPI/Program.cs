@@ -4,9 +4,6 @@ using MongoDB.Driver;
 using StackExchange.Redis;
 using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
-using WebScraperApi.Data.Repositories.MongoDB;
-using WebScraperApi.Data.Repositories.PostgreSQL;
-
 using WebScraperApi.Services;
 using WebScraperApi.Services.Factories;
 using Azure.Identity;
@@ -17,10 +14,13 @@ using System.IO;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System;
+using System.Text;
+using System.Linq;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
+using WebScraper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,7 +65,18 @@ if (!string.IsNullOrEmpty(keyVaultEndpoint))
     }
 }
 
-// Add JWT Authentication
+// Add CORS policy configuration
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// Add JWT Authentication with simplified implementation
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -73,12 +84,23 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    // Get the key from configuration or use a default for development
+    var key = Encoding.UTF8.GetBytes(
+        builder.Configuration["JWT:SecretKey"] ?? 
+        "DefaultSecretKeyForDevelopment12345678901234567890");
+        
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["JWT:Issuer"] ?? "WebScraperAPI",
+        ValidAudience = builder.Configuration["JWT:Audience"] ?? "WebScraperAPIClients",
+        IssuerSigningKey = new SymmetricSecurityKey(key)
+    };
+});
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -143,24 +165,23 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
     ConnectionMultiplexer.Connect(GetConnectionString(builder.Configuration, "Redis")));
 
-// Register repositories
-builder.Services.AddScoped<IScraperConfigRepository, WebScraperApi.Data.Repositories.ScraperConfigRepository>();
-builder.Services.AddScoped<IScraperStatusRepository, ScraperStatusRepository>();
-builder.Services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
-builder.Services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();
-builder.Services.AddScoped<IMetricsRepository, MetricsRepository>();
-
-// Replace the original repository with our facade for backward compatibility
-builder.Services.AddScoped<IScraperRepository, ScraperRepositoryFacade>();
+// Register repositories using the extension method instead of direct registration
+builder.Services.AddWebScraperServices(builder.Configuration);
 
 // Register factory services
-WebScraperApi.Services.Factories.ScraperFactoryExtensions.AddScraperFactories(builder.Services); // Using the fully qualified method name to avoid ambiguity
+WebScraperApi.Services.Factories.ScraperFactoryExtensions.AddScraperFactories(builder.Services);
 
 // Add all scraper services
 builder.Services.AddScraperServices();
 
 // Add enhanced components
 builder.Services.AddEnhancedComponents(); // Using the extension method from WebScraperApi.Services.ServiceCollectionExtensions
+
+// Register IScraperFactory only once
+builder.Services.AddSingleton<WebScraperApi.Services.Factories.IScraperFactory>(sp => {
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+    return new WebScraperApi.Services.Factories.DefaultScraperFactory(loggerFactory);
+});
 
 // Add Swagger with enhanced configuration
 builder.Services.AddSwaggerGen(c =>
@@ -314,7 +335,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Move UseCors before routing for correct CORS handling
-app.UseCors(); // Use the default CORS policy
+app.UseCors(); // Use the default CORS policy that we configured
 
 // Only use HTTPS redirection in production
 if (!app.Environment.IsDevelopment())

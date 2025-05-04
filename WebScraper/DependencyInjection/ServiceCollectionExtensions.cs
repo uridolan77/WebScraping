@@ -18,8 +18,9 @@ namespace WebScraper.DependencyInjection
         /// <returns>Service collection for chaining</returns>
         public static IServiceCollection AddWebScraperCore(this IServiceCollection services)
         {
-            // Register core services
-            services.AddSingleton<Scraper>();
+            // IMPORTANT: Do NOT register Scraper directly since it needs configuration
+            // Comment out the problematic line that's causing the DI error
+            // services.AddSingleton<Scraper>();
             
             // Register enhanced components
             services.AddSingleton<CircuitBreakerRateLimiter>(sp => 

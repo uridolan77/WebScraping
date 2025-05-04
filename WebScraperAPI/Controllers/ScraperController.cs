@@ -346,6 +346,30 @@ namespace WebScraperAPI.Controllers
                         // Continue with empty metrics list
                     }
 
+                    // Get logs for the monitor data
+                    List<object> logEntries = new List<object>();
+                    try
+                    {
+                        // Get logs directly from the scraperlog table
+                        var dbLogs = await _scraperRepository.GetScraperLogsAsync(id, 100);
+
+                        // Map database entities to response model format expected by frontend
+                        logEntries = dbLogs.Select(log => new
+                        {
+                            timestamp = log.Timestamp,
+                            level = log.LogLevel?.ToLower(), // Convert to lowercase to match frontend expectations
+                            logLevel = log.LogLevel, // Also include the original casing for the Monitor tab
+                            message = log.Message
+                        }).Cast<object>().ToList();
+
+                        _logger.LogInformation("Retrieved {Count} log entries for monitor data", logEntries.Count);
+                    }
+                    catch (Exception logEx)
+                    {
+                        _logger.LogError(logEx, "Error getting logs for scraper with ID {Id}. Continuing with empty logs list", id);
+                        // Continue with empty logs list
+                    }
+
                     // Create response object
                     var monitorData = new
                     {
@@ -353,6 +377,7 @@ namespace WebScraperAPI.Controllers
                         ScraperName = scraperName,
                         Status = statusToUse,
                         Metrics = metricsArray,
+                        Logs = logEntries,
                         LastUpdated = DateTime.Now
                     };
 
@@ -374,6 +399,7 @@ namespace WebScraperAPI.Controllers
                             Error = innerEx.Message
                         },
                         Metrics = new List<object>(),
+                        Logs = new List<object>(),
                         LastUpdated = DateTime.Now
                     };
 

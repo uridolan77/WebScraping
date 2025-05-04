@@ -227,22 +227,25 @@ namespace WebScraperAPI.Controllers
         }
 
         [HttpGet("{id}/logs")]
-        public IActionResult GetScraperLogs(string id, [FromQuery] int limit = 100)
+        public async Task<IActionResult> GetScraperLogs(string id, [FromQuery] int limit = 100)
         {
             try
             {
-                var monitoringService = HttpContext.RequestServices.GetService<WebScraperApi.Services.Monitoring.IScraperMonitoringService>();
-                if (monitoringService == null)
+                _logger.LogInformation("Getting logs for scraper with ID {Id}, limit {Limit}", id, limit);
+
+                // Get logs directly from the scraperlog table
+                var dbLogs = await _scraperRepository.GetScraperLogsAsync(id, limit);
+
+                // Map database entities to response model
+                var logEntries = dbLogs.Select(log => new
                 {
-                    return StatusCode(500, new
-                    {
-                        Message = "Monitoring service is not available"
-                    });
-                }
+                    timestamp = log.Timestamp,
+                    level = log.LogLevel?.ToLower(), // Convert to lowercase to match frontend expectations
+                    message = log.Message
+                }).ToList();
 
-                var logs = monitoringService.GetScraperLogs(id, limit);
-
-                return Ok(logs);
+                _logger.LogInformation("Returning {Count} log entries for scraper {Id}", logEntries.Count, id);
+                return Ok(new { logs = logEntries });
             }
             catch (Exception ex)
             {

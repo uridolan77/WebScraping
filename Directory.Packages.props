@@ -6,6 +6,7 @@
   <ItemGroup>
     <!-- ASP.NET Core and Extensions -->
     <PackageVersion Include="itext7" Version="9.1.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.4" />
     <PackageVersion Include="Microsoft.AspNetCore.Cors" Version="8.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="8.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.3" />
@@ -21,6 +22,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Primitives" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
     <PackageVersion Include="NCrontab" Version="3.3.3" />
     <PackageVersion Include="System.Threading.Tasks.Dataflow" Version="8.0.0" />
     <!-- Entity Framework Core -->
