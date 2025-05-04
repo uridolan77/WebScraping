@@ -189,7 +189,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         // Use the first action in case of conflicts
         // This helps when you have duplicate routes
-        return apiDescriptions.First();
+        return apiDescriptions.First(); 
     });
 });
 
