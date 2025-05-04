@@ -5,7 +5,9 @@ using System.Linq;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using WebScraper;
+using WebScraper.Processing;
 using WebScraper.RegulatoryFramework.Interfaces;
+using WebScraper.Resilience;
 
 namespace WebScraperApi.Services.Factories
 {
@@ -42,6 +44,25 @@ namespace WebScraperApi.Services.Factories
         {
             try
             {
+                // Check if enhanced content extraction is enabled
+                if (config.EnableEnhancedContentExtraction)
+                {
+                    logAction("Creating enhanced streaming content extractor");
+
+                    // Create a logger for the streaming content extractor
+                    var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+                    {
+                        builder.AddConsole();
+                    });
+                    var extractorLogger = loggerFactory.CreateLogger<StreamingContentExtractor>();
+
+                    // Create the streaming content extractor
+                    var streamingExtractor = new StreamingContentExtractor(extractorLogger);
+
+                    // Create an adapter that implements IContentExtractor
+                    return new StreamingContentExtractorAdapter(streamingExtractor, _logger);
+                }
+
                 logAction("Creating default content extractor");
                 // Return a simple implementation for now
                 return new DefaultContentExtractor(config);
@@ -52,6 +73,115 @@ namespace WebScraperApi.Services.Factories
                 logAction($"Error creating content extractor: {ex.Message}");
                 // Use non-null return when possible
                 return new DefaultContentExtractor(new ScraperConfig());
+            }
+        }
+
+        /// <summary>
+        /// Adapter to make StreamingContentExtractor compatible with IContentExtractor interface
+        /// </summary>
+        private class StreamingContentExtractorAdapter : IContentExtractor
+        {
+            private readonly StreamingContentExtractor _streamingExtractor;
+            private readonly ILogger _logger;
+
+            public StreamingContentExtractorAdapter(StreamingContentExtractor streamingExtractor, ILogger logger)
+            {
+                _streamingExtractor = streamingExtractor;
+                _logger = logger;
+            }
+
+            public string ExtractContent(string html, Uri url)
+            {
+                // This method is part of the old interface and not used in the new implementation
+                return html;
+            }
+
+            public string ExtractTextContent(HtmlDocument document)
+            {
+                try
+                {
+                    if (document == null || document.DocumentNode == null)
+                    {
+                        return string.Empty;
+                    }
+
+                    // Use the streaming extractor to get all text content
+                    var textBlocks = new List<string>();
+                    var task = Task.Run(async () =>
+                    {
+                        await foreach (var block in _streamingExtractor.StreamTextContentFromHtmlAsync(document.DocumentNode.OuterHtml))
+                        {
+                            textBlocks.Add(block);
+                        }
+                    });
+
+                    // Wait for the task to complete
+                    task.Wait();
+
+                    // Join all text blocks with newlines
+                    return string.Join(Environment.NewLine + Environment.NewLine, textBlocks);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error extracting text content using streaming extractor");
+                    // Fallback to simple extraction
+                    return document.DocumentNode.InnerText;
+                }
+            }
+
+            public List<WebScraper.ContentNode> ExtractStructuredContent(HtmlDocument document)
+            {
+                var result = new List<WebScraper.ContentNode>();
+
+                try
+                {
+                    if (document == null || document.DocumentNode == null)
+                    {
+                        return result;
+                    }
+
+                    // Extract headings and paragraphs
+                    var headings = document.DocumentNode.SelectNodes("//h1|//h2|//h3|//h4|//h5|//h6");
+                    if (headings != null)
+                    {
+                        foreach (var heading in headings)
+                        {
+                            string level = heading.Name.Substring(1);
+                            result.Add(new WebScraper.ContentNode
+                            {
+                                NodeType = "heading",
+                                Content = heading.InnerText.Trim(),
+                                Depth = int.Parse(level),
+                                Children = new List<WebScraper.ContentNode>()
+                            });
+                        }
+                    }
+
+                    var paragraphs = document.DocumentNode.SelectNodes("//p");
+                    if (paragraphs != null)
+                    {
+                        foreach (var paragraph in paragraphs)
+                        {
+                            string text = paragraph.InnerText.Trim();
+                            if (!string.IsNullOrWhiteSpace(text))
+                            {
+                                result.Add(new WebScraper.ContentNode
+                                {
+                                    NodeType = "paragraph",
+                                    Content = text,
+                                    Depth = 0,
+                                    Children = new List<WebScraper.ContentNode>()
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error extracting structured content using streaming extractor");
+                }
+
+                return result;
             }
         }
 
@@ -186,7 +316,7 @@ namespace WebScraperApi.Services.Factories
             public string ExtractContent(string html, Uri url)
             {
                 // Simple implementation just returns the full HTML
-                return html; 
+                return html;
             }
 
             // Implement additional IContentExtractor methods
@@ -205,7 +335,7 @@ namespace WebScraperApi.Services.Factories
             public List<WebScraper.ContentNode> ExtractStructuredContent(HtmlDocument document)
             {
                 var result = new List<WebScraper.ContentNode>();
-                
+
                 if (document == null || document.DocumentNode == null)
                 {
                     return result;
@@ -215,9 +345,9 @@ namespace WebScraperApi.Services.Factories
                 var titleNode = document.DocumentNode.SelectSingleNode("//title");
                 if (titleNode != null)
                 {
-                    result.Add(new WebScraper.ContentNode 
-                    { 
-                        NodeType = "title", 
+                    result.Add(new WebScraper.ContentNode
+                    {
+                        NodeType = "title",
                         Content = titleNode.InnerText,
                         Children = new List<WebScraper.ContentNode>()
                     });
@@ -229,9 +359,9 @@ namespace WebScraperApi.Services.Factories
                     var content = metaDescription.GetAttributeValue("content", "");
                     if (!string.IsNullOrEmpty(content))
                     {
-                        result.Add(new WebScraper.ContentNode 
-                        { 
-                            NodeType = "meta", 
+                        result.Add(new WebScraper.ContentNode
+                        {
+                            NodeType = "meta",
                             Content = content,
                             Children = new List<WebScraper.ContentNode>()
                         });
@@ -253,7 +383,7 @@ namespace WebScraperApi.Services.Factories
             Content = string.Empty;
             Children = new List<ContentNode>();
         }
-        
+
         public string NodeType { get; set; }
         public string Content { get; set; }
         public List<ContentNode> Children { get; set; }

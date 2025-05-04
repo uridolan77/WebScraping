@@ -527,19 +527,42 @@ namespace WebScraperAPI.Controllers
             }
         }
 
+
         // Helper method to save page content
         private async Task SavePageContentAsync(string scraperId, string url, string htmlContent, string textContent)
         {
             try
             {
+                _logger.LogInformation("SavePageContentAsync called for URL: {Url}, ScraperId: {ScraperId}", url, scraperId);
+
+                // Add a debug log entry
+                await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
+                {
+                    ScraperId = scraperId,
+                    Timestamp = DateTime.Now,
+                    LogLevel = "Info",
+                    Message = $"DEBUG: Attempting to save to scrapedpage table for URL: {url}"
+                });
+
                 // Save to database
-                await _scraperRepository.AddScrapedPageAsync(new WebScraperApi.Data.Entities.ScrapedPageEntity
+                var scrapedPage = new WebScraperApi.Data.Entities.ScrapedPageEntity
                 {
                     ScraperId = scraperId,
                     Url = url,
                     HtmlContent = htmlContent,
                     TextContent = textContent,
                     ScrapedAt = DateTime.Now
+                };
+
+                var savedEntity = await _scraperRepository.AddScrapedPageAsync(scrapedPage);
+
+                // Add a success log entry
+                await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
+                {
+                    ScraperId = scraperId,
+                    Timestamp = DateTime.Now,
+                    LogLevel = "Info",
+                    Message = $"SUCCESS: Saved to scrapedpage table for URL: {url}, ID: {savedEntity.Id}"
                 });
 
                 // Also save to files if output directory is configured
@@ -582,10 +605,34 @@ namespace WebScraperAPI.Controllers
                         Message = $"Saved content for {url} to {htmlFilePath} and {textFilePath}"
                     });
                 }
+
+                // Update scraper status to show progress
+                var status = await _scraperRepository.GetScraperStatusAsync(scraperId);
+                if (status != null)
+                {
+                    status.UrlsProcessed += 1;
+                    status.DocumentsProcessed += 1;
+                    status.LastStatusUpdate = DateTime.Now;
+                    status.LastUpdate = DateTime.Now;
+                    status.Message = $"Processing content. {status.UrlsProcessed} pages processed. Last URL: {url}";
+
+                    await _scraperRepository.UpdateScraperStatusAsync(status);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error saving page content for URL {Url}", url);
+
+                // Add an error log entry
+                await _scraperRepository.AddScraperLogAsync(new WebScraperApi.Data.Entities.ScraperLogEntity
+                {
+                    ScraperId = scraperId,
+                    Timestamp = DateTime.Now,
+                    LogLevel = "Error",
+                    Message = $"ERROR: Failed to save to scrapedpage table for URL: {url}. Error: {ex.Message}"
+                });
+
+                throw; // Rethrow to be handled by the caller
             }
         }
 

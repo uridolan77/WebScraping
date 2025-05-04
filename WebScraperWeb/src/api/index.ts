@@ -73,36 +73,94 @@ export const handleResponse = (promise: Promise<any>) => {
 };
 
 /**
- * Make a GET request with caching
+ * Make a GET request with caching and conditional requests
  * @param {string} url - The URL to request
  * @param {Object} options - Request options
  * @param {Object} options.params - URL parameters
  * @param {number} options.cacheTTL - Cache TTL in milliseconds (default: 5 minutes)
  * @param {boolean} options.forceRefresh - Force a refresh of the cache
+ * @param {boolean} options.useConditionalRequests - Use HTTP conditional requests (default: true)
  * @returns {Promise<any>} The response data
  */
 export const cachedGet = async (url: string, options: any = {}) => {
-  const { params = {}, cacheTTL = 5 * 60 * 1000, forceRefresh = false } = options;
+  const {
+    params = {},
+    cacheTTL = 5 * 60 * 1000,
+    forceRefresh = false,
+    useConditionalRequests = true
+  } = options;
 
   // Generate a cache key
   const cacheKey = generateCacheKey(url, params);
 
   // Check if we have a cached response and it's not a forced refresh
+  let cachedData = null;
+  let etag = null;
+  let lastModified = null;
+
   if (!forceRefresh) {
-    const cachedResponse = memoryCache.get(cacheKey);
-    if (cachedResponse !== null) {
-      return cachedResponse;
+    const cachedEntry = memoryCache.get(cacheKey);
+    if (cachedEntry !== null) {
+      cachedData = cachedEntry.data;
+      etag = cachedEntry.etag;
+      lastModified = cachedEntry.lastModified;
+
+      // If we're not using conditional requests, return the cached data immediately
+      if (!useConditionalRequests) {
+        return cachedData;
+      }
     }
   }
 
-  // Make the request
-  const response = await apiClient.get(url, { params });
-  const data = response.data;
+  // Set up headers for conditional request if we have cached data
+  const headers: Record<string, string> = {};
+  if (useConditionalRequests && cachedData) {
+    if (etag) {
+      headers['If-None-Match'] = etag;
+    }
+    if (lastModified) {
+      headers['If-Modified-Since'] = lastModified;
+    }
+  }
 
-  // Cache the response
-  memoryCache.set(cacheKey, data, cacheTTL);
+  try {
+    // Make the request with conditional headers if available
+    const response = await apiClient.get(url, {
+      params,
+      headers
+    });
 
-  return data;
+    // Get ETag and Last-Modified from response headers
+    const newEtag = response.headers['etag'];
+    const newLastModified = response.headers['last-modified'];
+    const data = response.data;
+
+    // Cache the response with metadata
+    memoryCache.set(cacheKey, {
+      data,
+      etag: newEtag || etag,
+      lastModified: newLastModified || lastModified,
+      timestamp: Date.now()
+    }, cacheTTL);
+
+    return data;
+  } catch (error) {
+    // If we get a 304 Not Modified, use the cached data
+    if (error.response && error.response.status === 304 && cachedData) {
+      // Update the timestamp in the cache to extend TTL
+      memoryCache.set(cacheKey, {
+        data: cachedData,
+        etag,
+        lastModified,
+        timestamp: Date.now()
+      }, cacheTTL);
+
+      return cachedData;
+    }
+
+    // For other errors, throw them to be handled by the caller
+    throw error;
+  }
 };
 
 /**

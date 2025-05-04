@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using WebScraperApi.Data.Entities;
-using System.Collections.Generic;
-using System.Linq;
 using System;
+
+// Comment out these entities until they are properly implemented
+// using WebScraperApi.Data.Entities.ContentClassification;
+// using WebScraperApi.Data.Entities.ContentEntity;
 
 namespace WebScraperApi.Data
 {
@@ -34,6 +36,9 @@ namespace WebScraperApi.Data
         public DbSet<CustomMetricEntity> CustomMetric { get; set; }
         public DbSet<ScraperLogEntity> ScraperLog { get; set; }
         public DbSet<ScrapedPageEntity> ScrapedPage { get; set; }
+        // Commented out until properly implemented
+        // public DbSet<ContentClassificationEntity> ContentClassifications { get; set; }
+        // public DbSet<ContentEntityEntity> ContentEntities { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -343,11 +348,11 @@ namespace WebScraperApi.Data
             {
                 entity.ToTable("scrapermetric");
 
-                // Configure columns explicitly to match the actual database column names (camelCase)
+                // Configure columns explicitly to match the actual database column names (snake_case)
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
-                entity.Property(e => e.MetricName).HasColumnName("metricName");
-                entity.Property(e => e.MetricValue).HasColumnName("metricValue");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
+                entity.Property(e => e.MetricName).HasColumnName("metricname");
+                entity.Property(e => e.MetricValue).HasColumnName("metricvalue");
                 entity.Property(e => e.Timestamp).HasColumnName("timestamp");
 
                 // Configure the relationship with ScraperConfigEntity
@@ -392,10 +397,72 @@ namespace WebScraperApi.Data
                 entity.Property(e => e.HtmlContent).HasColumnName("htmlContent");
                 entity.Property(e => e.TextContent).HasColumnName("textContent");
                 entity.Property(e => e.ScrapedAt).HasColumnName("scrapedAt");
+                entity.Property(e => e.ScraperConfigId).HasColumnName("scraperConfigId");
 
-                // Ignore ScraperConfig property in queries
-                entity.Ignore(e => e.ScraperConfig);
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne(s => s.ScraperConfig)
+                    .WithMany(c => c.ScrapedPages)
+                    .HasForeignKey(s => s.ScraperId)
+                    .HasPrincipalKey(c => c.Id);
             });
+
+            // Commented out until properly implemented
+            /*
+            // Configure ContentClassificationEntity
+            modelBuilder.Entity<ContentClassificationEntity>(entity =>
+            {
+                entity.ToTable("contentclassification");
+
+                // Configure columns explicitly to match the actual database column names (camelCase)
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
+                entity.Property(e => e.Url).HasColumnName("url");
+                entity.Property(e => e.ContentLength).HasColumnName("contentLength");
+                entity.Property(e => e.SentenceCount).HasColumnName("sentenceCount");
+                entity.Property(e => e.ParagraphCount).HasColumnName("paragraphCount");
+                entity.Property(e => e.ReadabilityScore).HasColumnName("readabilityScore");
+                entity.Property(e => e.PositiveScore).HasColumnName("positiveScore");
+                entity.Property(e => e.NegativeScore).HasColumnName("negativeScore");
+                entity.Property(e => e.OverallSentiment).HasColumnName("overallSentiment");
+                entity.Property(e => e.DocumentType).HasColumnName("documentType");
+                entity.Property(e => e.Confidence).HasColumnName("confidence");
+                entity.Property(e => e.ClassifiedAt).HasColumnName("classifiedAt");
+
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne(e => e.ScraperConfig)
+                    .WithMany()
+                    .HasForeignKey(e => e.ScraperId)
+                    .HasPrincipalKey(e => e.Id);
+
+                // Configure the relationship with ContentEntityEntity
+                entity.HasMany(e => e.Entities)
+                    .WithOne(e => e.Classification)
+                    .HasForeignKey(e => e.ClassificationId)
+                    .HasPrincipalKey(e => e.Id)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Configure ContentEntityEntity
+            modelBuilder.Entity<ContentEntityEntity>(entity =>
+            {
+                entity.ToTable("contententity");
+
+                // Configure columns explicitly to match the actual database column names (camelCase)
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ClassificationId).HasColumnName("classificationId");
+                entity.Property(e => e.Type).HasColumnName("type");
+                entity.Property(e => e.Value).HasColumnName("value");
+                entity.Property(e => e.Position).HasColumnName("position");
+                entity.Property(e => e.Confidence).HasColumnName("confidence");
+
+                // Configure the relationship with ContentClassificationEntity
+                entity.HasOne(e => e.Classification)
+                    .WithMany(e => e.Entities)
+                    .HasForeignKey(e => e.ClassificationId)
+                    .HasPrincipalKey(e => e.Id)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+            */
 
             // Configure one-to-one relationship between ScraperConfigEntity and ScraperStatusEntity
             modelBuilder.Entity<ScraperConfigEntity>()

@@ -253,6 +253,11 @@ namespace WebScraper
         public bool ExtractStructuredData { get; set; } = false;
 
         /// <summary>
+        /// Gets or sets whether to use enhanced content extraction with streaming and memory optimization
+        /// </summary>
+        public bool EnableEnhancedContentExtraction { get; set; } = false;
+
+        /// <summary>
         /// Gets or sets the custom JavaScript extractor
         /// </summary>
         public string CustomJsExtractor { get; set; } = string.Empty;

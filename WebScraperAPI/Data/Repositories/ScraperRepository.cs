@@ -1040,7 +1040,7 @@ namespace WebScraperApi.Data.Repositories
             try
             {
                 Console.WriteLine($"DEBUG: AddScraperMetricAsync called with metric name: {metric.MetricName}, value: {metric.MetricValue}, ScraperId: {metric.ScraperId}");
-                
+
                 // Save only to the scrapermetric table
                 try
                 {
@@ -1056,40 +1056,40 @@ namespace WebScraperApi.Data.Repositories
                         Console.WriteLine($"Inner exception: {primaryEx.InnerException.Message}");
                     }
                     Console.WriteLine($"Stack trace: {primaryEx.StackTrace}");
-                    
+
                     // Try to manually execute the insert using raw SQL if EF Core fails
                     try
                     {
                         Console.WriteLine("Attempting direct SQL insert to scrapermetric table");
                         var connection = _context.Database.GetDbConnection();
                         await connection.OpenAsync();
-                        
+
                         using (var command = connection.CreateCommand())
                         {
                             command.CommandText = @"
                                 INSERT INTO scrapermetric (scraper_id, metric_name, metric_value, timestamp)
                                 VALUES (@scraperId, @metricName, @metricValue, @timestamp)";
-                            
+
                             var scraperIdParam = command.CreateParameter();
                             scraperIdParam.ParameterName = "@scraperId";
                             scraperIdParam.Value = metric.ScraperId;
                             command.Parameters.Add(scraperIdParam);
-                            
+
                             var metricNameParam = command.CreateParameter();
                             metricNameParam.ParameterName = "@metricName";
                             metricNameParam.Value = metric.MetricName;
                             command.Parameters.Add(metricNameParam);
-                            
+
                             var metricValueParam = command.CreateParameter();
                             metricValueParam.ParameterName = "@metricValue";
                             metricValueParam.Value = metric.MetricValue;
                             command.Parameters.Add(metricValueParam);
-                            
+
                             var timestampParam = command.CreateParameter();
                             timestampParam.ParameterName = "@timestamp";
                             timestampParam.Value = metric.Timestamp;
                             command.Parameters.Add(timestampParam);
-                            
+
                             var result = await command.ExecuteNonQueryAsync();
                             Console.WriteLine($"Direct SQL insert result: {result} rows affected");
                         }
@@ -1106,12 +1106,12 @@ namespace WebScraperApi.Data.Repositories
                 }
 
                 // Update the scraper status to display URLs processed in the monitor page
-                try 
+                try
                 {
                     Console.WriteLine("Updating scraper status with latest metric information");
                     var status = await _context.ScraperStatuses
                         .FirstOrDefaultAsync(s => s.ScraperId == metric.ScraperId);
-                        
+
                     if (status != null)
                     {
                         if (metric.MetricName == "PagesProcessed")
@@ -1121,20 +1121,20 @@ namespace WebScraperApi.Data.Repositories
                             status.DocumentsProcessed = (int)metric.MetricValue;
                             status.LastStatusUpdate = DateTime.Now;
                             status.LastUpdate = DateTime.Now;
-                            
+
                             // Keep original message if it's not a status message
                             if (status.Message == null || status.Message.Contains("pages processed") || status.Message.Contains("Idle") || string.IsNullOrEmpty(status.Message))
                             {
                                 status.Message = $"Processing content. {status.UrlsProcessed} pages processed.";
                             }
-                            
+
                             // Calculate elapsed time if we have a start time
                             if (status.StartTime.HasValue)
                             {
                                 TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
                                 status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
                             }
-                            
+
                             await _context.SaveChangesAsync();
                             Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}, ElapsedTime = {status.ElapsedTime}");
                         }
@@ -1211,6 +1211,100 @@ namespace WebScraperApi.Data.Repositories
 
         #endregion
 
+        #region Content Classification Operations
+
+        // Commented out until ContentClassificationEntity is properly implemented
+        /*
+        public async Task<ContentClassificationEntity> GetContentClassificationAsync(string scraperId, string url)
+        {
+            try
+            {
+                return await _context.ContentClassifications
+                    .Include(c => c.Entities)
+                    .Where(c => c.ScraperId == scraperId && c.Url == url)
+                    .OrderByDescending(c => c.ClassifiedAt)
+                    .FirstOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting content classification: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<List<ContentClassificationEntity>> GetContentClassificationsAsync(string scraperId, int limit = 50)
+        {
+            try
+            {
+                return await _context.ContentClassifications
+                    .Include(c => c.Entities)
+                    .Where(c => c.ScraperId == scraperId)
+                    .OrderByDescending(c => c.ClassifiedAt)
+                    .Take(limit)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting content classifications: {ex.Message}");
+                return new List<ContentClassificationEntity>();
+            }
+        }
+
+        public async Task<ContentClassificationEntity> SaveContentClassificationAsync(ContentClassificationEntity classification)
+        {
+            try
+            {
+                // Check if a classification already exists for this URL
+                var existing = await _context.ContentClassifications
+                    .Where(c => c.ScraperId == classification.ScraperId && c.Url == classification.Url)
+                    .FirstOrDefaultAsync();
+
+                if (existing != null)
+                {
+                    // Update existing classification
+                    _context.Entry(existing).State = EntityState.Detached;
+                    classification.Id = existing.Id;
+                    _context.ContentClassifications.Update(classification);
+                }
+                else
+                {
+                    // Add new classification
+                    _context.ContentClassifications.Add(classification);
+                }
+
+                await _context.SaveChangesAsync();
+                return classification;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving content classification: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                }
+                throw;
+            }
+        }
+        */
+
+        // Temporary implementations that return empty results
+        public async Task<object> GetContentClassificationAsync(string scraperId, string url)
+        {
+            return await Task.FromResult<object>(null);
+        }
+
+        public async Task<List<object>> GetContentClassificationsAsync(string scraperId, int limit = 50)
+        {
+            return await Task.FromResult(new List<object>());
+        }
+
+        public async Task<object> SaveContentClassificationAsync(object classification)
+        {
+            return await Task.FromResult(classification);
+        }
+
+        #endregion
+
         #region Scraped Page Operations
 
         public async Task<ScrapedPageEntity> AddScrapedPageAsync(ScrapedPageEntity page)
@@ -1230,9 +1324,114 @@ namespace WebScraperApi.Data.Repositories
                 _context.ScrapedPage.Add(page);
                 Console.WriteLine($"Added scraped page to context, saving changes...");
 
-                // Save changes to the database
-                await _context.SaveChangesAsync();
-                Console.WriteLine($"Successfully saved scraped page to database with ID: {page.Id}");
+                try
+                {
+                    // Save changes to the database
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"Successfully saved scraped page to database with ID: {page.Id}");
+                }
+                catch (Exception saveEx)
+                {
+                    Console.WriteLine($"Error saving scraped page with EF Core: {saveEx.Message}");
+                    if (saveEx.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {saveEx.InnerException.Message}");
+                    }
+                    Console.WriteLine($"Stack trace: {saveEx.StackTrace}");
+
+                    // Try direct SQL insert as a fallback
+                    try
+                    {
+                        Console.WriteLine("Attempting direct SQL insert to scrapedpage table");
+                        var connection = _context.Database.GetDbConnection();
+                        await connection.OpenAsync();
+
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = @"
+                                INSERT INTO scrapedpage (scraperId, url, htmlContent, textContent, scrapedAt)
+                                VALUES (@scraperId, @url, @htmlContent, @textContent, @scrapedAt)";
+
+                            var scraperIdParam = command.CreateParameter();
+                            scraperIdParam.ParameterName = "@scraperId";
+                            scraperIdParam.Value = page.ScraperId;
+                            command.Parameters.Add(scraperIdParam);
+
+                            var urlParam = command.CreateParameter();
+                            urlParam.ParameterName = "@url";
+                            urlParam.Value = page.Url;
+                            command.Parameters.Add(urlParam);
+
+                            var htmlContentParam = command.CreateParameter();
+                            htmlContentParam.ParameterName = "@htmlContent";
+                            htmlContentParam.Value = page.HtmlContent;
+                            command.Parameters.Add(htmlContentParam);
+
+                            var textContentParam = command.CreateParameter();
+                            textContentParam.ParameterName = "@textContent";
+                            textContentParam.Value = page.TextContent;
+                            command.Parameters.Add(textContentParam);
+
+                            var scrapedAtParam = command.CreateParameter();
+                            scrapedAtParam.ParameterName = "@scrapedAt";
+                            scrapedAtParam.Value = page.ScrapedAt;
+                            command.Parameters.Add(scrapedAtParam);
+
+                            var result = await command.ExecuteNonQueryAsync();
+                            Console.WriteLine($"Direct SQL insert result: {result} rows affected");
+                        }
+                    }
+                    catch (Exception sqlEx)
+                    {
+                        Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
+                        if (sqlEx.InnerException != null)
+                        {
+                            Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
+                        }
+                        Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
+                        throw; // Rethrow if both methods fail
+                    }
+                }
+
+                // Update the scraper status to display URLs processed in the monitor page
+                try
+                {
+                    Console.WriteLine("Updating scraper status with latest page information");
+                    var status = await _context.ScraperStatuses
+                        .FirstOrDefaultAsync(s => s.ScraperId == page.ScraperId);
+
+                    if (status != null)
+                    {
+                        // Increment URLs processed count
+                        status.UrlsProcessed += 1;
+                        status.DocumentsProcessed += 1;
+                        status.LastStatusUpdate = DateTime.Now;
+                        status.LastUpdate = DateTime.Now;
+                        status.Message = $"Processing content. {status.UrlsProcessed} pages processed. Last URL: {page.Url}";
+
+                        // Calculate elapsed time if we have a start time
+                        if (status.StartTime.HasValue)
+                        {
+                            TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
+                            status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                        }
+
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}, ElapsedTime = {status.ElapsedTime}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No scraper status found for ScraperId: {page.ScraperId}");
+                    }
+                }
+                catch (Exception statusEx)
+                {
+                    Console.WriteLine($"Error updating scraper status with page info: {statusEx.Message}");
+                    if (statusEx.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {statusEx.InnerException.Message}");
+                    }
+                }
 
                 return page;
             }

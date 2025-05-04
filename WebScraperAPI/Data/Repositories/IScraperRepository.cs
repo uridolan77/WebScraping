@@ -67,5 +67,10 @@ namespace WebScraperApi.Data.Repositories
         // Pipeline Metrics operations
         Task<PipelineMetricEntity> GetLatestPipelineMetricAsync(string scraperId);
         Task<PipelineMetricEntity> AddPipelineMetricAsync(PipelineMetricEntity metric);
+
+        // Content Classification operations - temporarily using object instead of ContentClassificationEntity
+        Task<object> GetContentClassificationAsync(string scraperId, string url);
+        Task<List<object>> GetContentClassificationsAsync(string scraperId, int limit = 50);
+        Task<object> SaveContentClassificationAsync(object classification);
     }
 }

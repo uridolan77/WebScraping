@@ -20,6 +20,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SaveIcon from '@mui/icons-material/Save';
 import { useScrapers } from '../contexts/ScraperContext';
 import { createScraper } from '../api/scrapers';
+import EnhancedFeaturesTab from '../components/scraper/EnhancedFeaturesTab';
 
 // Tab Panel component
 function TabPanel(props) {
@@ -62,7 +63,13 @@ const defaultScraperConfig = {
   enableAdaptiveCrawling: false,
   priorityQueueSize: 100,
   adjustDepthBasedOnQuality: false,
-  enableAdaptiveRateLimiting: false
+  enableAdaptiveRateLimiting: false,
+  // Enhanced features
+  enableEnhancedContentExtraction: false,
+  enableCircuitBreaker: false,
+  enableRetryWithBackoff: false,
+  enableSecurityValidation: false,
+  enableMachineLearningClassification: false
 };
 
 const ScraperCreate = () => {
@@ -393,6 +400,7 @@ const ScraperCreate = () => {
               <Tab label="Basic Settings" />
               <Tab label="Crawling Options" />
               <Tab label="Advanced Features" />
+              <Tab label="Enhanced Features" />
             </Tabs>
           </Box>
 
@@ -688,6 +696,11 @@ const ScraperCreate = () => {
                 </Grid>
               </Grid>
             </TabPanel>
+
+            {/* Enhanced Features Tab */}
+            <TabPanel value={activeTab} index={3}>
+              <EnhancedFeaturesTab scraper={scraper} handleChange={handleChange} />
+            </TabPanel>
           </Box>
 
           {/* Form Actions */}
@@ -711,7 +724,7 @@ const ScraperCreate = () => {
                 </Button>
               )}
 
-              {activeTab < 2 ? (
+              {activeTab < 3 ? (
                 <Button
                   variant="contained"
                   color="primary"

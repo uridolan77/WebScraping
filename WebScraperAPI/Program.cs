@@ -149,10 +149,13 @@ builder.Services.AddScoped<IScrapedContentRepository, ScrapedContentRepository>(
 builder.Services.AddScoped<IScraperRepository, ScraperRepository>();
 
 // Register factory services
-builder.Services.AddScraperFactories();
+WebScraperApi.Services.Factories.ScraperFactoryExtensions.AddScraperFactories(builder.Services); // Using the fully qualified method name to avoid ambiguity
 
 // Add all scraper services
 builder.Services.AddScraperServices();
+
+// Add enhanced components
+builder.Services.AddEnhancedComponents(); // Using the extension method from WebScraperApi.Services.ServiceCollectionExtensions
 
 // Add Swagger with enhanced configuration
 builder.Services.AddSwaggerGen(c =>
@@ -189,7 +192,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         // Use the first action in case of conflicts
         // This helps when you have duplicate routes
-        return apiDescriptions.First(); 
+        return apiDescriptions.First();
     });
 });
 

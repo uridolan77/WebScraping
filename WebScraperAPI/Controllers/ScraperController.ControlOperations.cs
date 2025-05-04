@@ -126,35 +126,136 @@ namespace WebScraperAPI.Controllers
                 // Create the scraper instance
                 var scraper = new Scraper(scraperConfig, logAction);
 
-                // Initialize and start scraping in a background task
-                _ = Task.Run(async () =>
+                // Start the scraper in a separate process
+                try
                 {
-                    try
+                    _logger.LogInformation($"Starting scraper {id} in a separate process");
+
+                    // Get the path to the current executable
+                    string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                    string scraperRunnerPath = Path.Combine(currentDirectory, "WebScraperRunner.exe");
+
+                    // Check if the runner exists
+                    if (!System.IO.File.Exists(scraperRunnerPath))
                     {
-                        _logger.LogInformation($"Initializing scraper {id}");
-                        await scraper.InitializeAsync();
+                        _logger.LogWarning($"WebScraperRunner.exe not found at {scraperRunnerPath}, falling back to in-process execution");
 
-                        _logger.LogInformation($"Starting scraping process for {id}");
-                        await scraper.StartScrapingAsync();
-
-                        _logger.LogInformation($"Scraping completed for {id}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Error running scraper {id}: {ex.Message}");
-
-                        if (ex.InnerException != null)
+                        // Fall back to in-process execution
+                        _ = Task.Run(async () =>
                         {
-                            _logger.LogError($"Inner exception: {ex.InnerException.Message}");
-                        }
+                            try
+                            {
+                                _logger.LogInformation($"Initializing scraper {id} in-process");
+                                await scraper.InitializeAsync();
+
+                                _logger.LogInformation($"Starting scraping process for {id}");
+                                await scraper.StartScrapingAsync();
+
+                                _logger.LogInformation($"Scraping completed for {id}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"Error running scraper {id}: {ex.Message}");
+
+                                if (ex.InnerException != null)
+                                {
+                                    _logger.LogError($"Inner exception: {ex.InnerException.Message}");
+                                }
+                            }
+                            finally
+                            {
+                                // Remove from active scrapers when done
+                                _logger.LogInformation($"Removing scraper {id} from active scrapers list");
+                                _activeScrapers.Remove(id);
+                            }
+                        });
                     }
-                    finally
+                    else
                     {
-                        // Remove from active scrapers when done
-                        _logger.LogInformation($"Removing scraper {id} from active scrapers list");
-                        _activeScrapers.Remove(id);
+                        // Start the scraper runner process
+                        var processStartInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = scraperRunnerPath,
+                            Arguments = $"--scraper-id {id} --connection-string \"{_configuration.GetConnectionString("DefaultConnection")}\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = false,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true
+                        };
+
+                        var process = new System.Diagnostics.Process
+                        {
+                            StartInfo = processStartInfo,
+                            EnableRaisingEvents = true
+                        };
+
+                        // Set up event handlers
+                        process.OutputDataReceived += (sender, e) =>
+                        {
+                            if (!string.IsNullOrEmpty(e.Data))
+                            {
+                                _logger.LogInformation($"Scraper {id} output: {e.Data}");
+                            }
+                        };
+
+                        process.ErrorDataReceived += (sender, e) =>
+                        {
+                            if (!string.IsNullOrEmpty(e.Data))
+                            {
+                                _logger.LogError($"Scraper {id} error: {e.Data}");
+                            }
+                        };
+
+                        process.Exited += (sender, e) =>
+                        {
+                            _logger.LogInformation($"Scraper {id} process exited with code {process.ExitCode}");
+                            _activeScrapers.Remove(id);
+                        };
+
+                        // Start the process
+                        process.Start();
+                        process.BeginOutputReadLine();
+                        process.BeginErrorReadLine();
+
+                        _logger.LogInformation($"Started scraper {id} in separate process with PID {process.Id}");
                     }
-                });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error starting scraper {id} in separate process: {ex.Message}");
+
+                    // Fall back to in-process execution
+                    _logger.LogWarning($"Falling back to in-process execution for scraper {id}");
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            _logger.LogInformation($"Initializing scraper {id} in-process");
+                            await scraper.InitializeAsync();
+
+                            _logger.LogInformation($"Starting scraping process for {id}");
+                            await scraper.StartScrapingAsync();
+
+                            _logger.LogInformation($"Scraping completed for {id}");
+                        }
+                        catch (Exception runEx)
+                        {
+                            _logger.LogError(runEx, $"Error running scraper {id}: {runEx.Message}");
+
+                            if (runEx.InnerException != null)
+                            {
+                                _logger.LogError($"Inner exception: {runEx.InnerException.Message}");
+                            }
+                        }
+                        finally
+                        {
+                            // Remove from active scrapers when done
+                            _logger.LogInformation($"Removing scraper {id} from active scrapers list");
+                            _activeScrapers.Remove(id);
+                        }
+                    });
+                }
 
                 // Store the scraper in the active scrapers dictionary
                 _activeScrapers[id] = scraper;
@@ -246,7 +347,37 @@ namespace WebScraperAPI.Controllers
                 }
                 else
                 {
-                    _logger.LogWarning($"No active scraper instance found with ID {id}, but will update database status anyway");
+                    _logger.LogWarning($"No active scraper instance found with ID {id}, checking for running process");
+
+                    // Check if there's a running process for this scraper
+                    try
+                    {
+                        var processes = System.Diagnostics.Process.GetProcessesByName("WebScraperRunner");
+                        foreach (var process in processes)
+                        {
+                            try
+                            {
+                                // Try to kill the process
+                                _logger.LogInformation($"Found WebScraperRunner process with ID {process.Id}, attempting to kill it");
+                                process.Kill();
+                                _logger.LogInformation($"Successfully killed WebScraperRunner process with ID {process.Id}");
+                                scraperWasActive = true;
+                            }
+                            catch (Exception processEx)
+                            {
+                                _logger.LogError(processEx, $"Error killing WebScraperRunner process with ID {process.Id}");
+                            }
+                        }
+                    }
+                    catch (Exception processEx)
+                    {
+                        _logger.LogError(processEx, "Error getting WebScraperRunner processes");
+                    }
+
+                    if (!scraperWasActive)
+                    {
+                        _logger.LogWarning($"No active scraper process found for ID {id}, but will update database status anyway");
+                    }
                 }
 
                 // First, check if the scraper exists in the database

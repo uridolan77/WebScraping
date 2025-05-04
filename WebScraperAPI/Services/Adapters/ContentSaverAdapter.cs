@@ -373,6 +373,23 @@ namespace WebScraperApi.Services.Adapters
                 {
                     LogInfo($"CRITICAL DEBUG: About to save content to database for URL: {url} with ScraperId: {scraperId}");
 
+                    // Add a log entry to confirm this code is being executed
+                    try
+                    {
+                        var debugLogEntry = new ScraperLogEntity
+                        {
+                            ScraperId = scraperId,
+                            Timestamp = DateTime.Now,
+                            LogLevel = "Info",
+                            Message = $"DEBUG: Attempting to save to scrapedpage table for URL: {url}"
+                        };
+                        await _repository.AddScraperLogAsync(debugLogEntry);
+                    }
+                    catch (Exception logEx)
+                    {
+                        LogError(logEx, $"Failed to add debug log entry: {logEx.Message}");
+                    }
+
                     var scrapedPage = new ScrapedPageEntity
                     {
                         ScraperId = scraperId,
@@ -385,6 +402,23 @@ namespace WebScraperApi.Services.Adapters
                     // Log the entity details before saving
                     LogInfo($"ScrapedPageEntity created with ScraperId: {scrapedPage.ScraperId}, URL: {scrapedPage.Url}, Content Length: {scrapedPage.HtmlContent.Length}, ScrapedAt: {scrapedPage.ScrapedAt}");
 
+                    // Add another log entry right before the database call
+                    try
+                    {
+                        var preDbLogEntry = new ScraperLogEntity
+                        {
+                            ScraperId = scraperId,
+                            Timestamp = DateTime.Now,
+                            LogLevel = "Info",
+                            Message = $"DEBUG: Calling _repository.AddScrapedPageAsync for URL: {url}"
+                        };
+                        await _repository.AddScraperLogAsync(preDbLogEntry);
+                    }
+                    catch (Exception logEx)
+                    {
+                        LogError(logEx, $"Failed to add pre-db log entry: {logEx.Message}");
+                    }
+
                     // Save to database with explicit try/catch
                     ScrapedPageEntity? savedEntity = null;
                     try
@@ -392,6 +426,24 @@ namespace WebScraperApi.Services.Adapters
                         savedEntity = await _repository.AddScrapedPageAsync(scrapedPage);
                         LogInfo($"SUCCESSFULLY saved content to database for URL: {url}" +
                             (savedEntity != null ? $", Entity ID: {savedEntity.Id}" : ", but returned entity was null"));
+
+                        // Add a success log entry
+                        try
+                        {
+                            var successLogEntry = new ScraperLogEntity
+                            {
+                                ScraperId = scraperId,
+                                Timestamp = DateTime.Now,
+                                LogLevel = "Info",
+                                Message = $"SUCCESS: Saved to scrapedpage table for URL: {url}" +
+                                    (savedEntity != null ? $", ID: {savedEntity.Id}" : ", but returned entity was null")
+                            };
+                            await _repository.AddScraperLogAsync(successLogEntry);
+                        }
+                        catch (Exception logEx)
+                        {
+                            LogError(logEx, $"Failed to add success log entry: {logEx.Message}");
+                        }
                     }
                     catch (Exception saveEx)
                     {
@@ -401,6 +453,23 @@ namespace WebScraperApi.Services.Adapters
                             LogError(saveEx.InnerException, $"Inner exception: {saveEx.InnerException.Message}");
                         }
                         LogError(saveEx, $"Stack trace: {saveEx.StackTrace}");
+
+                        // Add an error log entry
+                        try
+                        {
+                            var errorLogEntry = new ScraperLogEntity
+                            {
+                                ScraperId = scraperId,
+                                Timestamp = DateTime.Now,
+                                LogLevel = "Error",
+                                Message = $"ERROR: Failed to save to scrapedpage table for URL: {url}. Error: {saveEx.Message}"
+                            };
+                            await _repository.AddScraperLogAsync(errorLogEntry);
+                        }
+                        catch (Exception logEx)
+                        {
+                            LogError(logEx, $"Failed to add error log entry: {logEx.Message}");
+                        }
                     }
 
                     // Add metric for pages processed - with explicit error handling

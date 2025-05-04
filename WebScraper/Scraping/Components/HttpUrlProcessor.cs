@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
+using WebScraper.Processing;
 using WebScraper.RateLimiting;
 
 namespace WebScraper.Scraping.Components
@@ -128,30 +129,49 @@ namespace WebScraper.Scraping.Components
         }
 
         /// <summary>
-        /// Process a batch of URLs
+        /// Process a batch of URLs using Parallel.ForEachAsync for better concurrency control
         /// </summary>
         public async Task ProcessUrlBatchAsync(IEnumerable<string> urls)
         {
-            var tasks = new List<Task>();
-            foreach (var url in urls)
+            // Get cancellation token from Core if available
+            CancellationToken cancellationToken = CancellationToken.None;
+            try
             {
-                // Wait until we have a processing slot available
-                await _processingLimiter.WaitAsync();
+                var coreType = Core.GetType();
+                var tokenProperty = coreType.GetProperty("CancellationToken", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (tokenProperty != null)
+                {
+                    var token = tokenProperty.GetValue(Core) as CancellationToken?;
+                    if (token.HasValue)
+                    {
+                        cancellationToken = token.Value;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Could not get cancellation token from Core: {ex.Message}");
+            }
 
-                tasks.Add(Task.Run(async () =>
+            // Use Parallel.ForEachAsync for better control over parallelism
+            await Parallel.ForEachAsync(
+                urls,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = _maxConcurrentRequests,
+                    CancellationToken = cancellationToken
+                },
+                async (url, token) =>
                 {
                     try
                     {
                         await ProcessUrlAsync(url);
                     }
-                    finally
+                    catch (Exception ex)
                     {
-                        _processingLimiter.Release();
+                        LogError(ex, $"Error in parallel processing of URL: {url}");
                     }
-                }));
-            }
-
-            await Task.WhenAll(tasks);
+                });
         }
 
         /// <summary>
@@ -425,6 +445,122 @@ namespace WebScraper.Scraping.Components
             if (changeDetector != null)
             {
                 await changeDetector.TrackPageVersionAsync(url, content ?? string.Empty, contentType);
+            }
+
+            // Classify content if machine learning classifier is available
+            try
+            {
+                // Use reflection to find the MachineLearningContentClassifier
+                var components = GetAllComponents();
+                var serviceProvider = Core.GetType().GetProperty("ServiceProvider")?.GetValue(Core);
+
+                if (serviceProvider != null)
+                {
+                    // Try to get the classifier from the service provider
+                    try
+                    {
+                        var getServiceMethod = serviceProvider.GetType().GetMethod("GetService");
+                        if (getServiceMethod != null)
+                        {
+                            var classifierType = Type.GetType("WebScraper.Processing.MachineLearningContentClassifier, WebScraper");
+                            if (classifierType != null)
+                            {
+                                var classifier = getServiceMethod.MakeGenericMethod(classifierType).Invoke(serviceProvider, null);
+
+                                if (classifier != null)
+                                {
+                                    LogInfo($"Classifying content for URL: {url}");
+                                    var classifyMethod = classifierType.GetMethod("ClassifyContentAsync");
+
+                                    if (classifyMethod != null)
+                                    {
+                                        var task = classifyMethod.Invoke(classifier, new object[] { textContent ?? string.Empty });
+                                        if (task is Task<object> classificationTask)
+                                        {
+                                            var classification = await classificationTask;
+
+                                            if (classification != null)
+                                            {
+                                                // Get document type and confidence using reflection
+                                                var documentType = classification.GetType().GetProperty("DocumentType")?.GetValue(classification) as string;
+                                                var confidence = classification.GetType().GetProperty("Confidence")?.GetValue(classification);
+
+                                                LogInfo($"Content classified as {documentType} with {confidence} confidence");
+
+                                                // Try to save classification to database using ContentClassificationService
+                                                try
+                                                {
+                                                    // Use reflection to find and call ContentClassificationService
+                                                    foreach (var component in components)
+                                                    {
+                                                        if (component.GetType().Name.Contains("ContentClassificationService"))
+                                                        {
+                                                            var method = component.GetType().GetMethod("ClassifyContentAsync");
+                                                            if (method != null)
+                                                            {
+                                                                LogInfo($"Found ContentClassificationService, saving classification for URL: {url}");
+                                                                var scraperId = Core.GetType().GetProperty("Id")?.GetValue(Core) as string ?? "unknown";
+                                                                var serviceTask = method.Invoke(component, new object[] { scraperId, url, textContent ?? string.Empty });
+                                                                if (serviceTask is Task taskObj)
+                                                                {
+                                                                    await taskObj;
+                                                                    LogInfo($"Successfully saved classification for URL: {url}");
+                                                                }
+                                                            }
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    LogWarning($"Error saving classification: {ex.Message}");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"Error getting classifier from service provider: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // Fallback: Try to find the classifier in the components
+                    foreach (var component in components)
+                    {
+                        if (component.GetType().Name.Contains("ContentClassificationService"))
+                        {
+                            try
+                            {
+                                LogInfo($"Found ContentClassificationService, classifying content for URL: {url}");
+                                var method = component.GetType().GetMethod("ClassifyContentAsync");
+                                if (method != null)
+                                {
+                                    var scraperId = Core.GetType().GetProperty("Id")?.GetValue(Core) as string ?? "unknown";
+                                    var task = method.Invoke(component, new object[] { scraperId, url, textContent ?? string.Empty });
+                                    if (task is Task taskObj)
+                                    {
+                                        await taskObj;
+                                        LogInfo($"Successfully classified and saved content for URL: {url}");
+                                    }
+                                }
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                LogWarning($"Error classifying content with service: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Error classifying content: {ex.Message}");
             }
 
             // Log the page processing for monitoring purposes

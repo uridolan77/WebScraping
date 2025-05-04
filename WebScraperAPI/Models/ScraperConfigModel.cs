@@ -132,6 +132,8 @@ namespace WebScraperApi.Models
 
         public bool ExtractStructuredData { get; set; } = false;
 
+        public bool EnableEnhancedContentExtraction { get; set; } = false;
+
         public string? CustomJsExtractor { get; set; }
 
         // Page processing options
@@ -221,6 +223,7 @@ namespace WebScraperApi.Models
                 ContentExtractorExcludeSelectors = this.ContentExtractorExcludeSelectors,
                 ExtractMetadata = this.ExtractMetadata,
                 ExtractStructuredData = this.ExtractStructuredData,
+                EnableEnhancedContentExtraction = this.EnableEnhancedContentExtraction,
                 CustomJsExtractor = this.CustomJsExtractor,
 
                 // Add regulatory options

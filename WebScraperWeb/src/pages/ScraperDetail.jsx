@@ -31,6 +31,7 @@ import LogsTab from '../components/scraper/LogsTab';
 import ResultsTab from '../components/scraper/ResultsTab';
 import MonitorTab from '../components/scraper/MonitorTab';
 import DeleteConfirmationDialog from '../components/scraper/DeleteConfirmationDialog';
+import EnhancedFeaturesManager from '../components/scraper/EnhancedFeaturesManager';
 
 // Helper function to handle .NET-style response format with $values
 const getArrayFromResponse = (data) => {
@@ -252,7 +253,7 @@ const ScraperDetail = () => {
   const handleStartScraper = useCallback(() => {
     startScraperMutation.mutate();
     // Switch to Monitor tab when starting the scraper
-    setActiveTab(4); // Index 4 will be the Monitor tab
+    setActiveTab(5); // Index 5 will be the Monitor tab
   }, [startScraperMutation]);
 
   // Handle stop scraper
@@ -298,7 +299,7 @@ const ScraperDetail = () => {
             The scraper with ID {id} could not be found in the system.
           </Box>
           <Button
-            variant="contained" 
+            variant="contained"
             component={Link}
             to="/scrapers"
           >
@@ -357,7 +358,7 @@ const ScraperDetail = () => {
       )}
 
       {/* Scraper header */}
-      <ScraperHeader 
+      <ScraperHeader
         scraper={scraper}
         status={status}
         isStatusLoading={isStatusLoading}
@@ -376,9 +377,10 @@ const ScraperDetail = () => {
             <Tab label="Configuration" {...a11yProps(1)} />
             <Tab label="Logs" {...a11yProps(2)} />
             <Tab label="Results" {...a11yProps(3)} />
+            <Tab label="Enhanced Features" {...a11yProps(4)} />
             <Tab
               label="Monitor"
-              {...a11yProps(4)}
+              {...a11yProps(5)}
               sx={{
                 display: status?.isRunning ? 'flex' : 'none',
                 color: status?.isRunning ? 'success.main' : 'inherit'
@@ -389,7 +391,7 @@ const ScraperDetail = () => {
 
         {/* Overview Tab */}
         <TabPanel value={activeTab} index={0}>
-          <OverviewTab 
+          <OverviewTab
             status={status}
             scraper={scraper}
             logs={logs}
@@ -405,7 +407,7 @@ const ScraperDetail = () => {
 
         {/* Logs Tab */}
         <TabPanel value={activeTab} index={2}>
-          <LogsTab 
+          <LogsTab
             logs={logs}
             isLogsLoading={isLogsLoading}
             isActionInProgress={isActionInProgress}
@@ -418,9 +420,14 @@ const ScraperDetail = () => {
           <ResultsTab />
         </TabPanel>
 
-        {/* Monitor Tab */}
+        {/* Enhanced Features Tab */}
         <TabPanel value={activeTab} index={4}>
-          <MonitorTab 
+          <EnhancedFeaturesManager scraper={scraper} />
+        </TabPanel>
+
+        {/* Monitor Tab */}
+        <TabPanel value={activeTab} index={5}>
+          <MonitorTab
             status={status}
             monitorData={monitorData}
             monitorError={monitorError}
@@ -432,7 +439,7 @@ const ScraperDetail = () => {
       </Paper>
 
       {/* Delete Confirmation Dialog */}
-      <DeleteConfirmationDialog 
+      <DeleteConfirmationDialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
         onConfirm={handleDeleteScraper}

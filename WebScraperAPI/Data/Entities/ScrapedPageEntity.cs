@@ -10,27 +10,26 @@ namespace WebScraperApi.Data.Entities
         [Column("id")]
         public int Id { get; set; }
 
-        [Required]
-        [Column("scraperid")]
+        [Column("scraperId")]
         public string ScraperId { get; set; } = string.Empty;
 
-        [Required]
         [Column("url")]
         public string Url { get; set; } = string.Empty;
 
-        [Required]
-        [Column("htmlcontent")]
+        [Column("htmlContent")]
         public string HtmlContent { get; set; } = string.Empty;
 
-        [Required]
-        [Column("textcontent")]
+        [Column("textContent")]
         public string TextContent { get; set; } = string.Empty;
 
-        [Required]
-        [Column("scrapedat")]
+        [Column("scrapedAt")]
         public DateTime ScrapedAt { get; set; }
 
+        [Column("scraperConfigId")]
+        public int? ScraperConfigId { get; set; }
+
         // Navigation property
-        public virtual ScraperConfigEntity ScraperConfig { get; set; }
+        [ForeignKey("ScraperId")]
+        public virtual ScraperConfigEntity? ScraperConfig { get; set; }
     }
 }

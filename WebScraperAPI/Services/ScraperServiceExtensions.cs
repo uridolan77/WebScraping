@@ -62,6 +62,7 @@ namespace WebScraperApi.Services
             services.AddScoped<ContentChangeService>();
             services.AddScoped<DocumentService>();
             services.AddScoped<MetricsService>();
+            services.AddScoped<ContentClassificationService>();
 
             // Register the main scraper service
             services.AddScoped<IScraperService, ScraperService>();

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  Typography, 
+import {
+  Typography,
   Alert,
   Box,
   Button,
-  Card, 
+  Card,
   CardContent,
   CircularProgress,
   Divider,
@@ -21,14 +21,15 @@ import {
   TextField,
   InputAdornment
 } from '@mui/material';
-import { 
+import {
   Refresh as RefreshIcon,
   Link as LinkIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
-  Search as SearchIcon 
+  Search as SearchIcon
 } from '@mui/icons-material';
+import EnhancedMetricsCard from './EnhancedMetricsCard';
 
 /**
  * Helper function to handle .NET-style response format with $values
@@ -45,13 +46,13 @@ const getArrayFromResponse = (data) => {
 /**
  * Component for the Monitor tab in the scraper details page
  */
-const MonitorTab = ({ 
-  status, 
-  monitorData, 
-  monitorError, 
-  isMonitorLoading, 
+const MonitorTab = ({
+  status,
+  monitorData,
+  monitorError,
+  isMonitorLoading,
   isActionInProgress,
-  onRefreshMonitor 
+  onRefreshMonitor
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,23 +63,23 @@ const MonitorTab = ({
 
   // Extract logs from monitorData and filter for URLs and errors
   const logs = getArrayFromResponse(monitorData?.logs || []);
-  const processedUrls = logs.filter(log => 
+  const processedUrls = logs.filter(log =>
     log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'))
   );
-  const errorLogs = logs.filter(log => 
+  const errorLogs = logs.filter(log =>
     log.logLevel === 'Error' || log.logLevel === 'Warning'
   );
 
   // Filter based on search query
-  const filteredLogs = searchQuery 
+  const filteredLogs = searchQuery
     ? logs.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
     : logs;
-  
-  const filteredUrls = searchQuery 
+
+  const filteredUrls = searchQuery
     ? processedUrls.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
     : processedUrls;
-  
-  const filteredErrors = searchQuery 
+
+  const filteredErrors = searchQuery
     ? errorLogs.filter(log => log.message && log.message.toLowerCase().includes(searchQuery.toLowerCase()))
     : errorLogs;
 
@@ -132,8 +133,15 @@ const MonitorTab = ({
             <Grid item xs={12} md={6}>
               <RecentActivityCard monitorData={monitorData} getArrayFromResponse={getArrayFromResponse} />
             </Grid>
+
+            {/* Enhanced Metrics Card - only shown if enhanced features are enabled */}
+            {monitorData?.enhancedFeatures?.enabled && (
+              <Grid item xs={12}>
+                <EnhancedMetricsCard monitorData={monitorData} />
+              </Grid>
+            )}
           </Grid>
-          
+
           {/* Processed URLs and Errors Section */}
           <Typography variant="h6" gutterBottom>
             Detailed Processing Logs
@@ -142,20 +150,20 @@ const MonitorTab = ({
             <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
               <Tabs value={activeTab} onChange={handleTabChange} aria-label="log tabs">
                 <Tab label={`All Logs (${logs.length})`} id="tab-0" />
-                <Tab 
-                  label={`Processed URLs (${processedUrls.length})`} 
-                  id="tab-1" 
+                <Tab
+                  label={`Processed URLs (${processedUrls.length})`}
+                  id="tab-1"
                   iconPosition="start"
                 />
-                <Tab 
-                  label={`Errors & Warnings (${errorLogs.length})`} 
-                  id="tab-2" 
+                <Tab
+                  label={`Errors & Warnings (${errorLogs.length})`}
+                  id="tab-2"
                   iconPosition="start"
                   sx={{ color: errorLogs.length > 0 ? 'error.main' : 'inherit' }}
                 />
               </Tabs>
             </Box>
-            
+
             <Box sx={{ p: 2 }}>
               <TextField
                 fullWidth
@@ -172,31 +180,31 @@ const MonitorTab = ({
                 }}
                 sx={{ mb: 2 }}
               />
-              
+
               {/* All Logs Tab */}
               {activeTab === 0 && (
-                <LogsList 
-                  logs={filteredLogs} 
-                  emptyMessage="No logs found" 
+                <LogsList
+                  logs={filteredLogs}
+                  emptyMessage="No logs found"
                   maxHeight={400}
                 />
               )}
-              
+
               {/* Processed URLs Tab */}
               {activeTab === 1 && (
-                <LogsList 
-                  logs={filteredUrls} 
-                  emptyMessage="No processed URLs found" 
+                <LogsList
+                  logs={filteredUrls}
+                  emptyMessage="No processed URLs found"
                   maxHeight={400}
                   highlightUrls
                 />
               )}
-              
+
               {/* Errors & Warnings Tab */}
               {activeTab === 2 && (
-                <LogsList 
-                  logs={filteredErrors} 
-                  emptyMessage="No errors or warnings found" 
+                <LogsList
+                  logs={filteredErrors}
+                  emptyMessage="No errors or warnings found"
                   maxHeight={400}
                   highlightErrors
                 />
@@ -242,7 +250,7 @@ const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, 
         const isUrlLog = log.message && (log.message.includes('Processed URL:') || log.message.includes('Processing URL:'));
         const isError = log.logLevel === 'Error';
         const isWarning = log.logLevel === 'Warning';
-        
+
         let url = '';
         if (isUrlLog) {
           const urlMatch = log.message.match(/URL: (.+?)( |$)/);
@@ -250,13 +258,13 @@ const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, 
             url = urlMatch[1];
           }
         }
-        
+
         return (
           <ListItem
             key={index}
             sx={{
-              bgcolor: isError ? 'rgba(255, 0, 0, 0.05)' : 
-                     isWarning ? 'rgba(255, 165, 0, 0.05)' : 
+              bgcolor: isError ? 'rgba(255, 0, 0, 0.05)' :
+                     isWarning ? 'rgba(255, 165, 0, 0.05)' :
                      isUrlLog ? 'rgba(0, 0, 255, 0.05)' : 'inherit'
             }}
           >
@@ -269,22 +277,22 @@ const LogsList = ({ logs, emptyMessage, maxHeight = 300, highlightUrls = false, 
             <ListItemText
               primary={
                 <Box>
-                  <Typography 
-                    variant="body2" 
-                    component="span" 
-                    sx={{ 
+                  <Typography
+                    variant="body2"
+                    component="span"
+                    sx={{
                       fontWeight: (isError || isWarning) ? 'bold' : 'normal',
-                      fontFamily: 'monospace', 
+                      fontFamily: 'monospace',
                       wordBreak: 'break-word'
                     }}
                   >
                     {log.message}
                   </Typography>
                   {url && (
-                    <Chip 
+                    <Chip
                       label={url.length > 40 ? url.substring(0, 37) + '...' : url}
-                      size="small" 
-                      variant="outlined" 
+                      size="small"
+                      variant="outlined"
                       color="primary"
                       component="a"
                       href={url}

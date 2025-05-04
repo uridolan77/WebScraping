@@ -46,7 +46,7 @@ namespace WebScraper.Scraping.Components
             try
             {
                 LogInfo("Looking for IScraperRepository in scraper components...");
-                
+
                 // If we can access the components collection in the Core
                 PropertyInfo componentsProperty = Core.GetType().GetProperty("Components", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
                 if (componentsProperty != null)
@@ -71,13 +71,13 @@ namespace WebScraper.Scraping.Components
                                     }
                                 }
                             }
-                            
+
                             if (_repository != null)
                                 break;
                         }
                     }
                 }
-                
+
                 if (_repository == null)
                 {
                     LogWarning("Could not find IScraperRepository in scraper components");
@@ -120,7 +120,7 @@ namespace WebScraper.Scraping.Components
                 // Create state manager with the directory (not a connection string)
                 LogInfo($"Creating state manager with directory: {stateDirectory}");
                 _stateManager = new StateManagement.PersistentStateManager(stateDirectory, LogInfo);
-                
+
                 LogInfo("Initializing state manager...");
                 await _stateManager.InitializeAsync();
 
@@ -143,7 +143,7 @@ namespace WebScraper.Scraping.Components
                     try
                     {
                         LogInfo($"Initializing scraper status in database for ScraperId: {_scraperInstanceId}");
-                        
+
                         // Use reflection to call UpdateScraperStatusAsync on the repository
                         var updateMethod = _repository.GetType().GetMethod("UpdateScraperStatusAsync");
                         if (updateMethod != null)
@@ -154,7 +154,7 @@ namespace WebScraper.Scraping.Components
                             if (statusType != null)
                             {
                                 var status = Activator.CreateInstance(statusType);
-                                
+
                                 // Set properties using reflection
                                 statusType.GetProperty("ScraperId").SetValue(status, _scraperInstanceId);
                                 statusType.GetProperty("IsRunning").SetValue(status, true);
@@ -168,11 +168,11 @@ namespace WebScraper.Scraping.Components
                                 statusType.GetProperty("LastStatusUpdate").SetValue(status, DateTime.Now);
                                 statusType.GetProperty("LastUpdate").SetValue(status, DateTime.Now);
                                 statusType.GetProperty("LastError").SetValue(status, "");
-                                
+
                                 // Call UpdateScraperStatusAsync
                                 updateMethod.Invoke(_repository, new[] { status });
                                 LogInfo($"Successfully initialized scraper status in database for ScraperId: {_scraperInstanceId}");
-                                
+
                                 // Also add a log entry to the database
                                 var logMethod = _repository.GetType().GetMethod("AddScraperLogAsync");
                                 if (logMethod != null)
@@ -181,13 +181,13 @@ namespace WebScraper.Scraping.Components
                                     if (logType != null)
                                     {
                                         var logEntry = Activator.CreateInstance(logType);
-                                        
+
                                         // Set properties using reflection
                                         logType.GetProperty("ScraperId").SetValue(logEntry, _scraperInstanceId);
                                         logType.GetProperty("Timestamp").SetValue(logEntry, DateTime.Now);
                                         logType.GetProperty("LogLevel").SetValue(logEntry, "Info");
                                         logType.GetProperty("Message").SetValue(logEntry, "Scraper started by StateManagerComponent");
-                                        
+
                                         // Call AddScraperLogAsync
                                         logMethod.Invoke(_repository, new[] { logEntry });
                                         LogInfo($"Successfully added start log entry to database");
@@ -208,12 +208,12 @@ namespace WebScraper.Scraping.Components
             {
                 LogError(ex, "Failed to initialize persistent state manager");
                 LogError(ex, $"Error details: {ex.Message}");
-                
+
                 if (ex.InnerException != null)
                 {
                     LogError(ex, $"Inner exception: {ex.InnerException.Message}");
                 }
-                
+
                 // Instead of silently continuing, re-throw to properly handle the error
                 throw;
             }
@@ -225,14 +225,14 @@ namespace WebScraper.Scraping.Components
         public override async Task OnScrapingStartedAsync()
         {
             await SaveStateAsync("Running");
-            
+
             // Update database status if repository is available
             if (_repository != null)
             {
                 try
                 {
                     LogInfo($"Updating scraper status to 'Running' in database");
-                    
+
                     var updateMethod = _repository.GetType().GetMethod("UpdateScraperStatusAsync");
                     if (updateMethod != null)
                     {
@@ -240,7 +240,7 @@ namespace WebScraper.Scraping.Components
                         if (statusType != null)
                         {
                             var status = Activator.CreateInstance(statusType);
-                            
+
                             // Set properties using reflection
                             statusType.GetProperty("ScraperId").SetValue(status, _scraperInstanceId);
                             statusType.GetProperty("IsRunning").SetValue(status, true);
@@ -250,7 +250,7 @@ namespace WebScraper.Scraping.Components
                             statusType.GetProperty("ElapsedTime").SetValue(status, "00:00:00");
                             statusType.GetProperty("LastStatusUpdate").SetValue(status, DateTime.Now);
                             statusType.GetProperty("LastUpdate").SetValue(status, DateTime.Now);
-                            
+
                             // Call UpdateScraperStatusAsync
                             updateMethod.Invoke(_repository, new[] { status });
                             LogInfo($"Successfully updated scraper status to 'Running' in database");
@@ -270,18 +270,18 @@ namespace WebScraper.Scraping.Components
         public override async Task OnScrapingCompletedAsync()
         {
             await SaveStateAsync("Completed");
-            
+
             // Update database status if repository is available
             if (_repository != null)
             {
                 try
                 {
                     LogInfo($"Updating scraper status to 'Completed' in database");
-                    
+
                     // Calculate elapsed time
                     TimeSpan elapsed = DateTime.Now - _startTime;
                     string elapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
-                    
+
                     var updateMethod = _repository.GetType().GetMethod("UpdateScraperStatusAsync");
                     if (updateMethod != null)
                     {
@@ -289,7 +289,7 @@ namespace WebScraper.Scraping.Components
                         if (statusType != null)
                         {
                             var status = Activator.CreateInstance(statusType);
-                            
+
                             // Set properties using reflection
                             statusType.GetProperty("ScraperId").SetValue(status, _scraperInstanceId);
                             statusType.GetProperty("IsRunning").SetValue(status, false);
@@ -300,11 +300,11 @@ namespace WebScraper.Scraping.Components
                             statusType.GetProperty("ElapsedTime").SetValue(status, elapsedTime);
                             statusType.GetProperty("LastStatusUpdate").SetValue(status, DateTime.Now);
                             statusType.GetProperty("LastUpdate").SetValue(status, DateTime.Now);
-                            
+
                             // Call UpdateScraperStatusAsync
                             updateMethod.Invoke(_repository, new[] { status });
                             LogInfo($"Successfully updated scraper status to 'Completed' in database");
-                            
+
                             // Also add a log entry
                             var logMethod = _repository.GetType().GetMethod("AddScraperLogAsync");
                             if (logMethod != null)
@@ -313,13 +313,13 @@ namespace WebScraper.Scraping.Components
                                 if (logType != null)
                                 {
                                     var logEntry = Activator.CreateInstance(logType);
-                                    
+
                                     // Set properties using reflection
                                     logType.GetProperty("ScraperId").SetValue(logEntry, _scraperInstanceId);
                                     logType.GetProperty("Timestamp").SetValue(logEntry, DateTime.Now);
                                     logType.GetProperty("LogLevel").SetValue(logEntry, "Info");
                                     logType.GetProperty("Message").SetValue(logEntry, $"Scraping completed. Processed {_pagesProcessed} pages in {elapsedTime}.");
-                                    
+
                                     // Call AddScraperLogAsync
                                     logMethod.Invoke(_repository, new[] { logEntry });
                                     LogInfo($"Successfully added completion log entry to database");
@@ -341,18 +341,18 @@ namespace WebScraper.Scraping.Components
         public override async Task OnScrapingStoppedAsync()
         {
             await SaveStateAsync("Stopped");
-            
+
             // Update database status if repository is available
             if (_repository != null)
             {
                 try
                 {
                     LogInfo($"Updating scraper status to 'Stopped' in database");
-                    
+
                     // Calculate elapsed time
                     TimeSpan elapsed = DateTime.Now - _startTime;
                     string elapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
-                    
+
                     var updateMethod = _repository.GetType().GetMethod("UpdateScraperStatusAsync");
                     if (updateMethod != null)
                     {
@@ -360,7 +360,7 @@ namespace WebScraper.Scraping.Components
                         if (statusType != null)
                         {
                             var status = Activator.CreateInstance(statusType);
-                            
+
                             // Set properties using reflection
                             statusType.GetProperty("ScraperId").SetValue(status, _scraperInstanceId);
                             statusType.GetProperty("IsRunning").SetValue(status, false);
@@ -371,7 +371,7 @@ namespace WebScraper.Scraping.Components
                             statusType.GetProperty("ElapsedTime").SetValue(status, elapsedTime);
                             statusType.GetProperty("LastStatusUpdate").SetValue(status, DateTime.Now);
                             statusType.GetProperty("LastUpdate").SetValue(status, DateTime.Now);
-                            
+
                             // Call UpdateScraperStatusAsync
                             updateMethod.Invoke(_repository, new[] { status });
                             LogInfo($"Successfully updated scraper status to 'Stopped' in database");
@@ -456,15 +456,15 @@ namespace WebScraper.Scraping.Components
         public async Task SaveContentAsync(string url, string content, string contentType)
         {
             LogInfo($"SaveContentAsync called for URL: {url}, ContentType: {contentType}, Content Length: {content?.Length ?? 0}");
-            
+
             try
             {
                 // Increment pages processed counter
                 _pagesProcessed++;
-                
+
                 // Always try to save to file, regardless of database settings
                 await SaveContentToFileAsync(url, content, contentType);
-                
+
                 // Additionally save to database if configured
                 if (_stateManager != null && Config.StoreContentInDatabase)
                 {
@@ -501,39 +501,39 @@ namespace WebScraper.Scraping.Components
                 {
                     LogWarning($"Skipping database save using StateManager - StateManager null: {_stateManager == null}, StoreContentInDatabase: {Config?.StoreContentInDatabase}");
                 }
-                
+
                 // Update database using repository if available
                 if (_repository != null)
                 {
                     try
                     {
                         LogInfo($"Saving content to database using repository for URL: {url}");
-                        
+
                         // 1. First update the ScraperStatus with current progress
                         // Calculate elapsed time
                         TimeSpan elapsed = DateTime.Now - _startTime;
                         string elapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
-                        
+
                         var getStatusMethod = _repository.GetType().GetMethod("GetScraperStatusAsync");
                         var updateStatusMethod = _repository.GetType().GetMethod("UpdateScraperStatusAsync");
-                        
+
                         if (getStatusMethod != null && updateStatusMethod != null)
                         {
                             // Get current status
                             var status = await (dynamic)getStatusMethod.Invoke(_repository, new object[] { _scraperInstanceId });
-                            
+
                             // If status is null, create a new one
                             var statusType = Type.GetType("WebScraperApi.Data.Entities.ScraperStatusEntity, WebScraperApi");
                             if (status == null && statusType != null)
                             {
                                 status = Activator.CreateInstance(statusType);
-                                
+
                                 // Set properties using reflection
                                 statusType.GetProperty("ScraperId").SetValue(status, _scraperInstanceId);
                                 statusType.GetProperty("IsRunning").SetValue(status, true);
                                 statusType.GetProperty("StartTime").SetValue(status, _startTime);
                             }
-                            
+
                             if (status != null)
                             {
                                 // Update the status
@@ -544,13 +544,13 @@ namespace WebScraper.Scraping.Components
                                 statusType.GetProperty("ElapsedTime").SetValue(status, elapsedTime);
                                 statusType.GetProperty("LastStatusUpdate").SetValue(status, DateTime.Now);
                                 statusType.GetProperty("LastUpdate").SetValue(status, DateTime.Now);
-                                
+
                                 // Update the status
                                 await (dynamic)updateStatusMethod.Invoke(_repository, new object[] { status });
                                 LogInfo($"Updated scraper status in database: Pages={_pagesProcessed}, ElapsedTime={elapsedTime}");
                             }
                         }
-                        
+
                         // 2. Now save the content
                         var addPageMethod = _repository.GetType().GetMethod("AddScrapedPageAsync");
                         if (addPageMethod != null)
@@ -559,20 +559,20 @@ namespace WebScraper.Scraping.Components
                             if (pageType != null)
                             {
                                 var page = Activator.CreateInstance(pageType);
-                                
+
                                 // Set properties using reflection
                                 pageType.GetProperty("ScraperId").SetValue(page, _scraperInstanceId);
                                 pageType.GetProperty("Url").SetValue(page, url);
                                 pageType.GetProperty("HtmlContent").SetValue(page, content);
                                 pageType.GetProperty("TextContent").SetValue(page, ExtractTextContent(content));
                                 pageType.GetProperty("ScrapedAt").SetValue(page, DateTime.Now);
-                                
+
                                 // Save the page
                                 await (dynamic)addPageMethod.Invoke(_repository, new object[] { page });
                                 LogInfo($"Successfully saved content to database using repository for URL: {url}");
                             }
                         }
-                        
+
                         // 3. Add a log entry
                         var addLogMethod = _repository.GetType().GetMethod("AddScraperLogAsync");
                         if (addLogMethod != null)
@@ -581,13 +581,13 @@ namespace WebScraper.Scraping.Components
                             if (logType != null)
                             {
                                 var log = Activator.CreateInstance(logType);
-                                
+
                                 // Set properties using reflection
                                 logType.GetProperty("ScraperId").SetValue(log, _scraperInstanceId);
                                 logType.GetProperty("Timestamp").SetValue(log, DateTime.Now);
                                 logType.GetProperty("LogLevel").SetValue(log, "Info");
                                 logType.GetProperty("Message").SetValue(log, $"Processed URL: {url}");
-                                
+
                                 // Save the log
                                 await (dynamic)addLogMethod.Invoke(_repository, new object[] { log });
                                 LogInfo($"Successfully added log entry to database");
@@ -630,17 +630,14 @@ namespace WebScraper.Scraping.Components
                     LogInfo($"Output directory not specified, using default: {outputDir}");
                 }
 
-                // Create timestamp folder for this run
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string timestampedDir = Path.Combine(outputDir, timestamp);
-                
-                LogInfo($"Saving content to timestamped directory: {timestampedDir}");
-                
+                // Use the main output directory instead of creating a timestamped subfolder
+                LogInfo($"Saving content to main output directory: {outputDir}");
+
                 // Ensure directory exists
-                if (!Directory.Exists(timestampedDir))
+                if (!Directory.Exists(outputDir))
                 {
-                    Directory.CreateDirectory(timestampedDir);
-                    LogInfo($"Created directory: {timestampedDir}");
+                    Directory.CreateDirectory(outputDir);
+                    LogInfo($"Created directory: {outputDir}");
                 }
 
                 // Create safe filename
@@ -649,16 +646,16 @@ namespace WebScraper.Scraping.Components
 
                 // Save HTML content
                 string extension = contentType.Contains("html") ? ".html" : ".txt";
-                string filePath = Path.Combine(timestampedDir, safeFilename + extension);
-                
+                string filePath = Path.Combine(outputDir, safeFilename + extension);
+
                 LogInfo($"Saving content to file: {filePath}");
                 await File.WriteAllTextAsync(filePath, content);
                 LogInfo($"Successfully saved content to file: {filePath}");
 
                 // Save extracted text content separately
                 string textContent = ExtractTextContent(content);
-                string textFilePath = Path.Combine(timestampedDir, safeFilename + ".txt");
-                
+                string textFilePath = Path.Combine(outputDir, safeFilename + ".txt");
+
                 if (extension != ".txt")
                 {
                     LogInfo($"Saving extracted text to file: {textFilePath}");
@@ -678,7 +675,7 @@ namespace WebScraper.Scraping.Components
                     ScraperId = _scraperInstanceId
                 };
 
-                string metadataPath = Path.Combine(timestampedDir, safeFilename + ".meta.json");
+                string metadataPath = Path.Combine(outputDir, safeFilename + ".meta.json");
                 LogInfo($"Saving metadata to file: {metadataPath}");
                 await File.WriteAllTextAsync(metadataPath, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
                 LogInfo($"Successfully saved metadata to file: {metadataPath}");
