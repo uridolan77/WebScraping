@@ -13,10 +13,12 @@ namespace WebScraperApi.Data.Repositories
     public class ScraperRepository : IScraperRepository
     {
         private readonly WebScraperDbContext _context;
+        private readonly IServiceProvider _serviceProvider;
 
-        public ScraperRepository(WebScraperDbContext context)
+        public ScraperRepository(WebScraperDbContext context, IServiceProvider serviceProvider)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
 
         /// <summary>
@@ -941,8 +943,6 @@ namespace WebScraperApi.Data.Repositories
         {
             try
             {
-                Console.WriteLine($"Adding log entry to database: ScraperId={logEntry.ScraperId}, LogLevel={logEntry.LogLevel}");
-                
                 // IMPORTANT: Clear the change tracker to avoid EntityState.Unchanged errors
                 _context.ChangeTracker.Clear();
                 
@@ -978,18 +978,10 @@ namespace WebScraperApi.Data.Repositories
                 // Copy back the generated ID
                 logEntry.Id = newLogEntry.Id;
                 
-                Console.WriteLine($"Successfully added log entry to database with ID: {logEntry.Id}");
                 return logEntry;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error adding log entry to database: {ex.Message}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
-                }
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                
                 // Just return the original entry - we've done our best to save it
                 return logEntry;
             }
@@ -1138,134 +1130,128 @@ namespace WebScraperApi.Data.Repositories
 
         public async Task<ScraperMetricEntity> AddScraperMetricAsync(ScraperMetricEntity metric)
         {
-            try
+            // Use a separate, new context instance to avoid concurrency issues
+            using (var scope = _serviceProvider.CreateScope())
             {
-                Console.WriteLine($"DEBUG: AddScraperMetricAsync called with metric name: {metric.MetricName}, value: {metric.MetricValue}, ScraperId: {metric.ScraperId}");
-
-                // Save only to the scrapermetric table
                 try
                 {
-                    _context.ScraperMetric.Add(metric);
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Successfully added metric to ScraperMetric table: {metric.MetricName} = {metric.MetricValue}");
-                }
-                catch (Exception primaryEx)
-                {
-                    Console.WriteLine($"Error adding to ScraperMetric table: {primaryEx.Message}");
-                    if (primaryEx.InnerException != null)
+                    var newContext = scope.ServiceProvider.GetRequiredService<WebScraperDbContext>();
+                    
+                    // Only log metrics at Information level
+                    Console.WriteLine($"METRIC: {metric.MetricName}={metric.MetricValue} for scraper {metric.ScraperId}");
+                    
+                    // Get the scraper name if not already set
+                    if (string.IsNullOrEmpty(metric.ScraperName))
                     {
-                        Console.WriteLine($"Inner exception: {primaryEx.InnerException.Message}");
-                    }
-                    Console.WriteLine($"Stack trace: {primaryEx.StackTrace}");
-
-                    // Try to manually execute the insert using raw SQL if EF Core fails
-                    try
-                    {
-                        Console.WriteLine("Attempting direct SQL insert to scrapermetric table");
-                        var connection = _context.Database.GetDbConnection();
-                        await connection.OpenAsync();
-
-                        using (var command = connection.CreateCommand())
+                        try
                         {
-                            command.CommandText = @"
-                                INSERT INTO scrapermetric (scraper_id, metric_name, metric_value, timestamp)
-                                VALUES (@scraperId, @metricName, @metricValue, @timestamp)";
-
-                            var scraperIdParam = command.CreateParameter();
-                            scraperIdParam.ParameterName = "@scraperId";
-                            scraperIdParam.Value = metric.ScraperId;
-                            command.Parameters.Add(scraperIdParam);
-
-                            var metricNameParam = command.CreateParameter();
-                            metricNameParam.ParameterName = "@metricName";
-                            metricNameParam.Value = metric.MetricName;
-                            command.Parameters.Add(metricNameParam);
-
-                            var metricValueParam = command.CreateParameter();
-                            metricValueParam.ParameterName = "@metricValue";
-                            metricValueParam.Value = metric.MetricValue;
-                            command.Parameters.Add(metricValueParam);
-
-                            var timestampParam = command.CreateParameter();
-                            timestampParam.ParameterName = "@timestamp";
-                            timestampParam.Value = metric.Timestamp;
-                            command.Parameters.Add(timestampParam);
-
-                            var result = await command.ExecuteNonQueryAsync();
-                            Console.WriteLine($"Direct SQL insert result: {result} rows affected");
-                        }
-                    }
-                    catch (Exception sqlEx)
-                    {
-                        Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
-                        if (sqlEx.InnerException != null)
-                        {
-                            Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
-                        }
-                        Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
-                    }
-                }
-
-                // Update the scraper status to display URLs processed in the monitor page
-                try
-                {
-                    Console.WriteLine("Updating scraper status with latest metric information");
-                    var status = await _context.ScraperStatuses
-                        .FirstOrDefaultAsync(s => s.ScraperId == metric.ScraperId);
-
-                    if (status != null)
-                    {
-                        if (metric.MetricName == "PagesProcessed")
-                        {
-                            // Update URLs processed count
-                            status.UrlsProcessed = (int)metric.MetricValue;
-                            status.DocumentsProcessed = (int)metric.MetricValue;
-                            status.LastStatusUpdate = DateTime.Now;
-                            status.LastUpdate = DateTime.Now;
-
-                            // Keep original message if it's not a status message
-                            if (status.Message == null || status.Message.Contains("pages processed") || status.Message.Contains("Idle") || string.IsNullOrEmpty(status.Message))
+                            var scraperConfig = await newContext.ScraperConfigs
+                                .AsNoTracking()
+                                .FirstOrDefaultAsync(s => s.Id == metric.ScraperId);
+                            
+                            if (scraperConfig != null)
                             {
-                                status.Message = $"Processing content. {status.UrlsProcessed} pages processed.";
+                                metric.ScraperName = scraperConfig.Name;
+                                metric.ScraperConfigId = scraperConfig.Id;
                             }
-
-                            // Calculate elapsed time if we have a start time
-                            if (status.StartTime.HasValue)
+                            else
                             {
-                                TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
-                                status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                                metric.ScraperName = "Unknown";
                             }
-
-                            await _context.SaveChangesAsync();
-                            Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}, ElapsedTime = {status.ElapsedTime}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to get scraper name: {ex.Message}");
+                            metric.ScraperName = "Unknown";
                         }
                     }
-                    else
+                    
+                    // Ensure timestamp is set
+                    if (metric.Timestamp == default)
                     {
-                        Console.WriteLine($"No scraper status found for ScraperId: {metric.ScraperId}");
+                        metric.Timestamp = DateTime.Now;
                     }
-                }
-                catch (Exception statusEx)
-                {
-                    Console.WriteLine($"Error updating scraper status with metric info: {statusEx.Message}");
-                    if (statusEx.InnerException != null)
+                    
+                    // Create a new entity to avoid tracking issues
+                    var newMetric = new ScraperMetricEntity
                     {
-                        Console.WriteLine($"Inner exception: {statusEx.InnerException.Message}");
+                        ScraperId = metric.ScraperId,
+                        ScraperConfigId = metric.ScraperConfigId,
+                        ScraperName = metric.ScraperName,
+                        MetricName = metric.MetricName,
+                        MetricValue = metric.MetricValue,
+                        Timestamp = metric.Timestamp,
+                        RunId = metric.RunId
+                    };
+                    
+                    // Add the metric to the DbSet using the new context
+                    newContext.ScraperMetric.Add(newMetric);
+                    
+                    // Save changes using the new context
+                    await newContext.SaveChangesAsync();
+                    
+                    // Copy back the generated ID
+                    metric.Id = newMetric.Id;
+                    
+                    Console.WriteLine($"METRIC SAVED: {metric.MetricName}={metric.MetricValue} with ID: {metric.Id}");
+                    
+                    // Update the scraper status to display URLs processed in the monitor page
+                    // Use a separate context for this operation too
+                    using (var statusScope = _serviceProvider.CreateScope())
+                    {
+                        var statusContext = statusScope.ServiceProvider.GetRequiredService<WebScraperDbContext>();
+                        
+                        try
+                        {
+                            if (metric.MetricName == "PagesProcessed")
+                            {
+                                var status = await statusContext.ScraperStatuses
+                                    .FirstOrDefaultAsync(s => s.ScraperId == metric.ScraperId);
+
+                                if (status != null)
+                                {
+                                    // Update URLs processed count
+                                    status.UrlsProcessed = (int)metric.MetricValue;
+                                    status.DocumentsProcessed = (int)metric.MetricValue;
+                                    status.LastStatusUpdate = DateTime.Now;
+                                    status.LastUpdate = DateTime.Now;
+
+                                    // Keep original message if it's not a status message
+                                    if (status.Message == null || status.Message.Contains("pages processed") || status.Message.Contains("Idle") || string.IsNullOrEmpty(status.Message))
+                                    {
+                                        status.Message = $"Processing content. {status.UrlsProcessed} pages processed.";
+                                    }
+
+                                    // Calculate elapsed time if we have a start time
+                                    if (status.StartTime.HasValue)
+                                    {
+                                        TimeSpan elapsed = DateTime.Now - status.StartTime.Value;
+                                        status.ElapsedTime = $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+                                    }
+
+                                    await statusContext.SaveChangesAsync();
+                                    Console.WriteLine($"Updated scraper status with UrlsProcessed = {status.UrlsProcessed}");
+                                }
+                            }
+                        }
+                        catch (Exception statusEx)
+                        {
+                            Console.WriteLine($"Error updating scraper status: {statusEx.Message}");
+                        }
                     }
-                }
 
-                return metric;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Critical error in AddScraperMetricAsync: {ex.Message}");
-                if (ex.InnerException != null)
+                    return metric;
+                }
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
-                }
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                    Console.WriteLine($"ERROR SAVING METRIC: {metric.MetricName}={metric.MetricValue}, Error: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    }
 
-                return metric;
+                    throw; // Rethrow the exception to be handled by the caller
+                }
             }
         }
 

@@ -348,12 +348,15 @@ namespace WebScraperApi.Data
             {
                 entity.ToTable("scrapermetric");
 
-                // Configure columns explicitly to match the actual database column names (snake_case)
+                // Configure columns explicitly to match the actual database column names
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
-                entity.Property(e => e.MetricName).HasColumnName("metricname");
-                entity.Property(e => e.MetricValue).HasColumnName("metricvalue");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperId");
+                entity.Property(e => e.ScraperConfigId).HasColumnName("scraperConfigId");
+                entity.Property(e => e.ScraperName).HasColumnName("scraperName");
+                entity.Property(e => e.MetricName).HasColumnName("metricName");
+                entity.Property(e => e.MetricValue).HasColumnName("metricValue");
                 entity.Property(e => e.Timestamp).HasColumnName("timestamp");
+                entity.Property(e => e.RunId).HasColumnName("runId");
 
                 // Configure the relationship with ScraperConfigEntity
                 entity.HasOne<ScraperConfigEntity>()

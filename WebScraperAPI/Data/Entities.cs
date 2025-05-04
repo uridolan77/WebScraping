@@ -296,6 +296,13 @@ namespace WebScraperApi.Data
 
         [Required]
         public string ScraperId { get; set; }
+        
+        // Added ScraperConfigId to match the database schema
+        public string ScraperConfigId { get; set; }
+        
+        // Added ScraperName to match the database schema
+        [Required]
+        public string ScraperName { get; set; }
 
         [Required]
         public string MetricName { get; set; }
@@ -304,8 +311,11 @@ namespace WebScraperApi.Data
 
         [Required]
         public DateTime Timestamp { get; set; }
+        
+        public string RunId { get; set; }
 
-        // Navigation property
+        // Navigation properties
         public virtual ScraperConfigEntity ScraperConfig { get; set; }
+        public virtual ScraperRunEntity Run { get; set; }
     }
 }
