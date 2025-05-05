@@ -42,7 +42,7 @@ namespace WebScraperApi.Data.Repositories
 
         // Scraper Run operations
         Task<List<ScraperRunEntity>> GetScraperRunsAsync(string scraperId, int limit = 10);
-        Task<ScraperRunEntity> GetScraperRunByIdAsync(string runId);
+        Task<ScraperRunEntity?> GetScraperRunByIdAsync(string runId);
         Task<ScraperRunEntity> CreateScraperRunAsync(ScraperRunEntity run);
         Task<ScraperRunEntity> UpdateScraperRunAsync(ScraperRunEntity run);
 

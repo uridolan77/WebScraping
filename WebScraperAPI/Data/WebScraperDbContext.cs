@@ -324,24 +324,87 @@ namespace WebScraperApi.Data
                 .HasPrincipalKey(c => c.Id);
 
             // Configure ContentChangeRecordEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.ContentChangeRecordEntity>()
-                .ToTable("contentchangerecord")
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.ContentChangeRecords)
-                .HasForeignKey(s => s.ScraperId)
-                .HasPrincipalKey(c => c.Id);
+            modelBuilder.Entity<WebScraperApi.Data.Entities.ContentChangeRecordEntity>(entity =>
+            {
+                entity.ToTable("contentchangerecord");
+
+                // Configure columns explicitly to match the actual database schema
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
+                entity.Property(e => e.Url).HasColumnName("url");
+                entity.Property(e => e.DetectedAt).HasColumnName("detectedat");
+                entity.Property(e => e.ChangeType).HasColumnName("changetype");
+                entity.Property(e => e.SignificanceScore).HasColumnName("significanceScore");
+                entity.Property(e => e.ChangeSummary).HasColumnName("changeSummary");
+                entity.Property(e => e.PreviousVersionHash).HasColumnName("previousVersionHash");
+                entity.Property(e => e.CurrentVersionHash).HasColumnName("currentVersionHash");
+                entity.Property(e => e.RunId).HasColumnName("runid");
+                entity.Property(e => e.ScraperConfigId).HasColumnName("scraperConfigId");
+
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne(s => s.ScraperConfig)
+                    .WithMany(c => c.ContentChangeRecords)
+                    .HasForeignKey(s => s.ScraperId)
+                    .HasPrincipalKey(c => c.Id)
+                    .IsRequired(false);
+
+                // Configure the relationship with ScraperRunEntity
+                entity.HasOne(s => s.Run)
+                    .WithMany(r => r.ContentChangeRecords)
+                    .HasForeignKey(s => s.RunId)
+                    .HasPrincipalKey(r => r.Id)
+                    .IsRequired(false);
+            });
 
             // Configure ProcessedDocumentEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.ProcessedDocumentEntity>()
-                .ToTable("processeddocument")
-                .HasOne(s => s.ScraperConfig)
-                .WithMany(c => c.ProcessedDocuments)
-                .HasForeignKey(s => s.ScraperId)
-                .HasPrincipalKey(c => c.Id);
+            modelBuilder.Entity<WebScraperApi.Data.Entities.ProcessedDocumentEntity>(entity =>
+            {
+                entity.ToTable("processeddocument");
+
+                // Configure columns explicitly to match the actual database schema
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScraperId).HasColumnName("scraperid");
+                entity.Property(e => e.Url).HasColumnName("url");
+                entity.Property(e => e.Title).HasColumnName("title");
+                entity.Property(e => e.DocumentType).HasColumnName("documentType");
+                entity.Property(e => e.ProcessedAt).HasColumnName("processedAt");
+                entity.Property(e => e.ContentSizeBytes).HasColumnName("contentSizeBytes");
+                entity.Property(e => e.RunId).HasColumnName("runid");
+                entity.Property(e => e.ScraperConfigId).HasColumnName("scraperConfigId");
+
+                // Configure the relationship with ScraperConfigEntity
+                entity.HasOne(s => s.ScraperConfig)
+                    .WithMany(c => c.ProcessedDocuments)
+                    .HasForeignKey(s => s.ScraperId)
+                    .HasPrincipalKey(c => c.Id)
+                    .IsRequired(false);
+
+                // Configure the relationship with ScraperRunEntity
+                entity.HasOne(s => s.Run)
+                    .WithMany(r => r.ProcessedDocuments)
+                    .HasForeignKey(s => s.RunId)
+                    .HasPrincipalKey(r => r.Id)
+                    .IsRequired(false);
+            });
 
             // Configure DocumentMetadataEntity
-            modelBuilder.Entity<WebScraperApi.Data.Entities.DocumentMetadataEntity>()
-                .ToTable("documentmetadata");
+            modelBuilder.Entity<WebScraperApi.Data.Entities.DocumentMetadataEntity>(entity =>
+            {
+                entity.ToTable("documentmetadata");
+
+                // Configure columns explicitly to match the actual database schema
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.DocumentId).HasColumnName("documentId");
+                entity.Property(e => e.MetadataKey).HasColumnName("metaKey");
+                entity.Property(e => e.MetadataValue).HasColumnName("metaValue");
+
+                // Configure the relationship with ProcessedDocumentEntity
+                entity.HasOne(m => m.ProcessedDocument)
+                    .WithMany(d => d.Metadata)
+                    .HasForeignKey(m => m.DocumentId)
+                    .HasPrincipalKey(d => d.Id)
+                    .IsRequired(false);
+            });
 
             // Configure ScraperMetricEntity
             modelBuilder.Entity<ScraperMetricEntity>(entity =>

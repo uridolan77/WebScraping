@@ -7,22 +7,22 @@ namespace WebScraperApi.Data.Entities
     {
         [Key]
         public int Id { get; set; }
-        
+
         [Required]
         public string ScraperId { get; set; }
-        
+
         [Required]
         public DateTime Timestamp { get; set; } = DateTime.Now;
-        
+
         [Required]
         public string Message { get; set; }
-        
+
         public string Level { get; set; } = "INFO";
-        
-        public string RunId { get; set; }
+
+        public string? RunId { get; set; }
 
         // Navigation properties
-        public virtual ScraperConfigEntity ScraperConfig { get; set; }
-        public virtual ScraperRunEntity Run { get; set; }
+        public virtual ScraperConfigEntity? ScraperConfig { get; set; }
+        public virtual ScraperRunEntity? Run { get; set; }
     }
 }

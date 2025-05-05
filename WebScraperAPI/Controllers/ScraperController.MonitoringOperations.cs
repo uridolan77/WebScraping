@@ -19,7 +19,7 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation($"Updating metrics for scraper {id}");
-                
+
                 // Get the ScraperCore instance using reflection
                 var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (coreField == null || scraper == null)
@@ -60,14 +60,14 @@ namespace WebScraperAPI.Controllers
 
                 // Try to find the current run ID for this scraper
                 string currentRunId = null;
-                
+
                 // Check if we have the run ID stored in the scraper object (using reflection)
                 var runIdField = typeof(Scraper).GetField("_runId", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (runIdField != null)
                 {
                     currentRunId = runIdField.GetValue(scraper) as string;
                 }
-                
+
                 // If we couldn't get the run ID directly, try to find the most recent active run
                 if (string.IsNullOrEmpty(currentRunId))
                 {
@@ -77,8 +77,11 @@ namespace WebScraperAPI.Controllers
                         currentRunId = activeRuns[0].Id;
                     }
                 }
-                
+
                 _logger.LogDebug($"Using run ID {currentRunId ?? "none"} for metrics update");
+
+                // Log the metrics to console so we can see their values
+                Console.WriteLine($"DIRECT-CONSOLE: PagesProcessed={metrics.PagesProcessed}, DocumentsProcessed={metrics.DocumentsProcessed}");
 
                 // Update key metrics in the database
                 await UpdateMetric(id, scraperName, "PagesProcessed", metrics.PagesProcessed, currentRunId);
@@ -96,20 +99,36 @@ namespace WebScraperAPI.Controllers
                 await UpdateMetric(id, scraperName, "CurrentMemoryUsageMB", metrics.CurrentMemoryUsageMB, currentRunId);
                 await UpdateMetric(id, scraperName, "PeakMemoryUsageMB", metrics.PeakMemoryUsageMB, currentRunId);
 
-                // Update scraper status entity
-                var status = await _scraperRepository.GetScraperStatusAsync(id);
-                if (status != null)
-                {
-                    status.UrlsProcessed = metrics.PagesProcessed;
-                    status.DocumentsProcessed = metrics.DocumentsProcessed;
-                    status.HasErrors = metrics.ClientErrors > 0 || metrics.ServerErrors > 0;
-                    status.LastStatusUpdate = DateTime.Now;
-                    status.LastUpdate = DateTime.Now;
-                    
+                // Get the queue count directly from the core if possible
+                int queuedUrlsCount = 0;
+                try {
+                    var queuedUrlsProperty = core.GetType().GetProperty("QueuedUrls");
+                    if (queuedUrlsProperty != null) {
+                        var queuedUrls = queuedUrlsProperty.GetValue(core);
+                        if (queuedUrls != null) {
+                            // Try to get the count from the collection
+                            if (queuedUrls is System.Collections.ICollection collection) {
+                                queuedUrlsCount = collection.Count;
+                            }
+                        }
+                    }
+
+                    // Update scraper status with the latest metrics
+                    var status = new WebScraperApi.Data.Entities.ScraperStatusEntity {
+                        ScraperId = id,
+                        IsRunning = true,
+                        UrlsProcessed = (int)metrics.PagesProcessed,
+                        DocumentsProcessed = (int)metrics.DocumentsProcessed,
+                        UrlsQueued = queuedUrlsCount,
+                        LastUpdate = DateTime.Now
+                    };
+
                     await _scraperRepository.UpdateScraperStatusAsync(status);
                     _logger.LogInformation($"Updated scraper status for {id}");
+                } catch (Exception ex) {
+                    _logger.LogWarning($"Error updating scraper status: {ex.Message}");
                 }
-                
+
                 // If we have a run ID, update the run with summary metrics
                 if (!string.IsNullOrEmpty(currentRunId))
                 {
@@ -120,8 +139,14 @@ namespace WebScraperAPI.Controllers
                         {
                             run.UrlsProcessed = (int)metrics.PagesProcessed;
                             run.DocumentsProcessed = (int)metrics.DocumentsProcessed;
-                            run.ElapsedTime = status?.ElapsedTime;
-                            
+
+                            // Get the current status to update the elapsed time
+                            var currentStatus = await _scraperRepository.GetScraperStatusAsync(id);
+                            if (currentStatus != null)
+                            {
+                                run.ElapsedTime = currentStatus.ElapsedTime;
+                            }
+
                             await _scraperRepository.UpdateScraperRunAsync(run);
                             _logger.LogInformation($"Updated run {currentRunId} with latest metrics");
                         }
@@ -146,7 +171,7 @@ namespace WebScraperAPI.Controllers
                 _logger.LogInformation($"=== METRIC SAVE ATTEMPT: {metricName}={metricValue} for scraper {scraperId} ===");
                 // Add direct console output that will show up regardless of log level settings
                 Console.WriteLine($"DIRECT-METRIC: {metricName}={metricValue} for {scraperName} ({scraperId})");
-                
+
                 // Get the scraperConfigId first, which is needed for the database schema
                 string scraperConfigId = null;
                 try
@@ -180,7 +205,7 @@ namespace WebScraperAPI.Controllers
                     Timestamp = DateTime.Now,
                     RunId = runId
                 };
-                
+
                 _logger.LogInformation($"Calling repository AddScraperMetricAsync with metric: {metric.MetricName}={metric.MetricValue}, ScraperId={metric.ScraperId}, ScraperName={metric.ScraperName}");
                 Console.WriteLine($"DIRECT-METRIC-SAVE: Sending {metric.MetricName}={metric.MetricValue} to repository");
 
@@ -188,7 +213,7 @@ namespace WebScraperAPI.Controllers
                 {
                     // Persist the metric
                     var savedMetric = await _scraperRepository.AddScraperMetricAsync(metric);
-                    
+
                     if (savedMetric != null && savedMetric.Id > 0)
                     {
                         _logger.LogInformation($"SUCCESS! Metric saved with ID: {savedMetric.Id}");
@@ -210,7 +235,7 @@ namespace WebScraperAPI.Controllers
                     }
                     // Don't rethrow so we can continue with other metrics
                 }
-                
+
                 // If we have a run ID, update the run with the latest metrics
                 if (!string.IsNullOrEmpty(runId))
                 {
@@ -230,7 +255,7 @@ namespace WebScraperAPI.Controllers
                                     run.DocumentsProcessed = (int)metricValue;
                                     break;
                             }
-                            
+
                             await _scraperRepository.UpdateScraperRunAsync(run);
                             _logger.LogInformation($"Updated run {runId} with metric {metricName}={metricValue}");
                         }
@@ -262,9 +287,10 @@ namespace WebScraperAPI.Controllers
                 if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
                 {
                     _logger.LogInformation($"Scraper {id} is currently running");
-                    
-                    // Update metrics from the running scraper to the database
-                    await UpdateScraperMetricsFromRuntime(id, scraper);
+
+                    // Update metrics from the running scraper to the database using the metrics service
+                    var metricsService = HttpContext.RequestServices.GetRequiredService<WebScraperApi.Services.Monitoring.IScraperMetricsService>();
+                    await metricsService.UpdateScraperMetricsFromRuntimeAsync(id, scraper);
 
                     // Access the ScraperCore to get more details
                     var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -503,10 +529,10 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation("Getting metrics for scraper with ID {Id}", id);
-                
+
                 // Check if scraper is currently running
                 bool isRunning = _activeScrapers.ContainsKey(id);
-                
+
                 // If the scraper is running, update the metrics from runtime first
                 if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
                 {
@@ -518,7 +544,7 @@ namespace WebScraperAPI.Controllers
                 var to = DateTime.Now;
 
                 var metrics = await _scraperRepository.GetScraperMetricsAsync(id, string.Empty, from, to);
-                
+
                 // Process metrics into a more usable format
                 var groupedMetrics = metrics
                     .GroupBy(m => m.MetricName)
@@ -537,7 +563,7 @@ namespace WebScraperAPI.Controllers
 
                 // Get scraper status
                 var status = await _scraperRepository.GetScraperStatusAsync(id);
-                
+
                 // Return combined metrics and status info
                 return Ok(new
                 {
@@ -588,7 +614,7 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation("Getting metrics for scraper run with ID {RunId}", runId);
-                
+
                 // First get the run information
                 var run = await _scraperRepository.GetScraperRunByIdAsync(runId);
                 if (run == null)
@@ -602,7 +628,7 @@ namespace WebScraperAPI.Controllers
                 var to = run.EndTime ?? DateTime.Now;
 
                 var metrics = await _scraperRepository.GetScraperMetricsAsync(run.ScraperId, string.Empty, from, to);
-                
+
                 // Process metrics into a more usable format
                 var groupedMetrics = metrics
                     .GroupBy(m => m.MetricName)
@@ -683,12 +709,12 @@ namespace WebScraperAPI.Controllers
             // This is a simplified version of the detailed status to match what the frontend expects
             try
             {
-                _logger.LogInformation($"Getting simple status for scraper {id}");
+                // Check if scraper is running
                 bool isRunning = _activeScrapers.ContainsKey(id);
-                
+
                 // Try to get status from the database
                 var dbStatus = await _scraperRepository.GetScraperStatusAsync(id);
-                
+
                 // Get the name of the scraper
                 string scraperName = "Unknown";
                 try
@@ -699,11 +725,11 @@ namespace WebScraperAPI.Controllers
                         scraperName = scraperConfig.Name;
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    _logger.LogWarning("Could not get scraper name: {ErrorMessage}", ex.Message);
+                    // Silently fail if we can't get the name
                 }
-                
+
                 // Create a simplified response
                 var response = new
                 {
@@ -719,7 +745,7 @@ namespace WebScraperAPI.Controllers
                     EndTime = dbStatus?.EndTime,
                     ElapsedTime = dbStatus?.ElapsedTime
                 };
-                
+
                 return Ok(response);
             }
             catch (Exception ex)
@@ -732,7 +758,7 @@ namespace WebScraperAPI.Controllers
                 });
             }
         }
-        
+
         // Direct GET by ID endpoint for the base route
         [HttpGet("{id}")]
         public async Task<IActionResult> GetScraperByIdBase(string id)
@@ -740,10 +766,10 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation($"Getting scraper with ID {id}");
-                
+
                 // First try to get the scraper from the database
                 var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
-                
+
                 if (dbScraper != null)
                 {
                     // Convert the database entity to API model
@@ -769,10 +795,10 @@ namespace WebScraperAPI.Controllers
                         ContentExtractorSelectors = dbScraper.ContentExtractorSelectors?.Where(c => !c.IsExclude)?.Select(c => c.Selector)?.ToList(),
                         ContentExtractorExcludeSelectors = dbScraper.ContentExtractorSelectors?.Where(c => c.IsExclude)?.Select(c => c.Selector)?.ToList()
                     };
-                    
+
                     return Ok(scraperModel);
                 }
-                
+
                 // If not found, return 404
                 return NotFound($"Scraper with ID {id} not found");
             }
@@ -797,15 +823,15 @@ namespace WebScraperAPI.Controllers
                 bool isRunning = _activeScrapers.ContainsKey(id);
                 var errors = new List<object>();
                 var stats = new Dictionary<string, object>();
-                
+
                 // Get data from the active scraper if it's running
                 if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
                 {
                     _logger.LogInformation($"Scraper {id} is currently running, fetching real-time data");
-                    
+
                     // Update metrics from the running scraper to the database
                     await UpdateScraperMetricsFromRuntime(id, scraper);
-                    
+
                     // Access the ScraperCore to get more details
                     var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
                     if (coreField != null)
@@ -833,7 +859,7 @@ namespace WebScraperAPI.Controllers
                                     _logger.LogDebug($"Could not get property {prop.Name}: {ex.Message}");
                                 }
                             }
-                            
+
                             // Get the Errors property specifically
                             var errorsProperty = core.GetType().GetProperty("Errors");
                             if (errorsProperty != null)
@@ -847,7 +873,7 @@ namespace WebScraperAPI.Controllers
                                         var urlProperty = error.GetType().GetProperty("Url");
                                         var messageProperty = error.GetType().GetProperty("Message");
                                         var timestampProperty = error.GetType().GetProperty("Timestamp");
-                                        
+
                                         if (urlProperty != null && messageProperty != null && timestampProperty != null)
                                         {
                                             errors.Add(new
@@ -860,13 +886,18 @@ namespace WebScraperAPI.Controllers
                                     }
                                 }
                             }
+
+                            // Ensure key counters are included in stats if they exist in the core
+                            EnsureCounterIncluded(stats, core, "UrlsProcessed", "pagesProcessed");
+                            EnsureCounterIncluded(stats, core, "DocumentsProcessed", "documentsProcessed");
+                            EnsureCounterIncluded(stats, core, "QueuedUrls", "urlsQueued");
                         }
                     }
                 }
-                
+
                 // Try to get status from the database
                 var dbStatus = await _scraperRepository.GetScraperStatusAsync(id);
-                
+
                 // Get the name of the scraper
                 string scraperName = "Unknown";
                 try
@@ -881,12 +912,12 @@ namespace WebScraperAPI.Controllers
                 {
                     _logger.LogWarning("Could not get scraper name: {ErrorMessage}", ex.Message);
                 }
-                
+
                 // Get recent metrics
                 var from = DateTime.Now.AddHours(-1); // Last hour
                 var to = DateTime.Now;
                 var metrics = await _scraperRepository.GetScraperMetricsAsync(id, string.Empty, from, to);
-                
+
                 // Process metrics
                 var processedMetrics = new Dictionary<string, double>();
                 foreach (var metric in metrics.OrderByDescending(m => m.Timestamp).GroupBy(m => m.MetricName))
@@ -896,16 +927,56 @@ namespace WebScraperAPI.Controllers
                         processedMetrics[metric.Key] = metric.First().MetricValue;
                     }
                 }
-                
-                // Get recent logs
-                var dbLogs = await _scraperRepository.GetScraperLogsAsync(id, 20);
+
+                // Get recent logs - increase to 100 for more comprehensive display
+                var dbLogs = await _scraperRepository.GetScraperLogsAsync(id, 100);
                 var recentLogs = dbLogs.Select(log => new
                 {
                     timestamp = log.Timestamp,
-                    level = log.LogLevel?.ToLower(),
+                    level = log.LogLevel?.ToLower() ?? "info",
                     message = log.Message
                 }).ToList();
-                
+
+                // Determine counters from all available sources (active scraper, metrics, db status)
+                double pagesProcessed = 0;
+                double documentsProcessed = 0;
+                double urlsQueued = 0;
+
+                // First check stats from active scraper (most up-to-date)
+                if (stats.ContainsKey("UrlsProcessed") && stats["UrlsProcessed"] is IConvertible)
+                    pagesProcessed = Convert.ToDouble(stats["UrlsProcessed"]);
+                else if (stats.ContainsKey("pagesProcessed") && stats["pagesProcessed"] is IConvertible)
+                    pagesProcessed = Convert.ToDouble(stats["pagesProcessed"]);
+
+                if (stats.ContainsKey("DocumentsProcessed") && stats["DocumentsProcessed"] is IConvertible)
+                    documentsProcessed = Convert.ToDouble(stats["DocumentsProcessed"]);
+                else if (stats.ContainsKey("documentsProcessed") && stats["documentsProcessed"] is IConvertible)
+                    documentsProcessed = Convert.ToDouble(stats["documentsProcessed"]);
+
+                if (stats.ContainsKey("QueuedUrls") && stats["QueuedUrls"] is IConvertible)
+                    urlsQueued = Convert.ToDouble(stats["QueuedUrls"]);
+                else if (stats.ContainsKey("urlsQueued") && stats["urlsQueued"] is IConvertible)
+                    urlsQueued = Convert.ToDouble(stats["urlsQueued"]);
+
+                // Then check metrics (next most up-to-date)
+                if (pagesProcessed == 0 && processedMetrics.ContainsKey("PagesProcessed"))
+                    pagesProcessed = processedMetrics["PagesProcessed"];
+                else if (pagesProcessed == 0 && processedMetrics.ContainsKey("ProcessedUrls"))
+                    pagesProcessed = processedMetrics["ProcessedUrls"];
+
+                if (documentsProcessed == 0 && processedMetrics.ContainsKey("DocumentsProcessed"))
+                    documentsProcessed = processedMetrics["DocumentsProcessed"];
+
+                // Finally check db status (least up-to-date)
+                if (pagesProcessed == 0 && dbStatus != null)
+                    pagesProcessed = dbStatus.UrlsProcessed;
+
+                if (documentsProcessed == 0 && dbStatus != null)
+                    documentsProcessed = dbStatus.DocumentsProcessed;
+
+                if (urlsQueued == 0 && dbStatus != null)
+                    urlsQueued = dbStatus.UrlsQueued;
+
                 // Create the monitor response
                 var response = new
                 {
@@ -917,7 +988,7 @@ namespace WebScraperAPI.Controllers
                     statistics = stats,
                     metrics = processedMetrics,
                     errors = errors,
-                    recentLogs = recentLogs,
+                    recentLogs = recentLogs,  // Format exactly matching the example response
                     hasErrors = errors.Count > 0,
                     databaseStatus = dbStatus != null ? new
                     {
@@ -933,14 +1004,22 @@ namespace WebScraperAPI.Controllers
                     } : null,
                     summary = new
                     {
-                        pagesProcessed = processedMetrics.ContainsKey("PagesProcessed") ? processedMetrics["PagesProcessed"] : 0,
-                        documentsProcessed = processedMetrics.ContainsKey("DocumentsProcessed") ? processedMetrics["DocumentsProcessed"] : 0,
+                        pagesProcessed = pagesProcessed,
+                        documentsProcessed = documentsProcessed,
+                        urlsQueued = urlsQueued,
                         errorCount = errors.Count,
                         runningTime = dbStatus?.StartTime != null ? (DateTime.Now - dbStatus.StartTime.Value).ToString(@"hh\:mm\:ss") : "00:00:00",
                         currentStatus = dbStatus?.Message ?? (isRunning ? "Running" : "Idle")
-                    }
+                    },
+                    // Include the logs array in the format shown in the example
+                    logs = dbLogs.Select(log => new
+                    {
+                        timestamp = log.Timestamp,
+                        level = log.LogLevel?.ToLower() ?? "info",
+                        message = log.Message
+                    }).ToList()
                 };
-                
+
                 return Ok(response);
             }
             catch (Exception ex)
@@ -951,6 +1030,30 @@ namespace WebScraperAPI.Controllers
                     Message = $"An error occurred while getting monitor data for scraper {id}",
                     Error = ex.Message
                 });
+            }
+        }
+
+        // Helper method to ensure important counters are included in stats
+        private void EnsureCounterIncluded(Dictionary<string, object> stats, object core, string propertyName, string alternateName)
+        {
+            try
+            {
+                if (!stats.ContainsKey(propertyName) && !stats.ContainsKey(alternateName))
+                {
+                    var prop = core.GetType().GetProperty(propertyName);
+                    if (prop != null && prop.CanRead)
+                    {
+                        var value = prop.GetValue(core);
+                        if (value != null)
+                        {
+                            stats[propertyName] = value;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Silently fail if we can't access the property
             }
         }
     }

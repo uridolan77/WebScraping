@@ -131,7 +131,7 @@ namespace WebScraperApi.Data.Repositories
                     {
                         await _context.SaveChangesAsync();
                         Console.WriteLine($"Created new ScraperRun record for ScraperId: {metric.ScraperId}");
-                        
+
                         // Set the RunId on the metric
                         metric.RunId = scraperRun.Id;
                     }
@@ -146,73 +146,68 @@ namespace WebScraperApi.Data.Repositories
                     metric.RunId = existingRun.Id;
                 }
 
-                // Save to the scrapermetric table
+                // Always use direct SQL insert to avoid EF Core issues with NULL values
                 try
                 {
-                    _context.ScraperMetric.Add(metric);
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Successfully added metric to ScraperMetric table: {metric.MetricName} = {metric.MetricValue}");
+                    Console.WriteLine("Using direct SQL insert to scrapermetric table");
+                    var connection = _context.Database.GetDbConnection();
+                    await connection.OpenAsync();
+
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = @"
+                            INSERT INTO scrapermetric (scraperid, runid, metricname, metricvalue, timestamp, scrapername)
+                            VALUES (@scraperId, @runId, @metricName, @metricValue, @timestamp, @scraperName)";
+
+                        // Ensure all string values have defaults to avoid DBNull casting issues
+                        var scraperIdParam = command.CreateParameter();
+                        scraperIdParam.ParameterName = "@scraperId";
+                        scraperIdParam.Value = !string.IsNullOrEmpty(metric.ScraperId) ? metric.ScraperId : string.Empty;
+                        command.Parameters.Add(scraperIdParam);
+
+                        var runIdParam = command.CreateParameter();
+                        runIdParam.ParameterName = "@runId";
+                        runIdParam.Value = !string.IsNullOrEmpty(metric.RunId) ? metric.RunId : (object)DBNull.Value;
+                        command.Parameters.Add(runIdParam);
+
+                        var metricNameParam = command.CreateParameter();
+                        metricNameParam.ParameterName = "@metricName";
+                        metricNameParam.Value = !string.IsNullOrEmpty(metric.MetricName) ? metric.MetricName : string.Empty;
+                        command.Parameters.Add(metricNameParam);
+
+                        var metricValueParam = command.CreateParameter();
+                        metricValueParam.ParameterName = "@metricValue";
+                        metricValueParam.Value = metric.MetricValue;
+                        command.Parameters.Add(metricValueParam);
+
+                        var timestampParam = command.CreateParameter();
+                        timestampParam.ParameterName = "@timestamp";
+                        timestampParam.Value = metric.Timestamp;
+                        command.Parameters.Add(timestampParam);
+
+                        var scraperNameParam = command.CreateParameter();
+                        scraperNameParam.ParameterName = "@scraperName";
+                        scraperNameParam.Value = !string.IsNullOrEmpty(metric.ScraperName) ? metric.ScraperName : string.Empty;
+                        command.Parameters.Add(scraperNameParam);
+
+                        var result = await command.ExecuteNonQueryAsync();
+                        Console.WriteLine($"Direct SQL insert result: {result} rows affected");
+
+                        // Set a dummy ID since we don't have the actual auto-increment ID
+                        if (result > 0 && metric.Id == 0)
+                        {
+                            metric.Id = 1; // Just to indicate success
+                        }
+                    }
                 }
-                catch (Exception primaryEx)
+                catch (Exception sqlEx)
                 {
-                    Console.WriteLine($"Error adding to ScraperMetric table: {primaryEx.Message}");
-                    if (primaryEx.InnerException != null)
+                    Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
+                    if (sqlEx.InnerException != null)
                     {
-                        Console.WriteLine($"Inner exception: {primaryEx.InnerException.Message}");
+                        Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
                     }
-                    Console.WriteLine($"Stack trace: {primaryEx.StackTrace}");
-
-                    // Try to manually execute the insert using raw SQL if EF Core fails
-                    try
-                    {
-                        Console.WriteLine("Attempting direct SQL insert to scrapermetric table");
-                        var connection = _context.Database.GetDbConnection();
-                        await connection.OpenAsync();
-
-                        using (var command = connection.CreateCommand())
-                        {
-                            command.CommandText = @"
-                                INSERT INTO scrapermetric (scraper_id, run_id, metric_name, metric_value, timestamp)
-                                VALUES (@scraperId, @runId, @metricName, @metricValue, @timestamp)";
-
-                            var scraperIdParam = command.CreateParameter();
-                            scraperIdParam.ParameterName = "@scraperId";
-                            scraperIdParam.Value = metric.ScraperId;
-                            command.Parameters.Add(scraperIdParam);
-                            
-                            var runIdParam = command.CreateParameter();
-                            runIdParam.ParameterName = "@runId";
-                            runIdParam.Value = metric.RunId ?? (object)DBNull.Value;
-                            command.Parameters.Add(runIdParam);
-
-                            var metricNameParam = command.CreateParameter();
-                            metricNameParam.ParameterName = "@metricName";
-                            metricNameParam.Value = metric.MetricName;
-                            command.Parameters.Add(metricNameParam);
-
-                            var metricValueParam = command.CreateParameter();
-                            metricValueParam.ParameterName = "@metricValue";
-                            metricValueParam.Value = metric.MetricValue;
-                            command.Parameters.Add(metricValueParam);
-
-                            var timestampParam = command.CreateParameter();
-                            timestampParam.ParameterName = "@timestamp";
-                            timestampParam.Value = metric.Timestamp;
-                            command.Parameters.Add(timestampParam);
-
-                            var result = await command.ExecuteNonQueryAsync();
-                            Console.WriteLine($"Direct SQL insert result: {result} rows affected");
-                        }
-                    }
-                    catch (Exception sqlEx)
-                    {
-                        Console.WriteLine($"Error with direct SQL insert: {sqlEx.Message}");
-                        if (sqlEx.InnerException != null)
-                        {
-                            Console.WriteLine($"Inner exception: {sqlEx.InnerException.Message}");
-                        }
-                        Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
-                    }
+                    Console.WriteLine($"Stack trace: {sqlEx.StackTrace}");
                 }
 
                 return metric;

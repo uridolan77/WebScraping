@@ -181,25 +181,14 @@ namespace WebScraperAPI.Controllers
 
                     try
                     {
-                        var controller = scope.ServiceProvider.GetRequiredService<ScraperController>();
+                        // Get the metrics service instead of the controller
+                        var metricsService = scope.ServiceProvider.GetRequiredService<WebScraperApi.Services.Monitoring.IScraperMetricsService>();
                         var logger = scope.ServiceProvider.GetRequiredService<ILogger<ScraperController>>();
 
                         logger.LogInformation("Starting periodic metrics reporting for all active scrapers");
-                        Console.WriteLine($"METRICS-TIMER: Processing {activeScrapers.Count} active scrapers");
 
-                        foreach (var kvp in activeScrapers)
-                        {
-                            string scraperId = kvp.Key;
-                            WebScraper.Scraper scraper = kvp.Value;
-
-                            logger.LogInformation($"Updating metrics for active scraper {scraperId}");
-                            Console.WriteLine($"METRICS-TIMER: Updating metrics for {scraperId}");
-
-                            await controller.UpdateScraperMetricsFromRuntime(scraperId, scraper);
-                        }
-
-                        logger.LogInformation("Completed periodic metrics reporting");
-                        Console.WriteLine("METRICS-TIMER: Completed metrics update");
+                        // Use the metrics service to update metrics for all active scrapers
+                        await metricsService.UpdateMetricsForAllScrapersAsync(activeScrapers);
                     }
                     catch (Exception ex)
                     {
@@ -228,7 +217,7 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation("Loading scraper configurations from: {ConfigPath}", _configFilePath);
-                
+
                 if (!System.IO.File.Exists(_configFilePath))
                 {
                     _logger.LogWarning("Configuration file does not exist. Creating empty configuration file.");
@@ -237,9 +226,9 @@ namespace WebScraperAPI.Controllers
                 }
 
                 string json = await System.IO.File.ReadAllTextAsync(_configFilePath);
-                var configs = JsonSerializer.Deserialize<List<ScraperConfigModel>>(json, 
+                var configs = JsonSerializer.Deserialize<List<ScraperConfigModel>>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ScraperConfigModel>();
-                
+
                 _logger.LogInformation("Loaded {Count} scraper configurations", configs.Count);
                 return configs;
             }
@@ -256,13 +245,13 @@ namespace WebScraperAPI.Controllers
             try
             {
                 _logger.LogInformation("Saving {Count} scraper configurations to: {ConfigPath}", configs.Count, _configFilePath);
-                
-                string json = JsonSerializer.Serialize(configs, new JsonSerializerOptions 
-                { 
+
+                string json = JsonSerializer.Serialize(configs, new JsonSerializerOptions
+                {
                     WriteIndented = true,
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });
-                
+
                 await System.IO.File.WriteAllTextAsync(_configFilePath, json);
                 _logger.LogInformation("Scraper configurations saved successfully");
             }
@@ -278,7 +267,7 @@ namespace WebScraperAPI.Controllers
         {
             // First try to get the scraper from the database
             var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
-            
+
             if (dbScraper != null)
             {
                 // Convert the database entity to API model
@@ -305,7 +294,7 @@ namespace WebScraperAPI.Controllers
                     ContentExtractorExcludeSelectors = dbScraper.ContentExtractorSelectors?.Where(c => c.IsExclude)?.Select(c => c.Selector)?.ToList()
                 };
             }
-            
+
             // Fallback to JSON file if not found in database
             var configs = await LoadScraperConfigsAsync();
             return configs.FirstOrDefault(c => c.Id == id);

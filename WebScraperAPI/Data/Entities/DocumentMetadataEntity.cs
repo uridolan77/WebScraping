@@ -6,16 +6,16 @@ namespace WebScraperApi.Data.Entities
     {
         [Key]
         public int Id { get; set; }
-        
+
         [Required]
-        public string DocumentId { get; set; }
-        
+        public string? DocumentId { get; set; }
+
         [Required]
-        public string MetadataKey { get; set; }
-        
-        public string MetadataValue { get; set; }
+        public string? MetadataKey { get; set; }
+
+        public string? MetadataValue { get; set; }
 
         // Navigation property
-        public virtual ProcessedDocumentEntity ProcessedDocument { get; set; }
+        public virtual ProcessedDocumentEntity? ProcessedDocument { get; set; }
     }
 }

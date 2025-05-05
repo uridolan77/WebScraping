@@ -34,7 +34,7 @@ namespace WebScraperApi.Data.Entities
         public double AverageProcessingTimeMs { get; set; }
 
         [Column("runid")]
-        public string RunId { get; set; } = string.Empty;
+        public string? RunId { get; set; }
 
         // Navigation properties
         [NotMapped]

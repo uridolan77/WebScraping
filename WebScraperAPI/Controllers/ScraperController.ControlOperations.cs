@@ -167,6 +167,7 @@ namespace WebScraperAPI.Controllers
                                 // Remove from active scrapers when done
                                 _logger.LogInformation($"Removing scraper {id} from active scrapers list");
                                 _activeScrapers.Remove(id);
+                                UnregisterActiveScraper(id);
                             }
                         });
                     }
@@ -211,6 +212,7 @@ namespace WebScraperAPI.Controllers
                         {
                             _logger.LogInformation($"Scraper {id} process exited with code {process.ExitCode}");
                             _activeScrapers.Remove(id);
+                            UnregisterActiveScraper(id);
                         };
 
                         // Start the process
@@ -254,12 +256,16 @@ namespace WebScraperAPI.Controllers
                             // Remove from active scrapers when done
                             _logger.LogInformation($"Removing scraper {id} from active scrapers list");
                             _activeScrapers.Remove(id);
+                            UnregisterActiveScraper(id);
                         }
                     });
                 }
 
                 // Store the scraper in the active scrapers dictionary
                 _activeScrapers[id] = scraper;
+
+                // Register the scraper in the static dictionary for metrics tracking
+                RegisterActiveScraper(id, scraper);
 
                 // Update the scraper status
                 if (dbScraper != null)
@@ -300,10 +306,43 @@ namespace WebScraperAPI.Controllers
                     };
 
                     await _scraperRepository.UpdateScraperStatusAsync(status);
+
+                    // Create a new scraper run entity
+                    var runId = Guid.NewGuid().ToString();
+                    var run = new WebScraperApi.Data.ScraperRunEntity
+                    {
+                        Id = runId,
+                        ScraperId = id,
+                        StartTime = DateTime.Now,
+                        UrlsProcessed = 0,
+                        DocumentsProcessed = 0,
+                        Successful = null, // Still running
+                        ErrorMessage = string.Empty,
+                        ElapsedTime = "00:00:00"
+                    };
+
+                    // Save the run entity
+                    var savedRun = await _scraperRepository.CreateScraperRunAsync(run);
+                    _logger.LogInformation($"Created new scraper run with ID {savedRun.Id} for scraper {id}");
+
+                    // Store the run ID in the scraper instance for later use
+                    if (scraper != null)
+                    {
+                        var runIdField = typeof(Scraper).GetField("_runId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (runIdField != null)
+                        {
+                            runIdField.SetValue(scraper, runId);
+                            _logger.LogInformation($"Set run ID {runId} on scraper instance {id}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning($"Could not update scraper status in database: {ex.Message}");
+                    _logger.LogWarning($"Could not update scraper status or create run in database: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        _logger.LogWarning($"Inner exception: {ex.InnerException.Message}");
+                    }
                 }
 
                 _logger.LogInformation($"Scraper {id} started successfully");
@@ -342,6 +381,7 @@ namespace WebScraperAPI.Controllers
                     // Stop the scraper
                     scraper.StopScraping();
                     _activeScrapers.Remove(id);
+                    UnregisterActiveScraper(id);
 
                     _logger.LogInformation($"Successfully stopped scraper with ID {id}");
                     scraperWasActive = true;

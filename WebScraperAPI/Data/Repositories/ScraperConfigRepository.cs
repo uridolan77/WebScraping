@@ -61,31 +61,17 @@ namespace WebScraperApi.Data.Repositories
         {
             try
             {
-                Console.WriteLine($"GetScraperByIdAsync: Attempting to fetch scraper with ID {id}");
-
                 // Get the main scraper config without any includes
                 var scraperConfig = await _context.ScraperConfigs
                     .AsNoTracking()  // Use AsNoTracking for better performance
                     .FirstOrDefaultAsync(s => s.Id == id);
 
-                if (scraperConfig == null)
-                {
-                    Console.WriteLine($"GetScraperByIdAsync: Scraper with ID {id} not found");
-                    return null;
-                }
-
-                Console.WriteLine($"GetScraperByIdAsync: Successfully retrieved scraper with ID {id}");
                 return scraperConfig;
             }
             catch (Exception ex)
             {
-                // Log the error
-                Console.WriteLine($"GetScraperByIdAsync: Error retrieving scraper with ID {id}: {ex.Message}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"GetScraperByIdAsync: Inner exception: {ex.InnerException.Message}");
-                }
-                Console.WriteLine($"GetScraperByIdAsync: Stack trace: {ex.StackTrace}");
+                // Log the error only in case of exception
+                Console.WriteLine($"GetScraperByIdAsync ERROR: {ex.Message}");
 
                 // Rethrow the exception
                 throw;

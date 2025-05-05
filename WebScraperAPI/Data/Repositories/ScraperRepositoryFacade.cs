@@ -53,43 +53,43 @@ namespace WebScraperApi.Data.Repositories
         public Task<ScraperStatusEntity> GetScraperStatusAsync(string scraperId) => _scraperStatusRepository.GetScraperStatusAsync(scraperId);
         public Task<ScraperStatusEntity> UpdateScraperStatusAsync(ScraperStatusEntity status) => _scraperStatusRepository.UpdateScraperStatusAsync(status);
         public Task<List<ScraperStatusEntity>> GetAllRunningScrapersAsync() => _scraperStatusRepository.GetAllRunningScrapersAsync();
-        
+
         // Scraper Log operations
         public Task<List<ScraperLogEntity>> GetScraperLogsAsync(string scraperId, int limit = 100) => _scraperRunRepository.GetScraperLogsAsync(scraperId, limit);
         public Task<ScraperLogEntity> AddScraperLogAsync(ScraperLogEntity logEntry) => _scraperRunRepository.AddScraperLogAsync(logEntry);
-        
+
         // Scraped Page operations
         public Task<ScrapedPageEntity> AddScrapedPageAsync(ScrapedPageEntity page) => _scrapedPageRepository.AddScrapedPageAsync(page);
-        
+
         // Scraper Run operations
         public Task<List<ScraperRunEntity>> GetScraperRunsAsync(string scraperId, int limit = 10) => _scraperRunRepository.GetScraperRunsAsync(scraperId, limit);
-        public Task<ScraperRunEntity> GetScraperRunByIdAsync(string runId) => _scraperRunRepository.GetScraperRunByIdAsync(runId);
+        public Task<ScraperRunEntity?> GetScraperRunByIdAsync(string runId) => _scraperRunRepository.GetScraperRunByIdAsync(runId);
         public Task<ScraperRunEntity> CreateScraperRunAsync(ScraperRunEntity run) => _scraperRunRepository.CreateScraperRunAsync(run);
         public Task<ScraperRunEntity> UpdateScraperRunAsync(ScraperRunEntity run) => _scraperRunRepository.UpdateScraperRunAsync(run);
-        
+
         // Log Entry operations
         public Task<List<LogEntryEntity>> GetLogEntriesAsync(string scraperId, int limit = 100) => _scraperRunRepository.GetLogEntriesAsync(scraperId, limit);
         public Task<LogEntryEntity> AddLogEntryAsync(LogEntryEntity logEntry) => _scraperRunRepository.AddLogEntryAsync(logEntry);
-        
+
         // Content Change Record operations
         public Task<List<ContentChangeRecordEntity>> GetContentChangesAsync(string scraperId, int limit = 50) => _scraperRunRepository.GetContentChangesAsync(scraperId, limit);
         public Task<ContentChangeRecordEntity> AddContentChangeAsync(ContentChangeRecordEntity change) => _scraperRunRepository.AddContentChangeAsync(change);
-        
+
         // Processed Document operations
         public Task<List<ProcessedDocumentEntity>> GetProcessedDocumentsAsync(string scraperId, int limit = 50) => _scrapedPageRepository.GetProcessedDocumentsAsync(scraperId, limit);
         public Task<ProcessedDocumentEntity> GetDocumentByIdAsync(string documentId) => _scrapedPageRepository.GetDocumentByIdAsync(documentId);
         public Task<ProcessedDocumentEntity> AddProcessedDocumentAsync(ProcessedDocumentEntity document) => _scrapedPageRepository.AddProcessedDocumentAsync(document);
-        
+
         // Metrics operations
         public Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId) => _metricsRepository.GetScraperMetricsAsync(scraperId);
-        public Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId, string metricName, DateTime from, DateTime to) 
+        public Task<List<ScraperMetricEntity>> GetScraperMetricsAsync(string scraperId, string metricName, DateTime from, DateTime to)
             => _metricsRepository.GetScraperMetricsAsync(scraperId, metricName, from, to);
         public Task<ScraperMetricEntity> AddScraperMetricAsync(ScraperMetricEntity metric) => _metricsRepository.AddScraperMetricAsync(metric);
-        
+
         // Pipeline Metrics operations
         public Task<PipelineMetricEntity> GetLatestPipelineMetricAsync(string scraperId) => _metricsRepository.GetLatestPipelineMetricAsync(scraperId);
         public Task<PipelineMetricEntity> AddPipelineMetricAsync(PipelineMetricEntity metric) => _metricsRepository.AddPipelineMetricAsync(metric);
-        
+
         // Content Classification operations
         public Task<object> GetContentClassificationAsync(string scraperId, string url) => _scrapedPageRepository.GetContentClassificationAsync(scraperId, url);
         public Task<List<object>> GetContentClassificationsAsync(string scraperId, int limit = 50) => _scrapedPageRepository.GetContentClassificationsAsync(scraperId, limit);

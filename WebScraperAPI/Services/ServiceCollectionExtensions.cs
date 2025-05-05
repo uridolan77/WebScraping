@@ -11,6 +11,7 @@ using WebScraperApi.Data;
 using WebScraperApi.Data.Repositories;
 using WebScraperApi.Services.Execution;
 using WebScraperApi.Services.Factories;
+using WebScraperApi.Services.Monitoring;
 
 namespace WebScraperApi.Services
 {
@@ -35,7 +36,7 @@ namespace WebScraperApi.Services
             services.AddScoped<IScraperRunRepository, ScraperRunRepository>();
             services.AddScoped<IScrapedPageRepository, ScrapedPageRepository>();
             services.AddScoped<IMetricsRepository, MetricsRepository>();
-            
+
             // Add facade that implements the original interface for backward compatibility
             services.AddScoped<IScraperRepository, ScraperRepositoryFacade>();
 
@@ -45,6 +46,9 @@ namespace WebScraperApi.Services
             services.AddScoped<ContentChangeService>();
             services.AddScoped<DocumentService>();
             services.AddScoped<MetricsService>();
+
+            // Add monitoring services
+            services.AddScoped<IScraperMetricsService, ScraperMetricsService>();
 
             // Add the execution service
             services.AddScoped<IScraperExecutionService, WebScraperApi.Services.Execution.ScraperExecutionService>();

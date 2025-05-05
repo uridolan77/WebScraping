@@ -9,7 +9,7 @@ namespace WebScraperApi.Data.Entities
     {
         [Key]
         [Column("id")]
-        public string Id { get; set; } = string.Empty;
+        public string Id { get; set; } = Guid.NewGuid().ToString();
 
         [Required]
         [Column("scraperid")]
@@ -32,10 +32,10 @@ namespace WebScraperApi.Data.Entities
         public bool? Successful { get; set; }
 
         [Column("errormessage")]
-        public string ErrorMessage { get; set; } = string.Empty;
+        public string? ErrorMessage { get; set; }
 
         [Column("elapsedtime")]
-        public string ElapsedTime { get; set; } = string.Empty;
+        public string? ElapsedTime { get; set; }
 
         // Navigation properties
         [NotMapped]
