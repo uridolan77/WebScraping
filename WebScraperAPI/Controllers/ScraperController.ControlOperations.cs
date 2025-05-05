@@ -194,7 +194,8 @@ namespace WebScraperAPI.Controllers
                         {
                             if (!string.IsNullOrEmpty(e.Data))
                             {
-                                _logger.LogInformation($"Scraper {id} output: {e.Data}");
+                                // Comment out this logging line to reduce verbose output
+                                // _logger.LogInformation($"Scraper {id} output: {e.Data}");
                             }
                         };
 

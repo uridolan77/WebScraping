@@ -10,14 +10,16 @@ import {
   Paper,
   CircularProgress,
   Alert,
-  Divider
+  Divider,
+  Grid
 } from '@mui/material';
 import {
   Edit as EditIcon,
   PlayArrow as PlayIcon,
   Stop as StopIcon,
   Delete as DeleteIcon,
-  ArrowBack as ArrowBackIcon
+  ArrowBack as ArrowBackIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { useScraperContext } from '../contexts/ScraperContext';
 import PageHeader from '../components/common/PageHeader';
@@ -278,6 +280,7 @@ const ScraperDetail = () => {
           <Tab label="Changes" />
           <Tab label="Documents" />
           <Tab label="Performance" />
+          <Tab label="Monitor" />
         </Tabs>
 
         {/* Configuration Tab */}
@@ -430,6 +433,159 @@ const ScraperDetail = () => {
           <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
             Performance metrics will be implemented in a future update
           </Typography>
+        </TabPanel>
+
+        {/* Monitor Tab */}
+        <TabPanel value={tabValue} index={6}>
+          <Typography variant="h6" gutterBottom>Real-time Scraper Monitoring</Typography>
+          <Divider sx={{ mb: 2 }} />
+
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1">Status</Typography>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={() => fetchScraperStatus(id)}
+              >
+                Auto-refresh: On
+              </Button>
+            </Box>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">State</Typography>
+                  <Typography variant="body1" fontWeight="bold">
+                    {status?.isRunning ? 'Running' : status?.hasErrors ? 'Error' : 'Idle'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">URLs Processed</Typography>
+                  <Typography variant="body1">
+                    {status?.urlsProcessed || 0}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Completion</Typography>
+                  <Typography variant="body1">
+                    {status?.progress ? `${Math.round(status.progress)}%` : 'N/A'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Current URL</Typography>
+                  <Typography variant="body1" sx={{ wordBreak: 'break-all' }}>
+                    {status?.currentUrl || 'N/A'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Start Time</Typography>
+                  <Typography variant="body1">
+                    {status?.startTime ? new Date(status.startTime).toLocaleTimeString() : 'N/A'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Elapsed Time</Typography>
+                  <Typography variant="body1">
+                    {status?.elapsedTime || 'Unknown'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Est. Time Remaining</Typography>
+                  <Typography variant="body1">
+                    {status?.estimatedTimeRemaining || 'Unknown'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Current Depth</Typography>
+                  <Typography variant="body1">
+                    {status?.currentDepth || 0} / {selectedScraper.maxDepth}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Box>
+
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>Performance</Typography>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Requests/Second</Typography>
+                  <Typography variant="body1">
+                    {status?.requestsPerSecond || 0}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Active Threads</Typography>
+                  <Typography variant="body1">
+                    {status?.activeThreads || 0}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">Memory Usage</Typography>
+                  <Typography variant="body1">
+                    {status?.memoryUsage ? `${(status.memoryUsage / (1024 * 1024)).toFixed(2)} MB` : 'N/A'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={6} md={3}>
+                  <Typography variant="subtitle2" color="text.secondary">CPU Usage</Typography>
+                  <Typography variant="body1">
+                    {status?.cpuUsage ? `${status.cpuUsage.toFixed(1)}%` : 'N/A'}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Box>
+
+          <Box>
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>Recent Activity</Typography>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              {logs && logs.length > 0 ? (
+                <Box
+                  sx={{
+                    maxHeight: '200px',
+                    overflow: 'auto',
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  {logs.slice(0, 10).map((log, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        mb: 1,
+                        color: log.level === 'Error' ? 'error.main' :
+                              log.level === 'Warning' ? 'warning.main' : 'text.primary'
+                      }}
+                    >
+                      <Typography variant="body2" component="span" sx={{ mr: 2, color: 'text.secondary' }}>
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </Typography>
+                      <Typography variant="body2" component="span">
+                        {log.message}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 2 }}>
+                  No recent activity
+                </Typography>
+              )}
+            </Paper>
+          </Box>
         </TabPanel>
       </Paper>
     </Container>

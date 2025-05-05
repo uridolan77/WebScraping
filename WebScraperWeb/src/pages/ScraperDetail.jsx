@@ -382,7 +382,6 @@ const ScraperDetail = () => {
               label="Monitor"
               {...a11yProps(5)}
               sx={{
-                display: status?.isRunning ? 'flex' : 'none',
                 color: status?.isRunning ? 'success.main' : 'inherit'
               }}
             />

@@ -60,7 +60,7 @@ namespace WebScraperAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error retrieving scrapers", ex);
+                _logger.LogError(ex, "Error retrieving scrapers");
                 return StatusCode(500, new
                 {
                     Message = "An error occurred while retrieving scrapers",
@@ -124,7 +124,7 @@ namespace WebScraperAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error retrieving scrapers", ex);
+                _logger.LogError(ex, "Error retrieving scrapers");
                 return StatusCode(500, new
                 {
                     Message = "An error occurred while retrieving scrapers",
@@ -183,7 +183,7 @@ namespace WebScraperAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error retrieving scrapers", ex);
+                _logger.LogError(ex, "Error retrieving scrapers");
                 return StatusCode(500, new
                 {
                     Message = "An error occurred while retrieving scrapers",
@@ -239,7 +239,7 @@ namespace WebScraperAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error retrieving scraper", ex);
+                _logger.LogError(ex, "Error retrieving scraper");
                 return StatusCode(500, new
                 {
                     Message = $"An error occurred while retrieving scraper {id}",
@@ -350,7 +350,7 @@ namespace WebScraperAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error testing database connection", ex);
+                _logger.LogError(ex, "Error testing database connection");
                 return StatusCode(500, new
                 {
                     Message = "An error occurred while testing database connection",

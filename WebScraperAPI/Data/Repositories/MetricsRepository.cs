@@ -110,7 +110,43 @@ namespace WebScraperApi.Data.Repositories
             {
                 Console.WriteLine($"DEBUG: AddScraperMetricAsync called with metric name: {metric.MetricName}, value: {metric.MetricValue}, ScraperId: {metric.ScraperId}");
 
-                // Save only to the scrapermetric table
+                // Ensure ScraperRun record exists for this scraper
+                var existingRun = await _context.ScraperRun
+                    .Where(r => r.ScraperId == metric.ScraperId && (r.EndTime == null))
+                    .FirstOrDefaultAsync();
+
+                if (existingRun == null)
+                {
+                    // Create a new ScraperRun record if none exists
+                    var scraperRun = new ScraperRunEntity
+                    {
+                        ScraperId = metric.ScraperId,
+                        StartTime = DateTime.Now,
+                        Successful = null, // Still running
+                        ErrorMessage = string.Empty
+                    };
+
+                    _context.ScraperRun.Add(scraperRun);
+                    try
+                    {
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"Created new ScraperRun record for ScraperId: {metric.ScraperId}");
+                        
+                        // Set the RunId on the metric
+                        metric.RunId = scraperRun.Id;
+                    }
+                    catch (Exception runEx)
+                    {
+                        Console.WriteLine($"Error saving ScraperRun: {runEx.Message}");
+                    }
+                }
+                else
+                {
+                    // Set the RunId on the metric using the existing run
+                    metric.RunId = existingRun.Id;
+                }
+
+                // Save to the scrapermetric table
                 try
                 {
                     _context.ScraperMetric.Add(metric);
@@ -136,13 +172,18 @@ namespace WebScraperApi.Data.Repositories
                         using (var command = connection.CreateCommand())
                         {
                             command.CommandText = @"
-                                INSERT INTO scrapermetric (scraper_id, metric_name, metric_value, timestamp)
-                                VALUES (@scraperId, @metricName, @metricValue, @timestamp)";
+                                INSERT INTO scrapermetric (scraper_id, run_id, metric_name, metric_value, timestamp)
+                                VALUES (@scraperId, @runId, @metricName, @metricValue, @timestamp)";
 
                             var scraperIdParam = command.CreateParameter();
                             scraperIdParam.ParameterName = "@scraperId";
                             scraperIdParam.Value = metric.ScraperId;
                             command.Parameters.Add(scraperIdParam);
+                            
+                            var runIdParam = command.CreateParameter();
+                            runIdParam.ParameterName = "@runId";
+                            runIdParam.Value = metric.RunId ?? (object)DBNull.Value;
+                            command.Parameters.Add(runIdParam);
 
                             var metricNameParam = command.CreateParameter();
                             metricNameParam.ParameterName = "@metricName";

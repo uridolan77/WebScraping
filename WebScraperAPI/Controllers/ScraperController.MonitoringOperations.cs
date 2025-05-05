@@ -675,5 +675,283 @@ namespace WebScraperAPI.Controllers
                 .OrderByDescending(m => m.Timestamp)
                 .FirstOrDefault()?.MetricValue ?? 0;
         }
+
+        // New endpoint to match frontend expectation for /status
+        [HttpGet("{id}/status")]
+        public async Task<IActionResult> GetScraperStatus(string id)
+        {
+            // This is a simplified version of the detailed status to match what the frontend expects
+            try
+            {
+                _logger.LogInformation($"Getting simple status for scraper {id}");
+                bool isRunning = _activeScrapers.ContainsKey(id);
+                
+                // Try to get status from the database
+                var dbStatus = await _scraperRepository.GetScraperStatusAsync(id);
+                
+                // Get the name of the scraper
+                string scraperName = "Unknown";
+                try
+                {
+                    var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                    if (scraperConfig != null)
+                    {
+                        scraperName = scraperConfig.Name;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Could not get scraper name: {ErrorMessage}", ex.Message);
+                }
+                
+                // Create a simplified response
+                var response = new
+                {
+                    Id = id,
+                    Name = scraperName,
+                    IsRunning = isRunning || (dbStatus?.IsRunning ?? false),
+                    Status = isRunning ? "Running" : (dbStatus?.IsRunning ?? false ? "Running" : "Idle"),
+                    LastUpdate = dbStatus?.LastUpdate ?? DateTime.Now,
+                    UrlsProcessed = dbStatus?.UrlsProcessed ?? 0,
+                    DocumentsProcessed = dbStatus?.DocumentsProcessed ?? 0,
+                    Message = dbStatus?.Message ?? (isRunning ? "Running" : "Idle"),
+                    StartTime = dbStatus?.StartTime,
+                    EndTime = dbStatus?.EndTime,
+                    ElapsedTime = dbStatus?.ElapsedTime
+                };
+                
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting simple status for scraper {ScraperId}", id);
+                return StatusCode(500, new
+                {
+                    Message = $"An error occurred while getting status for scraper {id}",
+                    Error = ex.Message
+                });
+            }
+        }
+        
+        // Direct GET by ID endpoint for the base route
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetScraperByIdBase(string id)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting scraper with ID {id}");
+                
+                // First try to get the scraper from the database
+                var dbScraper = await _scraperRepository.GetScraperByIdAsync(id);
+                
+                if (dbScraper != null)
+                {
+                    // Convert the database entity to API model
+                    var scraperModel = new ScraperConfigModel
+                    {
+                        Id = dbScraper.Id,
+                        Name = dbScraper.Name,
+                        StartUrl = dbScraper.StartUrl,
+                        BaseUrl = dbScraper.BaseUrl,
+                        OutputDirectory = dbScraper.OutputDirectory,
+                        MaxDepth = dbScraper.MaxDepth,
+                        MaxPages = dbScraper.MaxPages,
+                        DelayBetweenRequests = dbScraper.DelayBetweenRequests,
+                        MaxConcurrentRequests = dbScraper.MaxConcurrentRequests,
+                        FollowLinks = dbScraper.FollowLinks,
+                        FollowExternalLinks = dbScraper.FollowExternalLinks,
+                        CreatedAt = dbScraper.CreatedAt,
+                        LastModified = dbScraper.LastModified,
+                        LastRun = dbScraper.LastRun,
+                        RunCount = dbScraper.RunCount,
+                        // Include related entity collections
+                        StartUrls = dbScraper.StartUrls?.Select(u => u.Url)?.ToList(),
+                        ContentExtractorSelectors = dbScraper.ContentExtractorSelectors?.Where(c => !c.IsExclude)?.Select(c => c.Selector)?.ToList(),
+                        ContentExtractorExcludeSelectors = dbScraper.ContentExtractorSelectors?.Where(c => c.IsExclude)?.Select(c => c.Selector)?.ToList()
+                    };
+                    
+                    return Ok(scraperModel);
+                }
+                
+                // If not found, return 404
+                return NotFound($"Scraper with ID {id} not found");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving scraper with ID {Id}", id);
+                return StatusCode(500, new
+                {
+                    Message = $"An error occurred while retrieving scraper {id}",
+                    Error = ex.Message
+                });
+            }
+        }
+
+        // Add monitor endpoint to match frontend expectations
+        [HttpGet("{id}/monitor")]
+        public async Task<IActionResult> GetScraperMonitor(string id)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting monitor data for scraper {id}");
+                bool isRunning = _activeScrapers.ContainsKey(id);
+                var errors = new List<object>();
+                var stats = new Dictionary<string, object>();
+                
+                // Get data from the active scraper if it's running
+                if (isRunning && _activeScrapers.TryGetValue(id, out var scraper))
+                {
+                    _logger.LogInformation($"Scraper {id} is currently running, fetching real-time data");
+                    
+                    // Update metrics from the running scraper to the database
+                    await UpdateScraperMetricsFromRuntime(id, scraper);
+                    
+                    // Access the ScraperCore to get more details
+                    var coreField = typeof(Scraper).GetField("_core", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (coreField != null)
+                    {
+                        var core = coreField.GetValue(scraper);
+                        if (core != null)
+                        {
+                            // Get stats using reflection
+                            var props = core.GetType().GetProperties();
+                            foreach (var prop in props)
+                            {
+                                try
+                                {
+                                    if (prop.Name != "Errors" && prop.CanRead)
+                                    {
+                                        var value = prop.GetValue(core);
+                                        if (value != null)
+                                        {
+                                            stats[prop.Name] = value;
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogDebug($"Could not get property {prop.Name}: {ex.Message}");
+                                }
+                            }
+                            
+                            // Get the Errors property specifically
+                            var errorsProperty = core.GetType().GetProperty("Errors");
+                            if (errorsProperty != null)
+                            {
+                                var scraperErrors = errorsProperty.GetValue(core) as System.Collections.IEnumerable;
+                                if (scraperErrors != null)
+                                {
+                                    foreach (var error in scraperErrors)
+                                    {
+                                        // Extract the properties from the error object
+                                        var urlProperty = error.GetType().GetProperty("Url");
+                                        var messageProperty = error.GetType().GetProperty("Message");
+                                        var timestampProperty = error.GetType().GetProperty("Timestamp");
+                                        
+                                        if (urlProperty != null && messageProperty != null && timestampProperty != null)
+                                        {
+                                            errors.Add(new
+                                            {
+                                                Url = urlProperty.GetValue(error)?.ToString(),
+                                                Message = messageProperty.GetValue(error)?.ToString(),
+                                                Timestamp = timestampProperty.GetValue(error) is DateTime ts ? ts : DateTime.Now
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Try to get status from the database
+                var dbStatus = await _scraperRepository.GetScraperStatusAsync(id);
+                
+                // Get the name of the scraper
+                string scraperName = "Unknown";
+                try
+                {
+                    var scraperConfig = await _scraperRepository.GetScraperByIdAsync(id);
+                    if (scraperConfig != null)
+                    {
+                        scraperName = scraperConfig.Name;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Could not get scraper name: {ErrorMessage}", ex.Message);
+                }
+                
+                // Get recent metrics
+                var from = DateTime.Now.AddHours(-1); // Last hour
+                var to = DateTime.Now;
+                var metrics = await _scraperRepository.GetScraperMetricsAsync(id, string.Empty, from, to);
+                
+                // Process metrics
+                var processedMetrics = new Dictionary<string, double>();
+                foreach (var metric in metrics.OrderByDescending(m => m.Timestamp).GroupBy(m => m.MetricName))
+                {
+                    if (metric.Any())
+                    {
+                        processedMetrics[metric.Key] = metric.First().MetricValue;
+                    }
+                }
+                
+                // Get recent logs
+                var dbLogs = await _scraperRepository.GetScraperLogsAsync(id, 20);
+                var recentLogs = dbLogs.Select(log => new
+                {
+                    timestamp = log.Timestamp,
+                    level = log.LogLevel?.ToLower(),
+                    message = log.Message
+                }).ToList();
+                
+                // Create the monitor response
+                var response = new
+                {
+                    id = id,
+                    name = scraperName,
+                    isRunning = isRunning || (dbStatus?.IsRunning ?? false),
+                    status = isRunning ? "Running" : (dbStatus?.IsRunning ?? false ? "Running" : "Idle"),
+                    lastUpdate = DateTime.Now,
+                    statistics = stats,
+                    metrics = processedMetrics,
+                    errors = errors,
+                    recentLogs = recentLogs,
+                    hasErrors = errors.Count > 0,
+                    databaseStatus = dbStatus != null ? new
+                    {
+                        isRunning = dbStatus.IsRunning,
+                        startTime = dbStatus.StartTime,
+                        endTime = dbStatus.EndTime,
+                        urlsProcessed = dbStatus.UrlsProcessed,
+                        urlsQueued = dbStatus.UrlsQueued,
+                        message = dbStatus.Message,
+                        elapsedTime = dbStatus.ElapsedTime,
+                        lastStatusUpdate = dbStatus.LastStatusUpdate,
+                        lastUpdate = dbStatus.LastUpdate
+                    } : null,
+                    summary = new
+                    {
+                        pagesProcessed = processedMetrics.ContainsKey("PagesProcessed") ? processedMetrics["PagesProcessed"] : 0,
+                        documentsProcessed = processedMetrics.ContainsKey("DocumentsProcessed") ? processedMetrics["DocumentsProcessed"] : 0,
+                        errorCount = errors.Count,
+                        runningTime = dbStatus?.StartTime != null ? (DateTime.Now - dbStatus.StartTime.Value).ToString(@"hh\:mm\:ss") : "00:00:00",
+                        currentStatus = dbStatus?.Message ?? (isRunning ? "Running" : "Idle")
+                    }
+                };
+                
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting monitor data for scraper {ScraperId}", id);
+                return StatusCode(500, new
+                {
+                    Message = $"An error occurred while getting monitor data for scraper {id}",
+                    Error = ex.Message
+                });
+            }
+        }
     }
 }
