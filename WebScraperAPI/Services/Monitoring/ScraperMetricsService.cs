@@ -419,7 +419,7 @@ namespace WebScraperApi.Services.Monitoring
                         if (run != null)
                         {
                             // Create a new instance to avoid tracking conflicts
-                            var updatedRun = new ScraperRunEntity
+                            var updatedRun = new WebScraperApi.Data.Entities.ScraperRunEntity
                             {
                                 Id = run.Id,
                                 ScraperId = run.ScraperId,
